@@ -4,6 +4,7 @@
 use std::{any::TypeId, collections::HashMap};
 
 use entity_id::EntityId;
+// TODO: use dense storage instead of the PageTable because of archetypes
 use page_table::PageTable;
 
 use crate::handle_table::HandleTable;
