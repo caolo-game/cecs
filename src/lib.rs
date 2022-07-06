@@ -75,7 +75,7 @@ impl World {
 
     pub fn delete_entity(&mut self, id: EntityId) -> WorldResult<()> {
         if !self.entity_ids.is_valid(id) {
-            todo!()
+            return Err(WorldError::EntityNotFound);
         }
         let ty = self.entity_archetype[&id];
         let archetype = self.archetypes.get_mut(&ty).unwrap();
