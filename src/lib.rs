@@ -123,14 +123,17 @@ impl World {
 #[derive(Clone)]
 pub(crate) struct ArchetypeStorage {
     ty: TypeHash,
-    components: HashMap<TypeHash, ErasedPageTable>,
+    components: HashMap<TypeId, ErasedPageTable>,
 }
 
 impl Default for ArchetypeStorage {
     fn default() -> Self {
         let ty = hash_ty::<()>();
         let mut components = HashMap::new();
-        components.insert(ty, ErasedPageTable::new(PageTable::<()>::default()));
+        components.insert(
+            TypeId::of::<()>(),
+            ErasedPageTable::new(PageTable::<()>::default()),
+        );
         Self { ty, components }
     }
 }
@@ -150,7 +153,7 @@ impl ArchetypeStorage {
     pub fn set_component<T: 'static>(&mut self, id: EntityId, val: T) {
         unsafe {
             self.components
-                .get_mut(&hash_ty::<T>())
+                .get_mut(&TypeId::of::<T>())
                 .expect("set_component called on bad archetype")
                 .as_inner_mut()
                 .insert(id, val);
@@ -158,7 +161,7 @@ impl ArchetypeStorage {
     }
 
     pub fn contains_column<T: 'static>(&self) -> bool {
-        let hash = hash_ty::<T>();
+        let hash = TypeId::of::<T>();
         self.components.contains_key(&hash)
     }
 
@@ -177,7 +180,7 @@ impl ArchetypeStorage {
         let new_ty = self.extended_hash::<T>();
         result.ty = new_ty;
         result.components.insert(
-            hash_ty::<T>(),
+            TypeId::of::<T>(),
             ErasedPageTable::new::<T>(PageTable::default()),
         );
         result
