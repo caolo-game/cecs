@@ -12,12 +12,23 @@ pub mod entity_id;
 pub mod handle_table;
 pub mod page_table;
 
+#[cfg(test)]
+mod tests;
+
 pub struct World {
     entity_ids: HandleTable,
     archetypes: HashMap<TypeId, ArchetypeStorage>,
 }
 
 const VOID_TY: TypeId = TypeId::of::<()>();
+
+#[derive(Clone, Debug, thiserror::Error)]
+pub enum WorldError {
+    #[error("World is full and can not take more entities")]
+    OutOfCapacity,
+}
+
+pub type WorldResult<T> = Result<T, WorldError>;
 
 impl World {
     pub fn new(capacity: u32) -> Self {
@@ -33,9 +44,11 @@ impl World {
         }
     }
 
-    // TODO: errors
-    pub fn insert_entity(&mut self) -> Result<EntityId, ()> {
-        let id = self.entity_ids.alloc().unwrap(); // FIXME: return error
+    pub fn insert_entity(&mut self) -> WorldResult<EntityId> {
+        let id = self
+            .entity_ids
+            .alloc()
+            .map_err(|_| WorldError::OutOfCapacity)?;
         let void_store = self.archetypes.get_mut(&VOID_TY).unwrap();
         void_store.components_mut::<()>().insert(id, ());
         Ok(id)
@@ -63,7 +76,7 @@ impl ArchetypeStorage {
             finalizer: Box::new(|erased_table: &mut ErasedPageTable| {
                 // drop the inner table
                 unsafe {
-                    std::ptr::drop_in_place(erased_table);
+                    std::ptr::drop_in_place(erased_table.as_inner_mut::<T>());
                 }
             }),
         }
@@ -97,15 +110,6 @@ impl Default for ErasedPageTable {
     }
 }
 
-impl Drop for ErasedPageTable {
-    fn drop(&mut self) {
-        assert!(
-            self.inner.is_null(),
-            "You have to clean up the ErasedPageTable by casting to the underlying value"
-        );
-    }
-}
-
 impl ErasedPageTable {
     /// Get the archetype storage's ty.
     pub fn ty(&self) -> TypeId {
@@ -133,9 +137,7 @@ impl ErasedPageTable {
 
     /// # SAFETY
     /// Must be called with the same type as `new`
-    pub unsafe fn into_inner<T>(mut self) -> PageTable<T> {
-        let result = std::ptr::read(self.inner.cast());
-        self.inner = std::ptr::null_mut();
-        result
+    pub unsafe fn into_inner<T>(self) -> PageTable<T> {
+        std::ptr::read(self.inner.cast())
     }
 }
