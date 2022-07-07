@@ -17,7 +17,7 @@ mod world_tests;
 
 pub struct World {
     // TODO: world can be generic over Index
-    entity_ids: Pin<Box<EntityIndex>>,
+    entity_ids: EntityIndex,
     archetypes: HashMap<TypeHash, Pin<Box<ArchetypeStorage>>>,
 }
 
@@ -70,20 +70,21 @@ pub trait Index {
 }
 
 impl World {
-    pub fn new(capacity: u32) -> Self {
-        let entity_ids = Box::pin(EntityIndex::new(capacity));
-
-        let mut archetypes = HashMap::with_capacity(128);
-        let void_store = Box::pin(ArchetypeStorage::empty());
-        archetypes.insert(VOID_TY, void_store);
-
+    pub fn new(capacity: u32) -> Pin<Box<Self>> {
         // FIXME: can't add assert to const fn...
         // the `hash_ty` function assumes that TypeId is a u64 under the hood
         debug_assert_eq!(std::mem::size_of::<TypeId>(), std::mem::size_of::<u64>());
-        Self {
+
+        let entity_ids = EntityIndex::new(capacity);
+
+        let archetypes = HashMap::with_capacity(128);
+        let mut result = Self {
             entity_ids,
             archetypes,
-        }
+        };
+        let void_store = Box::pin(ArchetypeStorage::empty());
+        result.archetypes.insert(VOID_TY, void_store);
+        Box::pin(result)
     }
 
     pub fn insert_entity(&mut self) -> WorldResult<EntityId> {
