@@ -146,6 +146,30 @@ impl<'a, T: Component> Queryable<'a, &'a mut T> for ArchetypeStorage {
     }
 }
 
+pub struct Query<'a, T> {
+    world: &'a crate::World,
+    _m: PhantomData<T>,
+}
+
+impl<'a, T> Query<'a, T>
+where
+    ArchQuery<T>: QueryFragment<'a>,
+{
+    pub fn new(world: &'a crate::World) -> Self {
+        Query {
+            world,
+            _m: PhantomData,
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = <ArchQuery<T> as QueryFragment<'a>>::Item> {
+        self.world
+            .archetypes
+            .iter()
+            .flat_map(|(_, arch)| ArchQuery::<T>::default().iter(arch))
+    }
+}
+
 pub struct ArchQuery<T> {
     _m: PhantomData<T>,
 }

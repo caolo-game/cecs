@@ -1,3 +1,5 @@
+use crate::query::Query;
+
 use super::*;
 
 #[test]
@@ -52,4 +54,23 @@ fn can_update_component_test() {
 
     w.set_component(id, "poggers2".to_string()).unwrap();
     assert!(w.get_component::<String>(id).unwrap() == "poggers2");
+}
+
+#[test]
+fn query_can_iter_multiple_archetypes_test() {
+    let mut world = World::new(500);
+
+    let id = world.insert_entity().unwrap();
+    world.set_component(id, "poggers".to_string()).unwrap();
+    world.set_component(id, 16).unwrap();
+
+    let id = world.insert_entity().unwrap();
+    world.set_component(id, "poggers".to_string()).unwrap();
+
+    let mut count = 0;
+    for pog in Query::<&String>::new(&world).iter() {
+        assert_eq!(*pog, "poggers");
+        count += 1;
+    }
+    assert_eq!(count, 2);
 }
