@@ -1,7 +1,7 @@
 mod pt_iter;
 mod serde_impl;
 
-use crate::entity_id::EntityId;
+use crate::RowIndex;
 
 use self::pt_iter::PTIter;
 use std::{mem::MaybeUninit, ptr::drop_in_place};
@@ -41,8 +41,7 @@ impl<T> PageTable<T> {
         }
     }
 
-    pub fn get(&self, index: EntityId) -> Option<&T> {
-        let index = index.index();
+    pub fn get(&self, index: RowIndex) -> Option<&T> {
         let page_index = index as usize / PAGE_SIZE;
         self.pages
             .get(page_index)
@@ -50,8 +49,7 @@ impl<T> PageTable<T> {
             .and_then(|page| page.get(index as usize & PAGE_MASK))
     }
 
-    pub fn get_mut(&mut self, index: EntityId) -> Option<&mut T> {
-        let index = index.index();
+    pub fn get_mut(&mut self, index: RowIndex) -> Option<&mut T> {
         let page_index = index as usize / PAGE_SIZE;
         self.pages
             .get_mut(page_index)
@@ -59,16 +57,15 @@ impl<T> PageTable<T> {
             .and_then(|page| page.get_mut(index as usize & PAGE_MASK))
     }
 
-    pub fn remove(&mut self, index: EntityId) -> Option<T> {
-        let index = index.index() as usize;
-        let page_index = index / PAGE_SIZE;
+    pub fn remove(&mut self, index: RowIndex) -> Option<T> {
+        let page_index = index as usize / PAGE_SIZE;
         let mut delete_page = false;
         let result = self
             .pages
             .get_mut(page_index)
             .and_then(|p| p.as_mut())
             .and_then(|page| {
-                let result = page.remove(index & PAGE_MASK);
+                let result = page.remove(index as usize & PAGE_MASK);
                 delete_page = page.is_empty();
                 result
             })
@@ -86,20 +83,18 @@ impl<T> PageTable<T> {
     }
 
     /// Returns the previous value, if any
-    pub fn insert(&mut self, index: EntityId, value: T) -> Option<T> {
+    pub fn insert(&mut self, index: RowIndex, value: T) -> Option<T> {
         if let Some(existing) = self.get_mut(index) {
             Some(std::mem::replace(existing, value))
         } else {
             self.num_entities += 1;
-            let page_ind = index.index() as usize / PAGE_SIZE;
+            let page_ind = index as usize / PAGE_SIZE;
             if page_ind >= self.pages.len() {
                 self.pages.resize_with(page_ind + 1, Default::default);
             }
-            self.pages[page_ind].get_or_insert_default().insert(
-                index.index() as usize & PAGE_MASK,
-                index.gen(),
-                value,
-            );
+            self.pages[page_ind]
+                .get_or_insert_default()
+                .insert(index as usize & PAGE_MASK, value);
             None
         }
     }
@@ -112,7 +107,7 @@ impl<T> PageTable<T> {
         self.num_entities == 0
     }
 
-    pub fn iter(&self) -> impl ExactSizeIterator<Item = (EntityId, &T)> {
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = (RowIndex, &T)> {
         let it = self
             .pages
             .iter()
@@ -121,14 +116,14 @@ impl<T> PageTable<T> {
             .flat_map(|(page_id, page)| {
                 let offset = page_id * PAGE_SIZE;
                 page.iter().map(move |(id, item)| {
-                    let id = EntityId::new(id.index() + offset as u32, id.gen());
+                    let id = id + offset as u32;
                     (id, item)
                 })
             });
         PTIter::new(it, self.num_entities)
     }
 
-    pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = (EntityId, &mut T)> {
+    pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = (RowIndex, &mut T)> {
         let it = self
             .pages
             .iter_mut()
@@ -137,7 +132,7 @@ impl<T> PageTable<T> {
             .flat_map(|(page_id, page)| {
                 let offset = page_id * PAGE_SIZE;
                 page.iter_mut().map(move |(id, item)| {
-                    let id = EntityId::new(id.index() + offset as u32, id.gen());
+                    let id = id + offset as u32;
                     (id, item)
                 })
             });
@@ -149,8 +144,7 @@ impl<T> PageTable<T> {
         self.pages.clear();
     }
 
-    pub fn contains(&self, index: EntityId) -> bool {
-        let index = index.index();
+    pub fn contains(&self, index: RowIndex) -> bool {
         let page_index = index as usize / PAGE_SIZE;
         self.pages
             .get(page_index)
@@ -167,8 +161,6 @@ struct Page<T> {
     // iterate on tight arrays...
     // eliminate the existance check during iteration
     data: [MaybeUninit<T>; PAGE_SIZE],
-    /// generation of the current component
-    gens: [u32; PAGE_SIZE],
     len: usize,
 }
 
@@ -177,13 +169,12 @@ impl<T: Clone> Clone for Page<T> {
         let mut result = Self {
             data: [Self::D; PAGE_SIZE],
             len: self.len,
-            gens: self.gens,
             filled: self.filled,
         };
 
         for (id, t) in self.iter() {
             unsafe {
-                std::ptr::write(result.data[id.index() as usize].as_mut_ptr(), t.clone());
+                std::ptr::write(result.data[id as usize].as_mut_ptr(), t.clone());
             }
         }
 
@@ -203,7 +194,6 @@ impl<T> Page<T> {
         Self {
             filled: [0; PAGE_FLAG_SIZE],
             data: [Self::D; PAGE_SIZE],
-            gens: [0; PAGE_SIZE],
             len: 0,
         }
     }
@@ -213,16 +203,13 @@ impl<T> Page<T> {
         ((flags >> (id & 63)) & 1) != 0
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (EntityId, &T)> {
+    pub fn iter(&self) -> impl Iterator<Item = (RowIndex, &T)> {
         (0..self.data.len()).filter_map(move |i| {
             let flag_idx = i / 64;
             unsafe {
                 let flags = self.filled.get_unchecked(flag_idx);
                 if (*flags & (1 << (i as u64 & 63))) != 0 {
-                    Some((
-                        EntityId::new(i as u32, *self.gens.get_unchecked(i)),
-                        &*self.data.get_unchecked(i).as_ptr(),
-                    ))
+                    Some((i as u32, &*self.data.get_unchecked(i).as_ptr()))
                 } else {
                     None
                 }
@@ -230,16 +217,13 @@ impl<T> Page<T> {
         })
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (EntityId, &mut T)> + '_ {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (RowIndex, &mut T)> + '_ {
         (0..self.data.len()).filter_map(move |i| {
             let flag_idx = i / 64;
             unsafe {
                 let flags = self.filled.get_unchecked(flag_idx);
                 if (*flags & (1 << (i as u64 & 63))) != 0 {
-                    Some((
-                        EntityId::new(i as u32, *self.gens.get_unchecked(i)),
-                        &mut *self.data.get_unchecked_mut(i).as_mut_ptr(),
-                    ))
+                    Some((i as u32, &mut *self.data.get_unchecked_mut(i).as_mut_ptr()))
                 } else {
                     None
                 }
@@ -264,14 +248,14 @@ impl<T> Page<T> {
         }
     }
 
-    pub fn insert(&mut self, i: usize, gen: u32, value: T) {
+    pub fn insert(&mut self, i: usize, value: T) {
         assert!(
             self.filled
                 .get(i / 64)
                 .copied()
                 .map(|flags| flags >> (i & 63) & 1 == 0)
                 .unwrap(),
-            "EntityId {} is invalid or occupied",
+            "RowIndex {} is invalid or occupied",
             i
         );
         let flags = self.filled[i / 64];
@@ -284,7 +268,6 @@ impl<T> Page<T> {
         } else {
             self.len += 1;
         }
-        self.gens[i] = gen;
         unsafe {
             std::ptr::write(self.data[i].as_mut_ptr(), value);
         }
@@ -339,7 +322,7 @@ mod tests {
         assert!(table.is_empty());
         assert_eq!(table.len(), 0);
 
-        let id = EntityId::new(512, 0);
+        let id = 512;
         table.insert(id, 42);
 
         assert!(!table.is_empty());
@@ -350,8 +333,8 @@ mod tests {
         assert_eq!(table.get(id).copied(), Some(42));
         assert_eq!(table.get_mut(id).copied(), Some(42));
 
-        assert_eq!(table.get(EntityId::new(128, 0)), None);
-        assert_eq!(table.contains(EntityId::new(128, 0)), false);
+        assert_eq!(table.get(128), None);
+        assert_eq!(table.contains(128), false);
     }
 
     #[test]
@@ -360,7 +343,7 @@ mod tests {
         assert!(table.is_empty());
         assert_eq!(table.len(), 0);
 
-        let id = EntityId::new(21, 12);
+        let id = 21;
         table.insert(id, 42);
         assert_eq!(table.get(id).copied(), Some(42));
         let removed = table.remove(id);
@@ -374,10 +357,10 @@ mod tests {
     fn test_iter() {
         let mut table = PageTable::<i64>::new(0);
 
-        table.insert(EntityId::new(12, 12), 12);
-        table.insert(EntityId::new(521, 12), 521);
-        table.insert(EntityId::new(333, 12), 333);
-        table.insert(EntityId::new(666, 12), 666);
+        table.insert(12, 12);
+        table.insert(521, 521);
+        table.insert(333, 333);
+        table.insert(666, 666);
 
         let it = table.iter();
         assert_eq!(it.len(), table.len());
@@ -391,7 +374,7 @@ mod tests {
         assert_eq!(expected.len(), actual.len());
 
         for (exp, actual) in expected.iter().copied().zip(actual.iter()) {
-            assert_eq!(exp, actual.0.index());
+            assert_eq!(exp, actual.0);
             assert_eq!(exp as i64, *actual.1);
         }
     }
@@ -400,10 +383,10 @@ mod tests {
     fn test_iter_mut() {
         let mut table = PageTable::<i64>::new(0);
 
-        table.insert(EntityId::new(12, 12), 12);
-        table.insert(EntityId::new(521, 12), 521);
-        table.insert(EntityId::new(333, 12), 333);
-        table.insert(EntityId::new(666, 12), 666);
+        table.insert(12, 12);
+        table.insert(521, 521);
+        table.insert(333, 333);
+        table.insert(666, 666);
 
         let iter_res: Vec<_> = table.iter().map(|(_x, y)| *y).collect();
 
@@ -421,14 +404,14 @@ mod tests {
     fn remove_test() {
         let mut table = PageTable::<i64>::new(0);
 
-        table.insert(EntityId::new(12, 12), 12);
-        table.insert(EntityId::new(521, 12), 521);
-        table.insert(EntityId::new(333, 12), 333);
-        table.insert(EntityId::new(666, 12), 666);
+        table.insert(12, 12);
+        table.insert(521, 521);
+        table.insert(333, 333);
+        table.insert(666, 666);
 
         let iter_res_a: Vec<_> = table.iter().map(|(_x, y)| *y).collect();
 
-        table.remove(EntityId::new(12, 12));
+        table.remove(12);
 
         let iter_res_b: Vec<_> = table.iter().map(|(_x, y)| *y).collect();
 

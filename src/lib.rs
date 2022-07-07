@@ -8,8 +8,6 @@ use handle_table::EntityIndex;
 // TODO: use dense storage instead of the PageTable because of archetypes
 use page_table::PageTable;
 
-use crate::handle_table::HandleTable;
-
 pub mod entity_id;
 pub mod handle_table;
 pub mod page_table;
@@ -98,12 +96,12 @@ impl World {
     }
 
     pub fn delete_entity(&mut self, id: EntityId) -> WorldResult<()> {
-        let (mut archetype, _index) = self
+        let (mut archetype, index) = self
             .entity_ids
             .read(id)
             .map_err(|_| WorldError::EntityNotFound)?;
         unsafe {
-            archetype.as_mut().remove(id);
+            archetype.as_mut().remove(index);
             self.entity_ids.delete(id).unwrap();
         }
         Ok(())
@@ -114,7 +112,7 @@ impl World {
         entity_id: EntityId,
         component: T,
     ) -> WorldResult<()> {
-        let (mut archetype, _index) = self
+        let (mut archetype, mut index) = self
             .entity_ids
             .read(entity_id)
             .map_err(|_| WorldError::EntityNotFound)?;
@@ -122,11 +120,12 @@ impl World {
         if !archetype.contains_column::<T>() {
             let new_ty = archetype.extended_hash::<T>();
             if !self.archetypes.contains_key(&new_ty) {
-                let mut res = self.insert_archetype::<T>(entity_id, archetype);
+                let mut res = self.insert_archetype::<T>(entity_id, archetype, index);
                 archetype = unsafe { res.as_mut() };
+                index = 0;
             }
         }
-        archetype.set_component(entity_id, component);
+        archetype.set_component(entity_id, index, component);
         Ok(())
     }
 
@@ -135,12 +134,13 @@ impl World {
         &mut self,
         entity_id: EntityId,
         archetype: &mut ArchetypeStorage,
+        row_index: RowIndex,
     ) -> NonNull<ArchetypeStorage> {
         let mut new_arch = Box::pin(archetype.extend_with_column::<T>());
         // move all components from old archetype to new
         for (ty, col) in archetype.components.iter_mut() {
             let dst = new_arch.components.get_mut(ty).unwrap();
-            (col.move_row)(col, dst, entity_id);
+            (col.move_row)(col, dst, row_index);
         }
         let res = unsafe { NonNull::new_unchecked(new_arch.as_mut().get_mut() as *mut _) };
         self.entity_ids.update(entity_id, (res, 0)).unwrap();
@@ -180,9 +180,9 @@ impl ArchetypeStorage {
         self.ty
     }
 
-    pub fn remove(&mut self, id: EntityId) {
+    pub fn remove(&mut self, row_index: RowIndex) {
         for (_, storage) in self.components.iter_mut() {
-            storage.remove(id);
+            storage.remove(row_index);
         }
     }
 
@@ -193,13 +193,18 @@ impl ArchetypeStorage {
         res
     }
 
-    pub fn set_component<T: 'static>(&mut self, id: EntityId, val: T) {
+    pub fn set_component<T: 'static>(&mut self, id: EntityId, row_index: RowIndex, val: T) {
         unsafe {
+            if self.entities.len() <= row_index as usize {
+                self.entities
+                    .resize_with(row_index as usize + 1, EntityId::default);
+            }
+            self.entities[row_index as usize] = id;
             self.components
                 .get_mut(&TypeId::of::<T>())
                 .expect("set_component called on bad archetype")
                 .as_inner_mut()
-                .insert(id, val);
+                .insert(row_index, val);
         }
     }
 
@@ -248,13 +253,13 @@ pub(crate) struct ErasedPageTable {
     ty: TypeHash,
     inner: *mut std::ffi::c_void,
     finalize: fn(&mut ErasedPageTable),
-    remove: fn(EntityId, &mut ErasedPageTable),
+    remove: fn(RowIndex, &mut ErasedPageTable),
     clone: fn(&ErasedPageTable) -> ErasedPageTable,
     clone_empty: fn() -> ErasedPageTable,
     /// src, dst
     ///
     /// if component is not in `src` then this is a noop
-    move_row: fn(&mut ErasedPageTable, &mut ErasedPageTable, EntityId),
+    move_row: fn(&mut ErasedPageTable, &mut ErasedPageTable, RowIndex),
 }
 
 impl Default for ErasedPageTable {
@@ -328,7 +333,7 @@ impl ErasedPageTable {
         std::ptr::read(self.inner.cast())
     }
 
-    pub fn remove(&mut self, id: EntityId) {
+    pub fn remove(&mut self, id: RowIndex) {
         (self.remove)(id, self);
     }
 }

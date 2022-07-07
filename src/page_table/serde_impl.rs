@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use serde::{de::Visitor, ser::SerializeMap, Deserialize, Serialize};
 
-use crate::entity_id::EntityId;
+use crate::RowIndex;
 
 use super::Page;
 
@@ -49,8 +49,8 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for Page<T> {
                 A: serde::de::MapAccess<'de>,
             {
                 let mut result = Page::new();
-                while let Some((id, val)) = map.next_entry::<EntityId, _>()? {
-                    result.insert(id.index() as usize, id.gen(), val);
+                while let Some((id, val)) = map.next_entry::<RowIndex, _>()? {
+                    result.insert(id as usize, val);
                 }
                 Ok(result)
             }
@@ -62,7 +62,6 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for Page<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::page_table::PageTable;
 
     #[test]
@@ -70,15 +69,13 @@ mod tests {
         let mut table = PageTable::new(1024);
 
         for i in 0..10_000 {
-            let id = EntityId::new(i, i % 100);
-            let i = i as i32;
-            table.insert(id, i);
+            table.insert(i, i);
         }
 
         let mut payload = Vec::with_capacity(1024);
         bincode::serialize_into(&mut payload, &table).unwrap();
 
-        let deser: PageTable<i32> = bincode::deserialize_from(&payload[..]).unwrap();
+        let deser: PageTable<u32> = bincode::deserialize_from(&payload[..]).unwrap();
 
         assert_eq!(table.len(), deser.len());
 
