@@ -1,5 +1,3 @@
-use serde::{Deserialize, Serialize};
-
 pub type Index = u32;
 
 const INDEX_BITS: u32 = 24;
@@ -8,7 +6,8 @@ pub const ENTITY_INDEX_MASK: u32 = (1 << INDEX_BITS) - 1;
 pub const ENTITY_GEN_MASK: u32 = (1 << GEN_BITS) - 1;
 
 // store the index in the more significant bits for ordering
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Copy, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Copy, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EntityId(u32);
 
 impl EntityId {

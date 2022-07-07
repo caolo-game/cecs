@@ -1,3 +1,4 @@
+#[cfg(feature = "serde")]
 mod serde_impl;
 
 use std::{
@@ -177,7 +178,8 @@ impl Drop for HandleTable {
     }
 }
 
-#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 struct Entry {
     /// If this entry is allocated, then data is the index of the entity
     /// if not, then data is the next link in the free_list

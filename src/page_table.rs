@@ -1,4 +1,6 @@
 mod pt_iter;
+
+#[cfg(feature = "serde")]
 mod serde_impl;
 
 use crate::RowIndex;
@@ -12,7 +14,7 @@ const PAGE_MASK: usize = PAGE_SIZE - 1; // assumes that page size is power of tw
 
 type PageEntry<T> = Option<Box<Page<T>>>;
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PageTable<T> {
     num_entities: usize,
     pages: Vec<PageEntry<T>>,

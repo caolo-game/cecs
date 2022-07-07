@@ -5,8 +5,9 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
 [dependencies]
-serde = { version = "1.0.138", features = ["derive"] }
+serde = { version = "1.0.138", features = ["derive"], optional=true}
 smallvec = { version = "1.9.0", features = ["serde"] }
 thiserror = "1.0.31"
 
