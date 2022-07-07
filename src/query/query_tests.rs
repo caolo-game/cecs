@@ -46,8 +46,8 @@ fn joined_iter_test() {
 
     let q = Query::<(&String, &u32)>::default();
     for ((s, i), (exps, expi)) in q.iter(&archetype).zip([("pog", 42), ("pog32", 69)].iter()) {
-        assert_eq!(*s, exps);
-        assert_eq!(*i, expi);
+        assert_eq!(&*s, exps);
+        assert_eq!(&*i, expi);
     }
 }
 
@@ -122,9 +122,18 @@ fn can_mix_mut_ref_test() {
         archetype.set_component(id, index, 69u32);
     }
 
+    for (_a, mut b) in Query::<(&String, &mut u32)>::default().iter(&archetype) {
+        *b = 42424242;
+    }
+    for val in Query::<&u32>::default().iter(&archetype) {
+        assert_eq!(*val, 42424242);
+    }
 
-    let q = Query::<(&String, &mut u32)>::default();
-    for (a, b) in q.iter(&mut archetype) {
-        todo!()
+    for (mut a, _b) in Query::<(&mut String, &u32)>::default().iter(&archetype) {
+        *a = "winnie".to_string();
+    }
+
+    for val in Query::<&String>::default().iter(&archetype) {
+        assert_eq!(*val, "winnie");
     }
 }

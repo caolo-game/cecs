@@ -1,14 +1,20 @@
-use std::{any::TypeId, collections::HashMap};
+use std::{any::TypeId, cell::UnsafeCell, collections::HashMap};
 
 // TODO: use dense storage instead of the PageTable because of archetypes
 use crate::{entity_id::EntityId, hash_ty, page_table::PageTable, RowIndex, TypeHash};
 
-#[derive(Clone)]
+// TODO: hide from public interface, because it's fairly unsafe
 pub struct ArchetypeStorage {
     pub(crate) ty: TypeHash,
     pub(crate) rows: u32,
     pub(crate) entities: PageTable<EntityId>,
-    pub(crate) components: HashMap<TypeId, ErasedPageTable>,
+    pub(crate) components: HashMap<TypeId, UnsafeCell<ErasedPageTable>>,
+}
+
+impl Clone for ArchetypeStorage {
+    fn clone(&self) -> Self {
+        todo!()
+    }
 }
 
 impl std::fmt::Debug for ArchetypeStorage {
@@ -28,7 +34,7 @@ impl std::fmt::Debug for ArchetypeStorage {
                 &self
                     .components
                     .iter()
-                    .map(|(_, c)| c.ty_name)
+                    .map(|(_, c)| unsafe { &*c.get() }.ty_name)
                     .collect::<Vec<_>>(),
             )
             .finish()
@@ -41,7 +47,7 @@ impl ArchetypeStorage {
         let mut components = HashMap::new();
         components.insert(
             TypeId::of::<()>(),
-            ErasedPageTable::new(PageTable::<()>::default()),
+            UnsafeCell::new(ErasedPageTable::new(PageTable::<()>::default())),
         );
         Self {
             ty,
@@ -66,7 +72,7 @@ impl ArchetypeStorage {
 
     pub fn remove(&mut self, row_index: RowIndex) {
         for (_, storage) in self.components.iter_mut() {
-            storage.remove(row_index);
+            storage.get_mut().remove(row_index);
         }
         self.entities.remove(row_index);
         self.rows -= 1;
@@ -86,7 +92,7 @@ impl ArchetypeStorage {
         let res = dst.insert_entity(entity_id);
         for (ty, col) in self.components.iter_mut() {
             if let Some(dst) = dst.components.get_mut(ty) {
-                (col.move_row)(col, dst, index);
+                (col.get_mut().move_row)(col.get_mut(), dst.get_mut(), index);
             }
         }
         res
@@ -98,6 +104,7 @@ impl ArchetypeStorage {
             self.components
                 .get_mut(&TypeId::of::<T>())
                 .expect("set_component called on bad archetype")
+                .get_mut()
                 .as_inner_mut()
                 .insert(row_index, val);
         }
@@ -120,7 +127,7 @@ impl ArchetypeStorage {
         result.ty = new_ty;
         result.components.insert(
             TypeId::of::<T>(),
-            ErasedPageTable::new::<T>(PageTable::default()),
+            UnsafeCell::new(ErasedPageTable::new::<T>(PageTable::default())),
         );
         result
     }
@@ -143,7 +150,8 @@ impl ArchetypeStorage {
             components: HashMap::from_iter(
                 self.components
                     .iter()
-                    .map(|(id, col)| (*id, (col.clone_empty)())),
+                    .map(|(id, col)| (*id, (unsafe { &*col.get() }.clone_empty)()))
+                    .map(|(id, col)| (id, UnsafeCell::new(col))),
             ),
         }
     }
@@ -151,7 +159,7 @@ impl ArchetypeStorage {
     pub fn get_component<T: 'static>(&self, row: RowIndex) -> Option<&T> {
         self.components
             .get(&TypeId::of::<T>())
-            .and_then(|columns| unsafe { columns.as_inner().get(row) })
+            .and_then(|columns| unsafe { (&*columns.get()).as_inner().get(row) })
     }
 }
 
