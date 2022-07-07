@@ -15,4 +15,6 @@ fn can_insert_component_test() {
     w.set_component(id, "poggers".to_string()).unwrap();
     w.set_component(id, 32u32).unwrap();
     w.set_component(id, 42u64).unwrap();
+
+    w.delete_entity(id).unwrap();
 }

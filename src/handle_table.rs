@@ -3,15 +3,22 @@ mod serde_impl;
 use std::{
     alloc::{alloc, dealloc, Layout},
     mem::{align_of, size_of},
-    ptr,
+    ptr::{self, NonNull},
 };
 
-use crate::entity_id::{EntityId, ENTITY_GEN_MASK};
+use crate::{
+    entity_id::{EntityId, ENTITY_GEN_MASK, ENTITY_INDEX_MASK},
+    ArchetypeStorage, Index, RowIndex,
+};
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum HandleTableError {
     #[error("HandleTable has no free capacity")]
     OutOfCapacity,
+    #[error("Entity not found")]
+    NotFound,
+    #[error("Handle was not initialized")]
+    Uninitialized,
 }
 
 pub struct HandleTable {
@@ -39,6 +46,7 @@ const SENTINEL: u32 = !0;
 
 impl HandleTable {
     pub fn new(cap: u32) -> Self {
+        assert!(cap < ENTITY_INDEX_MASK);
         let entries;
         unsafe {
             entries = alloc(Layout::from_size_align_unchecked(
@@ -99,6 +107,23 @@ impl HandleTable {
         Ok(id)
     }
 
+    pub(crate) fn update(&mut self, id: EntityId, data: u32) {
+        debug_assert!(self.is_valid(id));
+        let index = id.index();
+        unsafe {
+            let entry = &mut *self.entries.add(index as usize);
+            entry.data = data;
+        }
+    }
+
+    pub(crate) fn get(&self, id: EntityId) -> Option<u32> {
+        let index = id.index();
+        self.is_valid(id).then(|| unsafe {
+            let entry = &*self.entries.add(index as usize);
+            entry.data
+        })
+    }
+
     pub fn free(&mut self, id: EntityId) {
         debug_assert!(self.is_valid(id));
         self.count -= 1;
@@ -126,8 +151,7 @@ impl HandleTable {
             return false;
         }
         let entry = self.entries()[index];
-        // == SENTINEL means that this entry is allocated
-        entry.gen == gen && entry.data == SENTINEL
+        entry.gen == gen
     }
 
     fn entries(&self) -> &[Entry] {
@@ -159,6 +183,74 @@ struct Entry {
     /// if not, then data is the next link in the free_list
     data: u32,
     gen: u32,
+}
+
+pub struct EntityIndex {
+    handles: HandleTable,
+    metadata: Vec<(*mut ArchetypeStorage, RowIndex, EntityId)>,
+}
+
+impl EntityIndex {
+    pub fn new(capacity: u32) -> Self {
+        let handles = HandleTable::new(capacity);
+        Self {
+            handles,
+            metadata: Vec::new(),
+        }
+    }
+}
+
+impl Index for EntityIndex {
+    type Id = EntityId;
+    type Error = HandleTableError;
+
+    fn allocate(&mut self) -> Result<Self::Id, Self::Error> {
+        let id = self.handles.alloc()?;
+        let index = self.metadata.len() as u32;
+        self.metadata.push((std::ptr::null_mut(), 0, id));
+        self.handles.update(id, index);
+        Ok(id)
+    }
+
+    fn update(
+        &mut self,
+        id: Self::Id,
+        payload: (NonNull<ArchetypeStorage>, RowIndex),
+    ) -> Result<(), Self::Error> {
+        let index = self.handles.get(id).ok_or(HandleTableError::NotFound)? as usize;
+        debug_assert_eq!(self.metadata[index].2, id);
+        self.metadata[index] = (payload.0.as_ptr(), payload.1, id);
+        Ok(())
+    }
+
+    fn delete(&mut self, id: Self::Id) -> Result<(), Self::Error> {
+        if !self.handles.is_valid(id) {
+            return Err(HandleTableError::NotFound);
+        }
+        if self.metadata.len() > 1 {
+            let last_index = self.metadata.len() as u32 - 1;
+            let last_id = self.metadata[last_index as usize].2;
+
+            let index = self.handles.get(id).unwrap();
+            self.metadata.swap_remove(index as usize);
+            self.handles.update(last_id, index);
+        } else {
+            // last item
+            self.metadata.clear();
+        }
+        self.handles.free(id);
+        Ok(())
+    }
+
+    fn read(&self, id: Self::Id) -> Result<(NonNull<ArchetypeStorage>, RowIndex), Self::Error> {
+        let index = self.handles.get(id).ok_or(HandleTableError::NotFound)? as usize;
+        let res = self.metadata[index];
+        if res.0.is_null() {
+            return Err(HandleTableError::Uninitialized);
+        }
+
+        Ok((unsafe { NonNull::new_unchecked(res.0) }, res.1))
+    }
 }
 
 #[cfg(test)]

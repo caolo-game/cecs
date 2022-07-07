@@ -1,9 +1,10 @@
 #![feature(option_get_or_insert_default)]
 #![feature(const_type_id)]
 
-use std::{any::TypeId, collections::HashMap};
+use std::{any::TypeId, collections::HashMap, pin::Pin, ptr::NonNull};
 
 use entity_id::EntityId;
+use handle_table::EntityIndex;
 // TODO: use dense storage instead of the PageTable because of archetypes
 use page_table::PageTable;
 
@@ -17,9 +18,9 @@ pub mod page_table;
 mod tests;
 
 pub struct World {
-    entity_ids: HandleTable,
-    entity_archetype: HashMap<EntityId, TypeHash>,
-    archetypes: HashMap<TypeHash, ArchetypeStorage>,
+    // TODO: world can be generic over Index
+    entity_ids: EntityIndex,
+    archetypes: HashMap<TypeHash, Pin<Box<ArchetypeStorage>>>,
 }
 
 type TypeHash = u64;
@@ -41,23 +42,37 @@ pub enum WorldError {
 }
 
 pub type WorldResult<T> = Result<T, WorldError>;
+pub type RowIndex = u32;
 
 pub trait Component: 'static + Clone {}
 impl<T: 'static + Clone> Component for T {}
 
+pub trait Index {
+    type Id;
+    type Error;
+
+    fn allocate(&mut self) -> Result<Self::Id, Self::Error>;
+    fn update(
+        &mut self,
+        id: Self::Id,
+        payload: (NonNull<ArchetypeStorage>, RowIndex),
+    ) -> Result<(), Self::Error>;
+    fn delete(&mut self, id: Self::Id) -> Result<(), Self::Error>;
+    fn read(&self, id: Self::Id) -> Result<(NonNull<ArchetypeStorage>, RowIndex), Self::Error>;
+}
+
 impl World {
     pub fn new(capacity: u32) -> Self {
-        let entity_ids = HandleTable::new(capacity);
+        let entity_ids = EntityIndex::new(capacity);
 
         let mut archetypes = HashMap::with_capacity(128);
-        let void_store = ArchetypeStorage::default();
+        let void_store = Box::pin(ArchetypeStorage::default());
         archetypes.insert(void_store.ty(), void_store);
 
         // FIXME: can't add assert to const fn...
         debug_assert_eq!(std::mem::size_of::<TypeId>(), std::mem::size_of::<u64>());
         Self {
             entity_ids,
-            entity_archetype: Default::default(),
             archetypes,
         }
     }
@@ -65,22 +80,32 @@ impl World {
     pub fn insert_entity(&mut self) -> WorldResult<EntityId> {
         let id = self
             .entity_ids
-            .alloc()
+            .allocate()
             .map_err(|_| WorldError::OutOfCapacity)?;
         let void_store = self.archetypes.get_mut(&VOID_TY).unwrap();
-        void_store.set_component(id, ());
-        self.entity_archetype.insert(id, VOID_TY);
+
+        let index = void_store.as_mut().insert_entity(id);
+        self.entity_ids
+            .update(
+                id,
+                (
+                    NonNull::new(void_store.as_mut().get_mut() as *mut _).unwrap(),
+                    index,
+                ),
+            )
+            .unwrap();
         Ok(id)
     }
 
     pub fn delete_entity(&mut self, id: EntityId) -> WorldResult<()> {
-        if !self.entity_ids.is_valid(id) {
-            return Err(WorldError::EntityNotFound);
+        let (mut archetype, _index) = self
+            .entity_ids
+            .read(id)
+            .map_err(|_| WorldError::EntityNotFound)?;
+        unsafe {
+            archetype.as_mut().remove(id);
+            self.entity_ids.delete(id).unwrap();
         }
-        let ty = self.entity_archetype[&id];
-        let archetype = self.archetypes.get_mut(&ty).unwrap();
-        archetype.remove(id);
-        self.entity_ids.free(id);
         Ok(())
     }
 
@@ -89,41 +114,46 @@ impl World {
         entity_id: EntityId,
         component: T,
     ) -> WorldResult<()> {
-        if !self.entity_ids.is_valid(entity_id) {
-            return Err(WorldError::EntityNotFound);
-        }
-        let mut archetype_hash = self.entity_archetype[&entity_id];
-        let archetype = self.archetypes.get_mut(&archetype_hash).unwrap();
+        let (mut archetype, _index) = self
+            .entity_ids
+            .read(entity_id)
+            .map_err(|_| WorldError::EntityNotFound)?;
+        let mut archetype = unsafe { archetype.as_mut() };
         if !archetype.contains_column::<T>() {
             let new_ty = archetype.extended_hash::<T>();
             if !self.archetypes.contains_key(&new_ty) {
-                self.insert_archetype::<T>(entity_id, archetype_hash)
+                let mut res = self.insert_archetype::<T>(entity_id, archetype);
+                archetype = unsafe { res.as_mut() };
             }
-            archetype_hash = new_ty;
         }
-        let archetype = self.archetypes.get_mut(&archetype_hash).unwrap();
         archetype.set_component(entity_id, component);
         Ok(())
     }
 
     #[inline(never)]
-    fn insert_archetype<T: Component>(&mut self, entity_id: EntityId, archetype_hash: TypeHash) {
-        let archetype = self.archetypes.get_mut(&archetype_hash).unwrap();
-        let mut new_arch = archetype.extend_with_column::<T>();
+    fn insert_archetype<T: Component>(
+        &mut self,
+        entity_id: EntityId,
+        archetype: &mut ArchetypeStorage,
+    ) -> NonNull<ArchetypeStorage> {
+        let mut new_arch = Box::pin(archetype.extend_with_column::<T>());
         // move all components from old archetype to new
         for (ty, col) in archetype.components.iter_mut() {
             let dst = new_arch.components.get_mut(ty).unwrap();
             (col.move_row)(col, dst, entity_id);
         }
-        let ty = new_arch.ty();
-        self.entity_archetype.insert(entity_id, ty);
-        self.archetypes.insert(ty, new_arch);
+        let res = unsafe { NonNull::new_unchecked(new_arch.as_mut().get_mut() as *mut _) };
+        self.entity_ids.update(entity_id, (res, 0)).unwrap();
+        self.archetypes.insert(new_arch.ty(), new_arch);
+        res
     }
 }
 
 #[derive(Clone)]
-pub(crate) struct ArchetypeStorage {
+pub struct ArchetypeStorage {
     ty: TypeHash,
+    rows: u32,
+    entities: Vec<EntityId>,
     components: HashMap<TypeId, ErasedPageTable>,
 }
 
@@ -135,7 +165,12 @@ impl Default for ArchetypeStorage {
             TypeId::of::<()>(),
             ErasedPageTable::new(PageTable::<()>::default()),
         );
-        Self { ty, components }
+        Self {
+            ty,
+            rows: 0,
+            entities: Vec::new(),
+            components,
+        }
     }
 }
 
@@ -149,6 +184,13 @@ impl ArchetypeStorage {
         for (_, storage) in self.components.iter_mut() {
             storage.remove(id);
         }
+    }
+
+    pub fn insert_entity(&mut self, id: EntityId) -> u32 {
+        let res = self.rows;
+        self.rows += 1;
+        self.entities.push(id);
+        res
     }
 
     pub fn set_component<T: 'static>(&mut self, id: EntityId, val: T) {
@@ -190,6 +232,8 @@ impl ArchetypeStorage {
     pub fn clone_empty(&self) -> Self {
         Self {
             ty: self.ty,
+            rows: 0,
+            entities: Vec::new(),
             components: HashMap::from_iter(
                 self.components
                     .iter()
