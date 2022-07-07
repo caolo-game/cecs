@@ -23,5 +23,21 @@ fn can_insert_component_test() {
     let id3 = w.insert_entity().unwrap();
     w.set_component(id3, 2u32).unwrap();
     w.set_component(id3, "poggers3".to_string()).unwrap();
+    w.remove_component::<String>(id3).unwrap();
     w.delete_entity(id3).unwrap();
+}
+
+#[test]
+fn can_remove_component_test() {
+    let mut w = World::new(500);
+
+    let id = w.insert_entity().unwrap();
+    w.set_component(id, 2u32).unwrap();
+    w.set_component(id, "poggers3".to_string()).unwrap();
+
+    assert!(w.get_component::<String>(id).unwrap() == "poggers3");
+
+    w.remove_component::<String>(id).unwrap();
+    let res = w.get_component::<String>(id);
+    assert!(res.is_none(), "Expected none, got: {:?}", res);
 }
