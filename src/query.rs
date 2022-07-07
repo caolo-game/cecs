@@ -196,11 +196,10 @@ impl<T> Default for ArchQuery<T> {
 
 impl<'a> QueryPrimitive<'a> for ArchQuery<crate::entity_id::EntityId> {
     type Item = crate::entity_id::EntityId;
-    type It = Box<dyn Iterator<Item = crate::entity_id::EntityId> + 'a>;
+    type It = std::iter::Copied<std::slice::Iter<'a, crate::entity_id::EntityId>>;
 
     fn iter_prim(&self, archetype: &'a ArchetypeStorage) -> Self::It {
-        let it = archetype.entities.iter().copied();
-        Box::new(it)
+        archetype.entities.iter().copied()
     }
 }
 
