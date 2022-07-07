@@ -299,11 +299,7 @@ impl ArchetypeStorage {
 
     pub fn set_component<T: 'static>(&mut self, id: EntityId, row_index: RowIndex, val: T) {
         unsafe {
-            if let Some(entry) = self.entities.get_mut(row_index) {
-                *entry = id;
-            } else {
-                self.entities.insert(row_index, id);
-            }
+            self.entities.insert(row_index, id);
             self.components
                 .get_mut(&TypeId::of::<T>())
                 .expect("set_component called on bad archetype")

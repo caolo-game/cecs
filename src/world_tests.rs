@@ -41,3 +41,15 @@ fn can_remove_component_test() {
     let res = w.get_component::<String>(id);
     assert!(res.is_none(), "Expected none, got: {:?}", res);
 }
+
+#[test]
+fn can_update_component_test() {
+    let mut w = World::new(500);
+
+    let id = w.insert_entity().unwrap();
+    w.set_component(id, "poggers3".to_string()).unwrap();
+    assert!(w.get_component::<String>(id).unwrap() == "poggers3");
+
+    w.set_component(id, "poggers2".to_string()).unwrap();
+    assert!(w.get_component::<String>(id).unwrap() == "poggers2");
+}
