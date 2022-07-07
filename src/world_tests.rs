@@ -73,4 +73,35 @@ fn query_can_iter_multiple_archetypes_test() {
         count += 1;
     }
     assert_eq!(count, 2);
+
+    // test if compiles
+    Query::<(&u32, &String)>::new(&world);
+    Query::<(&mut u32, &String)>::new(&world);
+    Query::<(&u32, &mut String)>::new(&world);
+    Query::<(&mut String, &u32)>::new(&world);
+}
+
+#[test]
+fn can_query_entity_id_test() {
+    let mut world = World::new(500);
+
+    let id1 = world.insert_entity().unwrap();
+    world.set_component(id1, "poggers1".to_string()).unwrap();
+    world.set_component(id1, 16).unwrap();
+
+    let id2 = world.insert_entity().unwrap();
+    world.set_component(id2, "poggers2".to_string()).unwrap();
+
+    let mut exp = vec![(id1, "poggers1".to_string()), (id2, "poggers2".to_string())];
+    exp.sort_by_key(|(id, _)| *id);
+
+    let mut act = Query::<(EntityId, &String)>::new(&world)
+        .iter()
+        .collect::<Vec<_>>();
+    act.sort_by_key(|(id, _)| *id);
+
+    assert_eq!(&exp[..], &act[..]);
+
+    // test if compiles
+    Query::<EntityId>::new(&world);
 }
