@@ -13,7 +13,16 @@ pub struct ArchetypeStorage {
 
 impl Clone for ArchetypeStorage {
     fn clone(&self) -> Self {
-        todo!()
+        Self {
+            ty: self.ty,
+            rows: self.rows,
+            entities: self.entities.clone(),
+            components: self
+                .components
+                .iter()
+                .map(|(ty, col)| unsafe { (*ty, UnsafeCell::new((*col.get()).clone())) })
+                .collect(),
+        }
     }
 }
 
