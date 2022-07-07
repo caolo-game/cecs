@@ -20,7 +20,7 @@ fn iter_query_test() {
         archetype.set_component(id, index, 69u32);
     }
 
-    let q = ComponentQuery::<&String>::default();
+    let q = Query::<&String>::default();
     for (comp, exp) in q.iter(&archetype).zip(["pog", "pog32"].iter()) {
         assert_eq!(*comp, *exp);
     }
@@ -44,7 +44,7 @@ fn joined_iter_test() {
         archetype.set_component(id, index, 69u32);
     }
 
-    let q = ComponentQuery::<(&String, &u32)>::default();
+    let q = Query::<(&String, &u32)>::default();
     for ((s, i), (exps, expi)) in q.iter(&archetype).zip([("pog", 42), ("pog32", 69)].iter()) {
         assert_eq!(*s, exps);
         assert_eq!(*i, expi);
@@ -69,7 +69,7 @@ fn non_existent_component_iter_is_empty_test() {
         archetype.set_component(id, index, 69u32);
     }
 
-    let q = ComponentQuery::<(&String, &u64)>::default();
+    let q = Query::<(&String, &u64)>::default();
     for _ in q.iter(&archetype) {
         panic!();
     }
@@ -93,12 +93,12 @@ fn mutable_iterator_test() {
         archetype.set_component(id, index, 69u32);
     }
 
-    let q = ComponentQuery::<&mut String>::default();
+    let q = Query::<&mut String>::default();
     for mut s in q.iter(&mut archetype) {
         *s = "winnie".to_string();
     }
 
-    let q = ComponentQuery::<&String>::default();
+    let q = Query::<&String>::default();
     for s in q.iter(&archetype) {
         assert_eq!(*s, "winnie");
     }
@@ -123,7 +123,7 @@ fn can_mix_mut_ref_test() {
     }
 
 
-    let q = ComponentQuery::<(&String, &mut u32)>::default();
+    let q = Query::<(&String, &mut u32)>::default();
     for (a, b) in q.iter(&mut archetype) {
         todo!()
     }
