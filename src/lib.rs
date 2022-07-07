@@ -289,7 +289,6 @@ impl ArchetypeStorage {
 
 /// Type erased PageTable
 pub(crate) struct ErasedPageTable {
-    ty: TypeId,
     ty_name: &'static str,
     inner: *mut std::ffi::c_void,
     finalize: fn(&mut ErasedPageTable),
@@ -331,7 +330,6 @@ impl std::fmt::Debug for ErasedPageTable {
 impl ErasedPageTable {
     pub fn new<T: 'static + Clone>(table: PageTable<T>) -> Self {
         Self {
-            ty: TypeId::of::<T>(),
             ty_name: std::any::type_name::<T>(),
             inner: Box::into_raw(Box::new(table)).cast(),
             finalize: |erased_table: &mut ErasedPageTable| {
@@ -369,12 +367,6 @@ impl ErasedPageTable {
     /// Must be called with the same type as `new`
     pub unsafe fn as_inner_mut<T>(&mut self) -> &mut PageTable<T> {
         &mut *self.inner.cast()
-    }
-
-    /// # SAFETY
-    /// Must be called with the same type as `new`
-    pub unsafe fn into_inner<T>(self) -> PageTable<T> {
-        std::ptr::read(self.inner.cast())
     }
 
     pub fn remove(&mut self, id: RowIndex) {
