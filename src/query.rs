@@ -150,55 +150,55 @@ pub struct ComponentQuery<T> {
     _m: PhantomData<T>,
 }
 
+pub trait Query {
+    type Item;
+    type It: Iterator<Item = Self::Item>;
+    type Input;
+
+    fn iter(&self, archetype: Self::Input) -> Self::It;
+}
+
 impl<T> Default for ComponentQuery<T> {
     fn default() -> Self {
         Self { _m: PhantomData }
     }
 }
 
-impl<'a, T: 'static> ComponentQuery<&'a T>
-where
-    ArchetypeStorage: Queryable<'a, &'a T>,
-{
-    pub fn iter(
-        &self,
-        archetype: &'a ArchetypeStorage,
-    ) -> <ArchetypeStorage as Queryable<'a, &'a T>>::It {
+impl<'a, T: Component> Query for ComponentQuery<&'a T> {
+    type Item = Ref<'a, T>;
+    type It = <ArchetypeStorage as Queryable<'a, &'a T>>::It;
+    type Input = &'a ArchetypeStorage;
+
+    fn iter(&self, archetype: Self::Input) -> Self::It {
         archetype.iter()
     }
 }
 
-impl<'a, T: 'static> ComponentQuery<&'a mut T>
-where
-    ArchetypeStorage: Queryable<'a, &'a T>,
-{
-    pub fn iter(
-        &self,
-        archetype: &'a ArchetypeStorage,
-    ) -> <ArchetypeStorage as Queryable<'a, &'a T>>::It {
-        archetype.iter()
-    }
+impl<'a, T: Component> Query for ComponentQuery<&'a mut T> {
+    type Item = Mut<'a, T>;
+    type It = <ArchetypeStorage as Queryable<'a, &'a T>>::ItMut;
+    type Input = &'a mut ArchetypeStorage;
 
-    pub fn iter_mut(
-        &self,
-        archetype: &'a mut ArchetypeStorage,
-    ) -> <ArchetypeStorage as Queryable<'a, &'a T>>::ItMut {
+    fn iter(&self, archetype: Self::Input) -> Self::It {
         archetype.iter_mut()
     }
 }
 
 // TODO: macro implementing more combinations
-impl<'a, T1: 'static, T2: 'static> ComponentQuery<(&'a T1, &'a T2)>
+impl<'a, T1, T2> ComponentQuery<(T1, T2)>
 where
-    ArchetypeStorage: Queryable<'a, &'a T1> + Queryable<'a, &'a T2>,
+    T1: 'static,
+    T2: 'static,
+    ComponentQuery<&'a T1>: Query<Input = &'a ArchetypeStorage>,
+    ComponentQuery<&'a T2>: Query<Input = &'a ArchetypeStorage>,
 {
     pub fn iter(
         &self,
         archetype: &'a ArchetypeStorage,
     ) -> impl Iterator<
         Item = (
-            <ArchetypeStorage as Queryable<'a, &'a T1>>::Item,
-            <ArchetypeStorage as Queryable<'a, &'a T2>>::Item,
+            <ComponentQuery<&'a T1> as Query>::Item,
+            <ComponentQuery<&'a T2> as Query>::Item,
         ),
     > {
         let it1 = ComponentQuery::<&'a T1>::default().iter(archetype);

@@ -22,7 +22,7 @@ fn iter_query_test() {
 
     let q = ComponentQuery::<&String>::default();
     for (comp, exp) in q.iter(&archetype).zip(["pog", "pog32"].iter()) {
-        assert_eq!(&*comp, exp);
+        assert_eq!(*comp, *exp);
     }
 }
 
@@ -46,8 +46,8 @@ fn joined_iter_test() {
 
     let q = ComponentQuery::<(&String, &u32)>::default();
     for ((s, i), (exps, expi)) in q.iter(&archetype).zip([("pog", 42), ("pog32", 69)].iter()) {
-        assert_eq!(&*s, exps);
-        assert_eq!(&*i, expi);
+        assert_eq!(*s, exps);
+        assert_eq!(*i, expi);
     }
 }
 
@@ -94,12 +94,12 @@ fn mutable_iterator_test() {
     }
 
     let q = ComponentQuery::<&mut String>::default();
-    for mut s in q.iter_mut(&mut archetype) {
+    for mut s in q.iter(&mut archetype) {
         *s = "winnie".to_string();
     }
 
     let q = ComponentQuery::<&String>::default();
     for s in q.iter(&archetype) {
-        assert_eq!(&*s, "winnie");
+        assert_eq!(*s, "winnie");
     }
 }
