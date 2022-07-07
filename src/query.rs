@@ -150,7 +150,7 @@ pub struct ComponentQuery<T> {
     _m: PhantomData<T>,
 }
 
-pub trait Query {
+pub trait QueryFragment {
     type Item;
     type It: Iterator<Item = Self::Item>;
     type Input;
@@ -164,7 +164,7 @@ impl<T> Default for ComponentQuery<T> {
     }
 }
 
-impl<'a, T: Component> Query for ComponentQuery<&'a T> {
+impl<'a, T: Component> QueryFragment for ComponentQuery<&'a T> {
     type Item = Ref<'a, T>;
     type It = <ArchetypeStorage as Queryable<'a, &'a T>>::It;
     type Input = &'a ArchetypeStorage;
@@ -174,7 +174,7 @@ impl<'a, T: Component> Query for ComponentQuery<&'a T> {
     }
 }
 
-impl<'a, T: Component> Query for ComponentQuery<&'a mut T> {
+impl<'a, T: Component> QueryFragment for ComponentQuery<&'a mut T> {
     type Item = Mut<'a, T>;
     type It = <ArchetypeStorage as Queryable<'a, &'a T>>::ItMut;
     type Input = &'a mut ArchetypeStorage;
@@ -189,16 +189,16 @@ impl<'a, T1, T2> ComponentQuery<(T1, T2)>
 where
     T1: 'static,
     T2: 'static,
-    ComponentQuery<&'a T1>: Query<Input = &'a ArchetypeStorage>,
-    ComponentQuery<&'a T2>: Query<Input = &'a ArchetypeStorage>,
+    ComponentQuery<&'a T1>: QueryFragment<Input = &'a ArchetypeStorage>,
+    ComponentQuery<&'a T2>: QueryFragment<Input = &'a ArchetypeStorage>,
 {
     pub fn iter(
         &self,
         archetype: &'a ArchetypeStorage,
     ) -> impl Iterator<
         Item = (
-            <ComponentQuery<&'a T1> as Query>::Item,
-            <ComponentQuery<&'a T2> as Query>::Item,
+            <ComponentQuery<&'a T1> as QueryFragment>::Item,
+            <ComponentQuery<&'a T2> as QueryFragment>::Item,
         ),
     > {
         let it1 = ComponentQuery::<&'a T1>::default().iter(archetype);
