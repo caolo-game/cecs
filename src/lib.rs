@@ -411,7 +411,7 @@ impl ErasedPageTable {
             finalize: |erased_table: &mut ErasedPageTable| {
                 // drop the inner table
                 unsafe {
-                    std::ptr::drop_in_place(erased_table.as_inner_mut::<T>());
+                    let _ = Box::from_raw(erased_table.inner.cast::<PageTable<T>>());
                 }
             },
             remove: |entity_id, erased_table: &mut ErasedPageTable| unsafe {
