@@ -26,7 +26,14 @@ type TypeHash = u64;
 const fn hash_ty<T: 'static>() -> u64 {
     let ty = TypeId::of::<T>();
     // FIXME extreme curse
-    unsafe { std::mem::transmute(ty) }
+    //
+    let ty = unsafe { std::mem::transmute(ty) };
+    if ty == unsafe { std::mem::transmute(TypeId::of::<()>()) } {
+        // ensure that unit type has hash=0
+        0
+    } else {
+        ty
+    }
 }
 
 const VOID_TY: TypeHash = hash_ty::<()>();
@@ -65,7 +72,7 @@ impl World {
 
         let mut archetypes = HashMap::with_capacity(128);
         let void_store = Box::pin(ArchetypeStorage::default());
-        archetypes.insert(void_store.ty(), void_store);
+        archetypes.insert(VOID_TY, void_store);
 
         // FIXME: can't add assert to const fn...
         debug_assert_eq!(std::mem::size_of::<TypeId>(), std::mem::size_of::<u64>());
@@ -123,9 +130,21 @@ impl World {
                 let mut res = self.insert_archetype::<T>(entity_id, archetype, index);
                 archetype = unsafe { res.as_mut() };
                 index = 0;
+            } else {
+                let new_arch = self.archetypes.get_mut(&new_ty).unwrap();
+                index = archetype.move_entity(new_arch, index);
+                archetype = new_arch.as_mut().get_mut();
             }
         }
         archetype.set_component(entity_id, index, component);
+        unsafe {
+            self.entity_ids
+                .update(
+                    entity_id,
+                    (NonNull::new_unchecked(archetype as *mut _), index),
+                )
+                .unwrap();
+        }
         Ok(())
     }
 
@@ -137,11 +156,7 @@ impl World {
         row_index: RowIndex,
     ) -> NonNull<ArchetypeStorage> {
         let mut new_arch = Box::pin(archetype.extend_with_column::<T>());
-        // move all components from old archetype to new
-        for (ty, col) in archetype.components.iter_mut() {
-            let dst = new_arch.components.get_mut(ty).unwrap();
-            (col.move_row)(col, dst, row_index);
-        }
+        archetype.move_entity(&mut new_arch, row_index);
         let res = unsafe { NonNull::new_unchecked(new_arch.as_mut().get_mut() as *mut _) };
         self.entity_ids.update(entity_id, (res, 0)).unwrap();
         self.archetypes.insert(new_arch.ty(), new_arch);
@@ -149,7 +164,7 @@ impl World {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ArchetypeStorage {
     ty: TypeHash,
     rows: u32,
@@ -180,16 +195,40 @@ impl ArchetypeStorage {
         self.ty
     }
 
+    pub fn len(&self) -> usize {
+        self.rows as usize
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn remove(&mut self, row_index: RowIndex) {
         for (_, storage) in self.components.iter_mut() {
             storage.remove(row_index);
         }
     }
 
-    pub fn insert_entity(&mut self, id: EntityId) -> u32 {
+    pub fn insert_entity(&mut self, id: EntityId) -> RowIndex {
         let res = self.rows;
         self.rows += 1;
         self.entities.push(id);
+        res
+    }
+
+    /// return the new index in `dst`
+    pub fn move_entity(&mut self, dst: &mut Self, index: RowIndex) -> RowIndex {
+        let entity_id = if self.entities.len() > 1 {
+            self.entities.swap_remove(index as usize)
+        } else {
+            self.entities.remove(index as usize)
+        };
+        let res = dst.insert_entity(entity_id);
+        for (ty, col) in self.components.iter_mut() {
+            let dst = dst.components.get_mut(ty).unwrap();
+            (col.move_row)(col, dst, index);
+        }
+        self.rows -= 1;
         res
     }
 
@@ -250,7 +289,8 @@ impl ArchetypeStorage {
 
 /// Type erased PageTable
 pub(crate) struct ErasedPageTable {
-    ty: TypeHash,
+    ty: TypeId,
+    ty_name: &'static str,
     inner: *mut std::ffi::c_void,
     finalize: fn(&mut ErasedPageTable),
     remove: fn(RowIndex, &mut ErasedPageTable),
@@ -280,15 +320,19 @@ impl Clone for ErasedPageTable {
     }
 }
 
-impl ErasedPageTable {
-    /// Get the archetype storage's ty.
-    pub fn ty(&self) -> TypeHash {
-        self.ty
+impl std::fmt::Debug for ErasedPageTable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ErasedPageTable")
+            .field("ty", &self.ty_name)
+            .finish()
     }
+}
 
+impl ErasedPageTable {
     pub fn new<T: 'static + Clone>(table: PageTable<T>) -> Self {
         Self {
-            ty: hash_ty::<T>(),
+            ty: TypeId::of::<T>(),
+            ty_name: std::any::type_name::<T>(),
             inner: Box::into_raw(Box::new(table)).cast(),
             finalize: |erased_table: &mut ErasedPageTable| {
                 // drop the inner table
