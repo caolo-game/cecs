@@ -1,14 +1,14 @@
 use std::{any::TypeId, cell::UnsafeCell, collections::HashMap};
 
-// TODO: use dense storage instead of the PageTable because of archetypes
-use crate::{entity_id::EntityId, hash_ty, page_table::PageTable, RowIndex, TypeHash};
+// TODO: use dense storage instead of the Vec because of archetypes
+use crate::{entity_id::EntityId, hash_ty, RowIndex, TypeHash};
 
 // TODO: hide from public interface, because it's fairly unsafe
 pub struct ArchetypeStorage {
     pub(crate) ty: TypeHash,
     pub(crate) rows: u32,
-    pub(crate) entities: PageTable<EntityId>,
-    pub(crate) components: HashMap<TypeId, UnsafeCell<ErasedPageTable>>,
+    pub(crate) entities: Vec<EntityId>,
+    pub(crate) components: HashMap<TypeId, UnsafeCell<ErasedTable>>,
 }
 
 impl Clone for ArchetypeStorage {
@@ -35,7 +35,7 @@ impl std::fmt::Debug for ArchetypeStorage {
                 &self
                     .entities
                     .iter()
-                    .map(|(row_index, id)| (id.to_string(), row_index))
+                    .map(|id| id.to_string())
                     .collect::<Vec<_>>(),
             )
             .field(
@@ -56,12 +56,12 @@ impl ArchetypeStorage {
         let mut components = HashMap::new();
         components.insert(
             TypeId::of::<()>(),
-            UnsafeCell::new(ErasedPageTable::new(PageTable::<()>::default())),
+            UnsafeCell::new(ErasedTable::new(Vec::<()>::default())),
         );
         Self {
             ty,
             rows: 0,
-            entities: PageTable::new(4),
+            entities: Vec::default(),
             components,
         }
     }
@@ -79,43 +79,56 @@ impl ArchetypeStorage {
         self.len() == 0
     }
 
-    pub fn remove(&mut self, row_index: RowIndex) {
+    /// return the updated entityid, if any
+    pub fn remove(&mut self, row_index: RowIndex) -> Option<EntityId> {
         for (_, storage) in self.components.iter_mut() {
             storage.get_mut().remove(row_index);
         }
-        self.entities.remove(row_index);
+        self.entities.swap_remove(row_index as usize);
         self.rows -= 1;
+        (self.rows > 0).then(|| self.entities[row_index as usize])
     }
 
     pub fn insert_entity(&mut self, id: EntityId) -> RowIndex {
         let res = self.rows;
-        self.entities.insert(res, id);
+        self.entities.push(id);
         self.rows += 1;
         res
     }
 
-    /// return the new index in `dst`
-    pub fn move_entity(&mut self, dst: &mut Self, index: RowIndex) -> RowIndex {
+    /// return the new index in `dst` and the entity that has been moved to this one's position, if
+    /// any
+    pub fn move_entity(&mut self, dst: &mut Self, index: RowIndex) -> (RowIndex, Option<EntityId>) {
         self.rows -= 1;
-        let entity_id = self.entities.remove(index).unwrap();
+        let entity_id = self.entities.swap_remove(index as usize);
+        let mut moved = None;
+        if self.entities.len() > 0 {
+            moved = Some(self.entities[index as usize]);
+        }
         let res = dst.insert_entity(entity_id);
         for (ty, col) in self.components.iter_mut() {
             if let Some(dst) = dst.components.get_mut(ty) {
                 (col.get_mut().move_row)(col.get_mut(), dst.get_mut(), index);
             }
         }
-        res
+        (res, moved)
     }
 
-    pub fn set_component<T: 'static>(&mut self, id: EntityId, row_index: RowIndex, val: T) {
+    pub fn set_component<T: 'static>(&mut self, row_index: RowIndex, val: T) {
         unsafe {
-            self.entities.insert(row_index, id);
-            self.components
+            let v = self
+                .components
                 .get_mut(&TypeId::of::<T>())
                 .expect("set_component called on bad archetype")
                 .get_mut()
-                .as_inner_mut()
-                .insert(row_index, val);
+                .as_inner_mut();
+            let row_index = row_index as usize;
+            assert!(row_index <= v.len());
+            if row_index == v.len() {
+                v.push(val);
+            } else {
+                v[row_index as usize] = val;
+            }
         }
     }
 
@@ -136,7 +149,7 @@ impl ArchetypeStorage {
         result.ty = new_ty;
         result.components.insert(
             TypeId::of::<T>(),
-            UnsafeCell::new(ErasedPageTable::new::<T>(PageTable::default())),
+            UnsafeCell::new(ErasedTable::new::<T>(Vec::default())),
         );
         result
     }
@@ -155,7 +168,7 @@ impl ArchetypeStorage {
         Self {
             ty: self.ty,
             rows: 0,
-            entities: PageTable::new(self.entities.len()),
+            entities: Vec::with_capacity(self.entities.len()),
             components: HashMap::from_iter(
                 self.components
                     .iter()
@@ -168,89 +181,90 @@ impl ArchetypeStorage {
     pub fn get_component<T: 'static>(&self, row: RowIndex) -> Option<&T> {
         self.components
             .get(&TypeId::of::<T>())
-            .and_then(|columns| unsafe { (&*columns.get()).as_inner().get(row) })
+            .and_then(|columns| unsafe { (&*columns.get()).as_inner().get(row as usize) })
     }
 }
 
-/// Type erased PageTable
-pub(crate) struct ErasedPageTable {
+/// Type erased Vec
+pub(crate) struct ErasedTable {
     ty_name: &'static str,
     inner: *mut std::ffi::c_void,
-    finalize: fn(&mut ErasedPageTable),
-    remove: fn(RowIndex, &mut ErasedPageTable),
-    clone: fn(&ErasedPageTable) -> ErasedPageTable,
-    clone_empty: fn() -> ErasedPageTable,
+    finalize: fn(&mut ErasedTable),
+    /// remove is always swap_remove
+    remove: fn(RowIndex, &mut ErasedTable),
+    clone: fn(&ErasedTable) -> ErasedTable,
+    clone_empty: fn() -> ErasedTable,
     /// src, dst
     ///
     /// if component is not in `src` then this is a noop
-    move_row: fn(&mut ErasedPageTable, &mut ErasedPageTable, RowIndex),
+    move_row: fn(&mut ErasedTable, &mut ErasedTable, RowIndex),
 }
 
-impl Default for ErasedPageTable {
+impl Default for ErasedTable {
     fn default() -> Self {
-        Self::new::<()>(PageTable::new(4))
+        Self::new::<()>(Vec::new())
     }
 }
 
-impl Drop for ErasedPageTable {
+impl Drop for ErasedTable {
     fn drop(&mut self) {
         (self.finalize)(self);
     }
 }
 
-impl Clone for ErasedPageTable {
+impl Clone for ErasedTable {
     fn clone(&self) -> Self {
         (self.clone)(&self)
     }
 }
 
-impl std::fmt::Debug for ErasedPageTable {
+impl std::fmt::Debug for ErasedTable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ErasedPageTable")
+        f.debug_struct("ErasedVec")
             .field("ty", &self.ty_name)
             .finish()
     }
 }
 
-impl ErasedPageTable {
-    pub fn new<T: 'static + Clone>(table: PageTable<T>) -> Self {
+impl ErasedTable {
+    pub fn new<T: 'static + Clone>(table: Vec<T>) -> Self {
         Self {
             ty_name: std::any::type_name::<T>(),
             inner: Box::into_raw(Box::new(table)).cast(),
-            finalize: |erased_table: &mut ErasedPageTable| {
+            finalize: |erased_table: &mut ErasedTable| {
                 // drop the inner table
                 unsafe {
-                    let _ = Box::from_raw(erased_table.inner.cast::<PageTable<T>>());
+                    let _ = Box::from_raw(erased_table.inner.cast::<Vec<T>>());
                 }
             },
-            remove: |entity_id, erased_table: &mut ErasedPageTable| unsafe {
-                erased_table.as_inner_mut::<T>().remove(entity_id);
+            remove: |entity_id, erased_table: &mut ErasedTable| unsafe {
+                let v = erased_table.as_inner_mut::<T>();
+                v.swap_remove(entity_id as usize);
             },
-            clone: |table: &ErasedPageTable| {
+            clone: |table: &ErasedTable| {
                 let inner = unsafe { table.as_inner::<T>() };
-                let res: PageTable<T> = inner.clone();
-                ErasedPageTable::new(res)
+                let res: Vec<T> = inner.clone();
+                ErasedTable::new(res)
             },
-            clone_empty: || ErasedPageTable::new::<T>(PageTable::default()),
-            move_row: |src, dst, entity_id| unsafe {
+            clone_empty: || ErasedTable::new::<T>(Vec::default()),
+            move_row: |src, dst, index| unsafe {
                 let src = src.as_inner_mut::<T>();
                 let dst = dst.as_inner_mut::<T>();
-                if let Some(src) = src.remove(entity_id) {
-                    dst.insert(entity_id, src);
-                }
+                let src = src.swap_remove(index as usize);
+                dst.push(src);
             },
         }
     }
 
     /// # SAFETY
     /// Must be called with the same type as `new`
-    pub unsafe fn as_inner<T>(&self) -> &PageTable<T> {
+    pub unsafe fn as_inner<T>(&self) -> &Vec<T> {
         &*self.inner.cast()
     }
 
     /// # SAFETY
     /// Must be called with the same type as `new`
-    pub unsafe fn as_inner_mut<T>(&mut self) -> &mut PageTable<T> {
+    pub unsafe fn as_inner_mut<T>(&mut self) -> &mut Vec<T> {
         &mut *self.inner.cast()
     }
 

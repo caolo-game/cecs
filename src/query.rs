@@ -62,7 +62,7 @@ impl<'a, T: 'static> std::ops::DerefMut for Mut<'a, T> {
 }
 
 pub struct QueryIt<'a, T> {
-    inner: Option<Box<dyn Iterator<Item = (u32, &'a T)> + 'a>>,
+    inner: Option<Box<dyn Iterator<Item = &'a T> + 'a>>,
     _m: PhantomData<&'a ()>,
 }
 
@@ -70,7 +70,7 @@ impl<'a, T: 'static> Iterator for QueryIt<'a, T> {
     type Item = Ref<'a, T>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.as_mut().and_then(|it| it.next()).map(|(_, x)| {
+        self.inner.as_mut().and_then(|it| it.next()).map(|x| {
             let x: &'static T = unsafe { std::mem::transmute(x) };
             Ref {
                 inner: x,
@@ -81,7 +81,7 @@ impl<'a, T: 'static> Iterator for QueryIt<'a, T> {
 }
 
 pub struct QueryItMut<'a, T> {
-    inner: Option<Box<dyn Iterator<Item = (u32, &'a mut T)> + 'a>>,
+    inner: Option<Box<dyn Iterator<Item = &'a mut T> + 'a>>,
     _m: PhantomData<&'a ()>,
 }
 
@@ -89,7 +89,7 @@ impl<'a, T: 'static> Iterator for QueryItMut<'a, T> {
     type Item = Mut<'a, T>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.as_mut().and_then(|it| it.next()).map(|(_, x)| {
+        self.inner.as_mut().and_then(|it| it.next()).map(|x| {
             let x: &'static mut T = unsafe { std::mem::transmute(x) };
             Mut {
                 inner: x,
@@ -116,7 +116,7 @@ impl<'a, T: Component> Queryable<'a, &'a T> for ArchetypeStorage {
             .get(&TypeId::of::<T>())
             .map(|columns| unsafe { (&mut *columns.get()).as_inner::<T>().iter() });
         let inner = inner.map(|fos| {
-            let res: Box<dyn Iterator<Item = (u32, &'a T)>> = Box::new(fos);
+            let res: Box<dyn Iterator<Item = &'a T>> = Box::new(fos);
             res
         });
         QueryIt {
@@ -136,7 +136,7 @@ impl<'a, T: Component> Queryable<'a, &'a mut T> for ArchetypeStorage {
             .get(&TypeId::of::<T>())
             .map(|columns| unsafe { (&mut *columns.get()).as_inner_mut::<T>().iter_mut() });
         let inner = inner.map(|fos| {
-            let res: Box<dyn Iterator<Item = (u32, &'a mut T)>> = Box::new(fos);
+            let res: Box<dyn Iterator<Item = &'a mut T>> = Box::new(fos);
             res
         });
         QueryItMut {
@@ -199,7 +199,7 @@ impl<'a> QueryPrimitive<'a> for ArchQuery<crate::entity_id::EntityId> {
     type It = Box<dyn Iterator<Item = crate::entity_id::EntityId> + 'a>;
 
     fn iter_prim(&self, archetype: &'a ArchetypeStorage) -> Self::It {
-        let it = archetype.entities.iter().map(|(_, id)| *id);
+        let it = archetype.entities.iter().copied();
         Box::new(it)
     }
 }

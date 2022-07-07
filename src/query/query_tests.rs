@@ -11,13 +11,13 @@ fn iter_query_test() {
     {
         let id = EntityId::new(0, 1);
         let index = archetype.insert_entity(id);
-        archetype.set_component(id, index, "pog".to_string());
-        archetype.set_component(id, index, 42u32);
+        archetype.set_component(index, "pog".to_string());
+        archetype.set_component(index, 42u32);
 
         let id = EntityId::new(32, 1);
         let index = archetype.insert_entity(id);
-        archetype.set_component(id, index, "pog32".to_string());
-        archetype.set_component(id, index, 69u32);
+        archetype.set_component(index, "pog32".to_string());
+        archetype.set_component(index, 69u32);
     }
 
     let q = ArchQuery::<&String>::default();
@@ -35,13 +35,13 @@ fn joined_iter_test() {
     {
         let id = EntityId::new(0, 1);
         let index = archetype.insert_entity(id);
-        archetype.set_component(id, index, "pog".to_string());
-        archetype.set_component(id, index, 42u32);
+        archetype.set_component(index, "pog".to_string());
+        archetype.set_component(index, 42u32);
 
         let id = EntityId::new(32, 1);
         let index = archetype.insert_entity(id);
-        archetype.set_component(id, index, "pog32".to_string());
-        archetype.set_component(id, index, 69u32);
+        archetype.set_component(index, "pog32".to_string());
+        archetype.set_component(index, 69u32);
     }
 
     let q = ArchQuery::<(&String, &u32)>::default();
@@ -60,13 +60,13 @@ fn non_existent_component_iter_is_empty_test() {
     {
         let id = EntityId::new(0, 1);
         let index = archetype.insert_entity(id);
-        archetype.set_component(id, index, "pog".to_string());
-        archetype.set_component(id, index, 42u32);
+        archetype.set_component(index, "pog".to_string());
+        archetype.set_component(index, 42u32);
 
         let id = EntityId::new(32, 1);
         let index = archetype.insert_entity(id);
-        archetype.set_component(id, index, "pog32".to_string());
-        archetype.set_component(id, index, 69u32);
+        archetype.set_component(index, "pog32".to_string());
+        archetype.set_component(index, 69u32);
     }
 
     let q = ArchQuery::<(&String, &u64)>::default();
@@ -84,13 +84,13 @@ fn mutable_iterator_test() {
     {
         let id = EntityId::new(0, 1);
         let index = archetype.insert_entity(id);
-        archetype.set_component(id, index, "pog".to_string());
-        archetype.set_component(id, index, 42u32);
+        archetype.set_component(index, "pog".to_string());
+        archetype.set_component(index, 42u32);
 
         let id = EntityId::new(32, 1);
         let index = archetype.insert_entity(id);
-        archetype.set_component(id, index, "pog32".to_string());
-        archetype.set_component(id, index, 69u32);
+        archetype.set_component(index, "pog32".to_string());
+        archetype.set_component(index, 69u32);
     }
 
     let q = ArchQuery::<&mut String>::default();
@@ -113,13 +113,13 @@ fn can_mix_mut_ref_test() {
     {
         let id = EntityId::new(0, 1);
         let index = archetype.insert_entity(id);
-        archetype.set_component(id, index, "pog".to_string());
-        archetype.set_component(id, index, 42u32);
+        archetype.set_component(index, "pog".to_string());
+        archetype.set_component(index, 42u32);
 
         let id = EntityId::new(32, 1);
         let index = archetype.insert_entity(id);
-        archetype.set_component(id, index, "pog32".to_string());
-        archetype.set_component(id, index, 69u32);
+        archetype.set_component(index, "pog32".to_string());
+        archetype.set_component(index, 69u32);
     }
 
     for (_a, mut b) in ArchQuery::<(&String, &mut u32)>::default().iter(&archetype) {

@@ -10,7 +10,6 @@ use handle_table::EntityIndex;
 pub(crate) mod db;
 pub mod entity_id;
 pub mod handle_table;
-pub mod page_table;
 pub mod query;
 
 #[cfg(test)]
@@ -79,13 +78,14 @@ impl World {
         let entity_ids = EntityIndex::new(capacity);
 
         let archetypes = HashMap::with_capacity(128);
-        let mut result = Self {
+        let result = Self {
             entity_ids,
             archetypes,
         };
+        let mut result = Box::pin(result);
         let void_store = Box::pin(ArchetypeStorage::empty());
         result.archetypes.insert(VOID_TY, void_store);
-        Box::pin(result)
+        result
     }
 
     pub fn insert_entity(&mut self) -> WorldResult<EntityId> {
@@ -96,6 +96,7 @@ impl World {
         let void_store = self.archetypes.get_mut(&VOID_TY).unwrap();
 
         let index = void_store.as_mut().insert_entity(id);
+        void_store.as_mut().set_component(index, ());
         self.entity_ids
             .update(
                 id,
@@ -142,11 +143,17 @@ impl World {
                 index = 0;
             } else {
                 let new_arch = self.archetypes.get_mut(&new_ty).unwrap();
-                index = archetype.move_entity(new_arch, index);
+                let (i, updated_entity) = archetype.move_entity(new_arch, index);
+                if let Some(updated_entity) = updated_entity {
+                    self.entity_ids
+                        .update(updated_entity, (NonNull::from(archetype), index))
+                        .unwrap();
+                }
+                index = i;
                 archetype = new_arch.as_mut().get_mut();
             }
         }
-        archetype.set_component(entity_id, index, component);
+        archetype.set_component(index, component);
         unsafe {
             self.entity_ids
                 .update(
@@ -180,7 +187,13 @@ impl World {
             index = 0;
         } else {
             let new_arch = self.archetypes.get_mut(&new_ty).unwrap();
-            index = archetype.move_entity(new_arch, index);
+            let (i, updated_entity) = archetype.move_entity(new_arch, index);
+            if let Some(updated_entity) = updated_entity {
+                self.entity_ids
+                    .update(updated_entity, (NonNull::from(archetype), index))
+                    .unwrap();
+            }
+            index = i;
             archetype = new_arch.as_mut().get_mut();
         }
         unsafe {
@@ -202,8 +215,9 @@ impl World {
         new_arch: ArchetypeStorage,
     ) -> NonNull<ArchetypeStorage> {
         let mut new_arch = Box::pin(new_arch);
-        let index = archetype.move_entity(&mut new_arch, row_index);
+        let (index, moved_entity) = archetype.move_entity(&mut new_arch, row_index);
         debug_assert_eq!(index, 0);
+        debug_assert!(moved_entity.is_none());
         let res = unsafe { NonNull::new_unchecked(new_arch.as_mut().get_mut() as *mut _) };
         self.archetypes.insert(new_arch.ty(), new_arch);
         res
