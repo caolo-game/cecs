@@ -51,6 +51,7 @@ pub enum WorldError {
 pub type WorldResult<T> = Result<T, WorldError>;
 pub type RowIndex = u32;
 
+/// The end goal is to have a clonable ECS, that's why we have the Clone restriction.
 pub trait Component: 'static + Clone {}
 impl<T: 'static + Clone> Component for T {}
 
