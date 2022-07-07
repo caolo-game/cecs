@@ -1,3 +1,5 @@
+use std::hint::unreachable_unchecked;
+
 pub struct PTIter<It: Iterator> {
     inner: It,
     i: usize,
@@ -7,6 +9,16 @@ pub struct PTIter<It: Iterator> {
 impl<It: Iterator> PTIter<It> {
     pub fn new(inner: It, cap: usize) -> Self {
         Self { inner, cap, i: 0 }
+    }
+
+    /// # SAFETY
+    /// Caller must ensure that the iterator is not exhausted!
+    pub unsafe fn next_unchecked(&mut self) -> It::Item {
+        self.i += 1;
+        match self.inner.next() {
+            Some(x) => x,
+            None => unreachable_unchecked(),
+        }
     }
 }
 
