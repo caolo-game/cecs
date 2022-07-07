@@ -251,6 +251,12 @@ pub struct Ref<'a, T: 'static> {
     _m: PhantomData<&'a ()>,
 }
 
+impl<'a, T: 'static + std::fmt::Debug> std::fmt::Debug for Ref<'a, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.inner)
+    }
+}
+
 impl<'a, T: 'static> AsRef<T> for Ref<'a, T> {
     fn as_ref(&self) -> &T {
         self.inner
@@ -284,13 +290,15 @@ impl<'a, T: 'static> Iterator for QueryIt<'a, T> {
     }
 }
 
-pub trait Queryable<'a, T: 'static> {
-    type It: Iterator<Item = Ref<'a, T>>;
+pub trait Queryable<'a, T> {
+    type Item;
+    type It: Iterator<Item = Self::Item>;
 
     fn iter(&'a self) -> Self::It;
 }
 
-impl<'a, T: Component> Queryable<'a, T> for ArchetypeStorage {
+impl<'a, T: Component> Queryable<'a, &'a T> for ArchetypeStorage {
+    type Item = Ref<'a, T>;
     type It = QueryIt<'a, T>;
 
     fn iter(&'a self) -> Self::It {
@@ -309,19 +317,43 @@ impl<'a, T: Component> Queryable<'a, T> for ArchetypeStorage {
     }
 }
 
-#[derive(Default)]
 pub struct ComponentQuery<T> {
     _m: PhantomData<T>,
 }
 
-impl<'a, T: 'static> ComponentQuery<T>
+impl<T> Default for ComponentQuery<T> {
+    fn default() -> Self {
+        Self { _m: PhantomData }
+    }
+}
+
+impl<'a, T: 'static> ComponentQuery<&'a T>
 where
-    ArchetypeStorage: Queryable<'a, T>,
+    ArchetypeStorage: Queryable<'a, &'a T>,
 {
     pub fn iter(
         &self,
         archetype: &'a ArchetypeStorage,
-    ) -> <ArchetypeStorage as Queryable<'a, T>>::It {
+    ) -> <ArchetypeStorage as Queryable<'a, &'a T>>::It {
         archetype.iter()
+    }
+}
+
+impl<'a, T1: 'static, T2: 'static> ComponentQuery<(&'a T1, &'a T2)>
+where
+    ArchetypeStorage: Queryable<'a, &'a T1> + Queryable<'a, &'a T2>,
+{
+    pub fn iter(
+        &self,
+        archetype: &'a ArchetypeStorage,
+    ) -> impl Iterator<
+        Item = (
+            <ArchetypeStorage as Queryable<'a, &'a T1>>::Item,
+            <ArchetypeStorage as Queryable<'a, &'a T2>>::Item,
+        ),
+    > {
+        let it1 = ComponentQuery::<&'a T1>::default().iter(archetype);
+        let it2 = ComponentQuery::<&'a T2>::default().iter(archetype);
+        it1.zip(it2)
     }
 }
