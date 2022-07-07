@@ -1,3 +1,5 @@
+use crate::entity_id::EntityId;
+
 use super::*;
 
 #[test]

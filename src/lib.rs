@@ -11,6 +11,7 @@ pub(crate) mod db;
 pub mod entity_id;
 pub mod handle_table;
 pub mod page_table;
+pub mod query;
 
 #[cfg(test)]
 mod world_tests;
