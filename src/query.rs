@@ -146,7 +146,7 @@ impl<'a, T: Component> Queryable<'a, &'a mut T> for ArchetypeStorage {
     }
 }
 
-pub struct Query<T> {
+pub struct ArchQuery<T> {
     _m: PhantomData<T>,
 }
 
@@ -164,13 +164,13 @@ pub trait QueryPrimitive<'a> {
     fn iter_prim(&self, archetype: &'a ArchetypeStorage) -> Self::It;
 }
 
-impl<T> Default for Query<T> {
+impl<T> Default for ArchQuery<T> {
     fn default() -> Self {
         Self { _m: PhantomData }
     }
 }
 
-impl<'a, T: Component> QueryPrimitive<'a> for Query<&'a T> {
+impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<&'a T> {
     type Item = Ref<'a, T>;
     type It = <ArchetypeStorage as Queryable<'a, &'a T>>::It;
 
@@ -179,7 +179,7 @@ impl<'a, T: Component> QueryPrimitive<'a> for Query<&'a T> {
     }
 }
 
-impl<'a, T: Component> QueryPrimitive<'a> for Query<&'a mut T> {
+impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<&'a mut T> {
     type Item = Mut<'a, T>;
     type It = <ArchetypeStorage as Queryable<'a, &'a mut T>>::It;
 
@@ -188,9 +188,9 @@ impl<'a, T: Component> QueryPrimitive<'a> for Query<&'a mut T> {
     }
 }
 
-impl<'a, T> QueryFragment<'a> for Query<T>
+impl<'a, T> QueryFragment<'a> for ArchQuery<T>
 where
-    Query<T>: QueryPrimitive<'a>,
+    ArchQuery<T>: QueryPrimitive<'a>,
 {
     type Item = <Self as QueryPrimitive<'a>>::Item;
     type It = <Self as QueryPrimitive<'a>>::It;
@@ -209,18 +209,18 @@ macro_rules! impl_tuple {
     ($($idx: tt : $t: ident),+ $(,)?) => {
         impl<'a, $($t,)+> Iterator for TupleIterator<
             'a
-            , ($( <Query<$t> as QueryFragment<'a>>::It,)*)
+            , ($( <ArchQuery<$t> as QueryFragment<'a>>::It,)*)
             , ($($t),+)
         >
         where
             $(
                 $t: 'a,
-                Query<$t>: QueryFragment<'a>,
+                ArchQuery<$t>: QueryFragment<'a>,
             )+
         {
             type Item = (
                 $(
-                <Query<$t> as QueryFragment<'a>>::Item,
+                <ArchQuery<$t> as QueryFragment<'a>>::Item,
                 )*
             );
 
@@ -235,20 +235,20 @@ macro_rules! impl_tuple {
             }
         }
 
-        impl<'a, $($t,)+> QueryFragment<'a> for Query<($($t,)+)>
+        impl<'a, $($t,)+> QueryFragment<'a> for ArchQuery<($($t,)+)>
         where
         $(
             $t: 'a,
-            Query<$t>: QueryPrimitive<'a>,
+            ArchQuery<$t>: QueryPrimitive<'a>,
             ArchetypeStorage: Queryable<'a, $t>,
         )+
         {
-            type Item=($(<Query<$t> as QueryPrimitive<'a>>::Item),+);
-            type It=TupleIterator<'a, ($(<Query<$t> as QueryPrimitive<'a>>::It,)+),($($t,)+)>;
+            type Item=($(<ArchQuery<$t> as QueryPrimitive<'a>>::Item),+);
+            type It=TupleIterator<'a, ($(<ArchQuery<$t> as QueryPrimitive<'a>>::It,)+),($($t,)+)>;
 
             fn iter(&self, archetype: &'a ArchetypeStorage) -> Self::It
             {
-                TupleIterator(($( Query::<$t>::default().iter(archetype) ),+), PhantomData)
+                TupleIterator(($( ArchQuery::<$t>::default().iter(archetype) ),+), PhantomData)
             }
         }
     };
