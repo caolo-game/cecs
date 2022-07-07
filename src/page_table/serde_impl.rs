@@ -68,7 +68,7 @@ mod tests {
     fn page_table_serde() {
         let mut table = PageTable::new(1024);
 
-        for i in 0..10_000 {
+        for i in 0..100 {
             table.insert(i, i);
         }
 

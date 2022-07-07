@@ -143,9 +143,9 @@ mod tests {
 
     #[test]
     fn test_de_serialize() {
-        let mut table = HandleTable::new(2_000);
+        let mut table = HandleTable::new(200);
 
-        for _ in 0..1000 {
+        for _ in 0..100 {
             let id = table.alloc().unwrap();
             table.free(id);
             table.alloc().unwrap();
@@ -157,7 +157,7 @@ mod tests {
 
         assert_eq!(res.len(), table.len());
 
-        for _ in 0..500 {
+        for _ in 0..50 {
             let id1 = table.alloc().unwrap();
             let id2 = res.alloc().unwrap();
             assert_eq!(id1, id2);
