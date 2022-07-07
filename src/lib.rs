@@ -27,7 +27,7 @@ const fn hash_ty<T: 'static>() -> u64 {
     let ty = TypeId::of::<T>();
     // FIXME extreme curse
     //
-    let ty = unsafe { std::mem::transmute(ty) };
+    let ty: u64 = unsafe { std::mem::transmute(ty) };
     if ty == unsafe { std::mem::transmute(TypeId::of::<()>()) } {
         // ensure that unit type has hash=0
         0
