@@ -136,4 +136,9 @@ fn can_mix_mut_ref_test() {
     for val in Query::<&String>::default().iter(&archetype) {
         assert_eq!(*val, "winnie");
     }
+
+    // test if compiles
+    let _ = Query::<(&String, &mut u32)>::default();
+    let _ = Query::<(&mut String, &mut u32)>::default();
+    let _ = Query::<(&mut u32, &mut String)>::default();
 }
