@@ -1,7 +1,10 @@
-use std::{any::TypeId, collections::HashMap};
+#[cfg(test)]
+mod db_tests;
+
+use std::{any::TypeId, collections::HashMap, marker::PhantomData};
 
 // TODO: use dense storage instead of the PageTable because of archetypes
-use crate::{entity_id::EntityId, hash_ty, page_table::PageTable, RowIndex, TypeHash};
+use crate::{entity_id::EntityId, hash_ty, page_table::PageTable, Component, RowIndex, TypeHash};
 
 #[derive(Clone)]
 pub struct ArchetypeStorage {
@@ -239,5 +242,86 @@ impl ErasedPageTable {
 
     pub fn remove(&mut self, id: RowIndex) {
         (self.remove)(id, self);
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct Ref<'a, T: 'static> {
+    inner: &'static T,
+    _m: PhantomData<&'a ()>,
+}
+
+impl<'a, T: 'static> AsRef<T> for Ref<'a, T> {
+    fn as_ref(&self) -> &T {
+        self.inner
+    }
+}
+
+impl<'a, T: 'static> std::ops::Deref for Ref<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.inner
+    }
+}
+
+pub struct QueryIt<'a, T> {
+    inner: Option<Box<dyn Iterator<Item = (u32, &'a T)> + 'a>>,
+    _m: PhantomData<&'a ()>,
+}
+
+impl<'a, T: 'static> Iterator for QueryIt<'a, T> {
+    type Item = Ref<'a, T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.as_mut().and_then(|it| it.next()).map(|(_, x)| {
+            let x: &'static T = unsafe { std::mem::transmute(x) };
+            Ref {
+                inner: x,
+                _m: PhantomData,
+            }
+        })
+    }
+}
+
+pub trait Queryable<'a, T: 'static> {
+    type It: Iterator<Item = Ref<'a, T>>;
+
+    fn iter(&'a self) -> Self::It;
+}
+
+impl<'a, T: Component> Queryable<'a, T> for ArchetypeStorage {
+    type It = QueryIt<'a, T>;
+
+    fn iter(&'a self) -> Self::It {
+        let inner = self
+            .components
+            .get(&TypeId::of::<T>())
+            .map(|columns| unsafe { columns.as_inner::<T>().iter() });
+        let inner = inner.map(|fos| {
+            let res: Box<dyn Iterator<Item = (u32, &'a T)>> = Box::new(fos);
+            res
+        });
+        QueryIt {
+            inner,
+            _m: PhantomData,
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct ComponentQuery<T> {
+    _m: PhantomData<T>,
+}
+
+impl<'a, T: 'static> ComponentQuery<T>
+where
+    ArchetypeStorage: Queryable<'a, T>,
+{
+    pub fn iter(
+        &self,
+        archetype: &'a ArchetypeStorage,
+    ) -> <ArchetypeStorage as Queryable<'a, T>>::It {
+        archetype.iter()
     }
 }
