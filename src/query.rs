@@ -157,49 +157,755 @@ pub trait QueryFragment<'a> {
     fn iter(&self, archetype: &'a ArchetypeStorage) -> Self::It;
 }
 
+pub trait QueryPrimitive<'a> {
+    type Item;
+    type It: Iterator<Item = Self::Item> + 'a;
+
+    fn iter_prim(&self, archetype: &'a ArchetypeStorage) -> Self::It;
+}
+
 impl<T> Default for Query<T> {
     fn default() -> Self {
         Self { _m: PhantomData }
     }
 }
 
-impl<'a, T: Component> QueryFragment<'a> for Query<&'a T> {
+impl<'a, T: Component> QueryPrimitive<'a> for Query<&'a T> {
     type Item = Ref<'a, T>;
     type It = <ArchetypeStorage as Queryable<'a, &'a T>>::It;
 
-    fn iter(&self, archetype: &'a ArchetypeStorage) -> Self::It {
+    fn iter_prim(&self, archetype: &'a ArchetypeStorage) -> Self::It {
         <ArchetypeStorage as Queryable<'_, &'a T>>::iter(archetype)
     }
 }
 
-impl<'a, T: Component> QueryFragment<'a> for Query<&'a mut T> {
+impl<'a, T: Component> QueryPrimitive<'a> for Query<&'a mut T> {
     type Item = Mut<'a, T>;
     type It = <ArchetypeStorage as Queryable<'a, &'a mut T>>::It;
 
-    fn iter(&self, archetype: &'a ArchetypeStorage) -> Self::It {
+    fn iter_prim(&self, archetype: &'a ArchetypeStorage) -> Self::It {
         <ArchetypeStorage as Queryable<'_, &'a mut T>>::iter(archetype)
     }
 }
 
-// TODO: macro implementing more combinations
-//
-impl<'a, T1, T2> QueryFragment<'a> for Query<(T1, T2)>
+impl<'a, T> QueryFragment<'a> for Query<T>
 where
-    Query<T1>: QueryFragment<'a>,
-    Query<T2>: QueryFragment<'a>,
-    ArchetypeStorage: Queryable<'a, T1>,
-    ArchetypeStorage: Queryable<'a, T2>,
+    Query<T>: QueryPrimitive<'a>,
 {
-    type Item = (
-        <Query<T1> as QueryFragment<'a>>::Item,
-        <Query<T2> as QueryFragment<'a>>::Item,
-    );
-    type It =
-        std::iter::Zip<<Query<T1> as QueryFragment<'a>>::It, <Query<T2> as QueryFragment<'a>>::It>;
+    type Item = <Self as QueryPrimitive<'a>>::Item;
+    type It = <Self as QueryPrimitive<'a>>::It;
 
     fn iter(&self, archetype: &'a ArchetypeStorage) -> Self::It {
-        let it1 = Query::<T1>::default().iter(archetype);
-        let it2 = Query::<T2>::default().iter(archetype);
-        it1.zip(it2)
+        self.iter_prim(archetype)
     }
 }
+
+// macro implementing more combinations
+//
+
+pub struct TupleIterator<'a, Inner, Constraint>(Inner, PhantomData<&'a Constraint>);
+
+macro_rules! impl_tuple {
+    ($($idx: tt : $t: ident),+ $(,)?) => {
+        impl<'a, $($t,)+> Iterator for TupleIterator<
+            'a
+            , ($( <Query<$t> as QueryFragment<'a>>::It,)*)
+            , ($($t),+)
+        >
+        where
+            $(
+                $t: 'a,
+                Query<$t>: QueryFragment<'a>,
+            )+
+        {
+            type Item = (
+                $(
+                <Query<$t> as QueryFragment<'a>>::Item,
+                )*
+            );
+
+            fn next(&mut self) -> Option<Self::Item> {
+                Some((
+                    $(
+                        // TODO: optimization opportunity: only call next() on the first iterator
+                        // and call next_unchecked() on the rest
+                        self.0.$idx.next()?
+                    ),+
+                ))
+            }
+        }
+
+        impl<'a, $($t,)+> QueryFragment<'a> for Query<($($t,)+)>
+        where
+        $(
+            $t: 'a,
+            Query<$t>: QueryPrimitive<'a>,
+            ArchetypeStorage: Queryable<'a, $t>,
+        )+
+        {
+            type Item=($(<Query<$t> as QueryPrimitive<'a>>::Item),+);
+            type It=TupleIterator<'a, ($(<Query<$t> as QueryPrimitive<'a>>::It,)+),($($t,)+)>;
+
+            fn iter(&self, archetype: &'a ArchetypeStorage) -> Self::It
+            {
+                TupleIterator(($( Query::<$t>::default().iter(archetype) ),+), PhantomData)
+            }
+        }
+    };
+}
+
+impl_tuple!(0: T0, 1: T1);
+impl_tuple!(0: T0, 1: T1, 2: T2);
+impl_tuple!(0: T0, 1: T1, 2: T2, 3: T3);
+impl_tuple!(0: T0, 1: T1, 2: T2, 3: T3, 4: T4);
+impl_tuple!(0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5);
+impl_tuple!(0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6);
+impl_tuple!(0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12,
+    13: T13
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12,
+    13: T13,
+    14: T14
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12,
+    13: T13,
+    14: T14,
+    15: T15
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12,
+    13: T13,
+    14: T14,
+    15: T15,
+    16: T16
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12,
+    13: T13,
+    14: T14,
+    15: T15,
+    16: T16,
+    17: T17
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12,
+    13: T13,
+    14: T14,
+    15: T15,
+    16: T16,
+    17: T17,
+    18: T18
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12,
+    13: T13,
+    14: T14,
+    15: T15,
+    16: T16,
+    17: T17,
+    18: T18,
+    19: T19
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12,
+    13: T13,
+    14: T14,
+    15: T15,
+    16: T16,
+    17: T17,
+    18: T18,
+    19: T19,
+    20: T20
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12,
+    13: T13,
+    14: T14,
+    15: T15,
+    16: T16,
+    17: T17,
+    18: T18,
+    19: T19,
+    20: T20,
+    21: T21
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12,
+    13: T13,
+    14: T14,
+    15: T15,
+    16: T16,
+    17: T17,
+    18: T18,
+    19: T19,
+    20: T20,
+    21: T21,
+    22: T22
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12,
+    13: T13,
+    14: T14,
+    15: T15,
+    16: T16,
+    17: T17,
+    18: T18,
+    19: T19,
+    20: T20,
+    21: T21,
+    22: T22,
+    23: T23
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12,
+    13: T13,
+    14: T14,
+    15: T15,
+    16: T16,
+    17: T17,
+    18: T18,
+    19: T19,
+    20: T20,
+    21: T21,
+    22: T22,
+    23: T23,
+    24: T24
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12,
+    13: T13,
+    14: T14,
+    15: T15,
+    16: T16,
+    17: T17,
+    18: T18,
+    19: T19,
+    20: T20,
+    21: T21,
+    22: T22,
+    23: T23,
+    24: T24,
+    25: T25
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12,
+    13: T13,
+    14: T14,
+    15: T15,
+    16: T16,
+    17: T17,
+    18: T18,
+    19: T19,
+    20: T20,
+    21: T21,
+    22: T22,
+    23: T23,
+    24: T24,
+    25: T25,
+    26: T26
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12,
+    13: T13,
+    14: T14,
+    15: T15,
+    16: T16,
+    17: T17,
+    18: T18,
+    19: T19,
+    20: T20,
+    21: T21,
+    22: T22,
+    23: T23,
+    24: T24,
+    25: T25,
+    26: T26,
+    27: T27
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12,
+    13: T13,
+    14: T14,
+    15: T15,
+    16: T16,
+    17: T17,
+    18: T18,
+    19: T19,
+    20: T20,
+    21: T21,
+    22: T22,
+    23: T23,
+    24: T24,
+    25: T25,
+    26: T26,
+    27: T27,
+    28: T28
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12,
+    13: T13,
+    14: T14,
+    15: T15,
+    16: T16,
+    17: T17,
+    18: T18,
+    19: T19,
+    20: T20,
+    21: T21,
+    22: T22,
+    23: T23,
+    24: T24,
+    25: T25,
+    26: T26,
+    27: T27,
+    28: T28,
+    29: T29
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12,
+    13: T13,
+    14: T14,
+    15: T15,
+    16: T16,
+    17: T17,
+    18: T18,
+    19: T19,
+    20: T20,
+    21: T21,
+    22: T22,
+    23: T23,
+    24: T24,
+    25: T25,
+    26: T26,
+    27: T27,
+    28: T28,
+    29: T29,
+    30: T30
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12,
+    13: T13,
+    14: T14,
+    15: T15,
+    16: T16,
+    17: T17,
+    18: T18,
+    19: T19,
+    20: T20,
+    21: T21,
+    22: T22,
+    23: T23,
+    24: T24,
+    25: T25,
+    26: T26,
+    27: T27,
+    28: T28,
+    29: T29,
+    30: T30,
+    31: T31
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12,
+    13: T13,
+    14: T14,
+    15: T15,
+    16: T16,
+    17: T17,
+    18: T18,
+    19: T19,
+    20: T20,
+    21: T21,
+    22: T22,
+    23: T23,
+    24: T24,
+    25: T25,
+    26: T26,
+    27: T27,
+    28: T28,
+    29: T29,
+    30: T30,
+    31: T31,
+    32: T32
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12,
+    13: T13,
+    14: T14,
+    15: T15,
+    16: T16,
+    17: T17,
+    18: T18,
+    19: T19,
+    20: T20,
+    21: T21,
+    22: T22,
+    23: T23,
+    24: T24,
+    25: T25,
+    26: T26,
+    27: T27,
+    28: T28,
+    29: T29,
+    30: T30,
+    31: T31,
+    32: T32,
+    33: T33
+);
+impl_tuple!(
+    0: T0,
+    1: T1,
+    2: T2,
+    3: T3,
+    4: T4,
+    5: T5,
+    6: T6,
+    7: T7,
+    8: T8,
+    9: T9,
+    10: T10,
+    11: T11,
+    12: T12,
+    13: T13,
+    14: T14,
+    15: T15,
+    16: T16,
+    17: T17,
+    18: T18,
+    19: T19,
+    20: T20,
+    21: T21,
+    22: T22,
+    23: T23,
+    24: T24,
+    25: T25,
+    26: T26,
+    27: T27,
+    28: T28,
+    29: T29,
+    30: T30,
+    31: T31,
+    32: T32,
+    33: T33,
+    34: T34
+);
