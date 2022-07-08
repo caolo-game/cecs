@@ -107,3 +107,34 @@ fn can_query_entity_id_test() {
     // test if compiles
     Query::<EntityId>::new(&world);
 }
+
+#[derive(Clone, Copy)]
+struct Foo {
+    value: i32,
+}
+
+#[test]
+fn system_test() {
+    fn my_system(q: Query<(&mut Foo, EntityId)>) {
+        for (foo, _id) in q.iter() {
+            foo.value = 69;
+        }
+    }
+
+    let mut world = World::new(500);
+
+    for i in 0..4 {
+        let id = world.insert_entity().unwrap();
+        world.set_component(id, Foo { value: i }).unwrap();
+        if i % 2 == 0 {
+            world.set_component(id, "poggers".to_string()).unwrap();
+        }
+        dbg!(id, i);
+    }
+
+    my_system(Query::new(&world));
+
+    for foo in Query::<&Foo>::new(&world).iter() {
+        assert_eq!(foo.value, 69);
+    }
+}
