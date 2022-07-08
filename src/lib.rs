@@ -147,11 +147,16 @@ impl World {
         if !archetype.contains_column::<T>() {
             let new_ty = archetype.extended_hash::<T>();
             if !self.archetypes.contains_key(&new_ty) {
-                let mut res = self.insert_archetype::<T>(
+                let (mut res, updated_entity) = self.insert_archetype::<T>(
                     archetype,
                     index,
                     archetype.extend_with_column::<T>(),
                 );
+                if let Some(updated_entity) = updated_entity {
+                    self.entity_ids
+                        .update(updated_entity, (NonNull::from(archetype), index))
+                        .unwrap();
+                }
                 archetype = unsafe { res.as_mut() };
                 index = 0;
             } else {
@@ -190,8 +195,13 @@ impl World {
         }
         let new_ty = archetype.extended_hash::<T>();
         if !self.archetypes.contains_key(&new_ty) {
-            let mut res =
+            let (mut res, updated_entity) =
                 self.insert_archetype::<T>(archetype, index, archetype.reduce_with_column::<T>());
+            if let Some(updated_entity) = updated_entity {
+                self.entity_ids
+                    .update(updated_entity, (NonNull::from(archetype), index))
+                    .unwrap();
+            }
             archetype = unsafe { res.as_mut() };
             index = 0;
         } else {
@@ -222,13 +232,12 @@ impl World {
         archetype: &mut ArchetypeStorage,
         row_index: RowIndex,
         new_arch: ArchetypeStorage,
-    ) -> NonNull<ArchetypeStorage> {
+    ) -> (NonNull<ArchetypeStorage>, Option<EntityId>) {
         let mut new_arch = Box::pin(new_arch);
         let (index, moved_entity) = archetype.move_entity(&mut new_arch, row_index);
         debug_assert_eq!(index, 0);
-        debug_assert!(moved_entity.is_none());
         let res = unsafe { NonNull::new_unchecked(new_arch.as_mut().get_mut() as *mut _) };
         self.archetypes.insert(new_arch.ty(), new_arch);
-        res
+        (res, moved_entity)
     }
 }
