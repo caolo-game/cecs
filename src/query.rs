@@ -31,6 +31,12 @@ where
         let (arch, index) = self.world.entity_ids.read(id).ok()?;
         unsafe { ArchQuery::<T>::default().fetch(arch.as_ref(), index) }
     }
+
+    /// fetch the first row of the query
+    /// panic if no row was found
+    pub fn one(&self) -> <ArchQuery<T> as QueryFragment<'a>>::Item {
+        self.iter().next().unwrap()
+    }
 }
 
 pub struct ArchQuery<T> {
