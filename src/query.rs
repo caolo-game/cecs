@@ -1,50 +1,8 @@
 #[cfg(test)]
 mod query_tests;
 
-use crate::{db::ArchetypeStorage, Component, entity_id::EntityId};
+use crate::{db::ArchetypeStorage, entity_id::EntityId, Component};
 use std::{any::TypeId, marker::PhantomData};
-
-pub trait Queryable<'a, T> {
-    type Item;
-    type It: Iterator<Item = Self::Item>;
-
-    fn iter(&'a self) -> Self::It;
-}
-
-impl<'a, T: Component> Queryable<'a, &'a T> for ArchetypeStorage {
-    type Item = &'a T;
-    type It = std::iter::Flatten<std::option::IntoIter<std::slice::Iter<'a, T>>>;
-
-    fn iter(&'a self) -> Self::It {
-        self.components
-            .get(&TypeId::of::<T>())
-            .map(|columns| unsafe { (&mut *columns.get()).as_inner::<T>().iter() })
-            .into_iter()
-            .flatten()
-    }
-}
-
-impl<'a, T: Component> Queryable<'a, &'a mut T> for ArchetypeStorage {
-    type Item = &'a mut T;
-    type It = std::iter::Flatten<std::option::IntoIter<std::slice::IterMut<'a, T>>>;
-
-    fn iter(&'a self) -> Self::It {
-        self.components
-            .get(&TypeId::of::<T>())
-            .map(|columns| unsafe { (&mut *columns.get()).as_inner_mut::<T>().iter_mut() })
-            .into_iter()
-            .flatten()
-    }
-}
-
-impl<'a> Queryable<'a, EntityId> for ArchetypeStorage {
-    type Item = EntityId;
-    type It = std::iter::Copied<std::slice::Iter<'a, EntityId>>;
-
-    fn iter(&'a self) -> Self::It {
-        self.entities.iter().copied()
-    }
-}
 
 pub struct Query<'a, T> {
     world: &'a crate::World,
@@ -105,19 +63,29 @@ impl<'a> QueryPrimitive<'a> for ArchQuery<EntityId> {
 
 impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<&'a T> {
     type Item = &'a T;
-    type It = <ArchetypeStorage as Queryable<'a, &'a T>>::It;
+    type It = std::iter::Flatten<std::option::IntoIter<std::slice::Iter<'a, T>>>;
 
     fn iter_prim(&self, archetype: &'a ArchetypeStorage) -> Self::It {
-        <ArchetypeStorage as Queryable<'_, &'a T>>::iter(archetype)
+        archetype
+            .components
+            .get(&TypeId::of::<T>())
+            .map(|columns| unsafe { (&mut *columns.get()).as_inner::<T>().iter() })
+            .into_iter()
+            .flatten()
     }
 }
 
 impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<&'a mut T> {
     type Item = &'a mut T;
-    type It = <ArchetypeStorage as Queryable<'a, &'a mut T>>::It;
+    type It = std::iter::Flatten<std::option::IntoIter<std::slice::IterMut<'a, T>>>;
 
     fn iter_prim(&self, archetype: &'a ArchetypeStorage) -> Self::It {
-        <ArchetypeStorage as Queryable<'_, &'a mut T>>::iter(archetype)
+        archetype
+            .components
+            .get(&TypeId::of::<T>())
+            .map(|columns| unsafe { (&mut *columns.get()).as_inner_mut::<T>().iter_mut() })
+            .into_iter()
+            .flatten()
     }
 }
 
@@ -173,7 +141,6 @@ macro_rules! impl_tuple {
         $(
             $t: 'a,
             ArchQuery<$t>: QueryPrimitive<'a>,
-            ArchetypeStorage: Queryable<'a, $t>,
         )+
         {
             type Item=($(<ArchQuery<$t> as QueryPrimitive<'a>>::Item),+);
