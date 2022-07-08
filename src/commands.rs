@@ -19,7 +19,7 @@ impl Drop for Commands {
 }
 
 impl Commands {
-    pub fn new(w: &mut World) -> Self {
+    pub fn new(w: &World) -> Self {
         Self {
             world: NonNull::from(w),
             entity_cmd: Vec::default(),
