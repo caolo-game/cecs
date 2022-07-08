@@ -49,9 +49,10 @@ impl HandleTable {
     pub fn new(cap: u32) -> Self {
         assert!(cap < ENTITY_INDEX_MASK);
         let entries;
+        let cap = cap.max(1); // allocate at least 1 entry
         unsafe {
             entries = alloc(Layout::from_size_align_unchecked(
-                size_of::<Entry>() * (cap as usize + 1),
+                size_of::<Entry>() * cap as usize,
                 align_of::<Entry>(),
             )) as *mut Entry;
             assert!(!entries.is_null());
@@ -65,10 +66,10 @@ impl HandleTable {
                 );
             }
             ptr::write(
-                entries.add(cap as usize),
+                entries.add(cap as usize - 1),
                 Entry {
                     data: SENTINEL,
-                    gen: SENTINEL,
+                    gen: 1,
                 },
             );
         };
@@ -290,5 +291,15 @@ mod tests {
 
         assert_eq!(a.index(), b.index());
         assert_eq!(a.gen() + 1, b.gen());
+    }
+
+    #[test]
+    fn can_allocate_last_entity_test() {
+        let mut table = HandleTable::new(512);
+
+        for _ in 0..512 {
+            let _a = table.alloc().unwrap();
+        }
+        let _a = table.alloc().unwrap_err();
     }
 }
