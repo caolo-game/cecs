@@ -73,12 +73,12 @@ pub trait Index {
 }
 
 impl World {
-    pub fn new(capacity: u32) -> Pin<Box<Self>> {
+    pub fn new(initial_capacity: u32) -> Pin<Box<Self>> {
         // FIXME: can't add assert to const fn...
         // the `hash_ty` function assumes that TypeId is a u64 under the hood
         debug_assert_eq!(std::mem::size_of::<TypeId>(), std::mem::size_of::<u64>());
 
-        let entity_ids = EntityIndex::new(capacity);
+        let entity_ids = EntityIndex::new(initial_capacity);
 
         let archetypes = HashMap::with_capacity(128);
         let result = Self {

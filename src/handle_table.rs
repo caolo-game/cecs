@@ -46,10 +46,10 @@ unsafe impl Sync for HandleTable {}
 const SENTINEL: u32 = !0;
 
 impl HandleTable {
-    pub fn new(cap: u32) -> Self {
-        assert!(cap < ENTITY_INDEX_MASK);
+    pub fn new(initial_capacity: u32) -> Self {
+        assert!(initial_capacity < ENTITY_INDEX_MASK);
         let entries;
-        let cap = cap.max(1); // allocate at least 1 entry
+        let cap = initial_capacity.max(1); // allocate at least 1 entry
         unsafe {
             entries = alloc(Layout::from_size_align_unchecked(
                 size_of::<Entry>() * cap as usize,
@@ -81,6 +81,50 @@ impl HandleTable {
         }
     }
 
+    fn grow(&mut self, new_cap: u32) {
+        let cap = self.cap;
+        assert!(new_cap > cap);
+        let new_entries: *mut Entry;
+        unsafe {
+            new_entries = alloc(Layout::from_size_align_unchecked(
+                size_of::<Entry>() * new_cap as usize,
+                align_of::<Entry>(),
+            ))
+            .cast();
+
+            ptr::copy_nonoverlapping(self.entries, new_entries, cap as usize);
+            for i in cap..new_cap {
+                ptr::write(
+                    new_entries.add(i as usize),
+                    Entry {
+                        data: i + 1,
+                        gen: 1, // 0 IDs can cause problems for clients so start at gen 1
+                    },
+                );
+            }
+            ptr::write(
+                new_entries.add(new_cap as usize - 1),
+                Entry {
+                    data: SENTINEL,
+                    gen: 1,
+                },
+            );
+            // update the free_list if empty
+            dealloc(
+                self.entries.cast(),
+                Layout::from_size_align_unchecked(
+                    size_of::<Entry>() * cap as usize,
+                    align_of::<Entry>(),
+                ),
+            );
+        }
+        if self.free_list == SENTINEL {
+            self.free_list = cap;
+        }
+        self.entries = new_entries;
+        self.cap = new_cap;
+    }
+
     pub fn len(&self) -> usize {
         self.count as usize
     }
@@ -90,12 +134,12 @@ impl HandleTable {
     }
 
     pub fn alloc(&mut self) -> Result<EntityId, HandleTableError> {
-        let entries = self.entries;
         // pop element off the free list
         //
-        if self.free_list == SENTINEL {
-            return Err(HandleTableError::OutOfCapacity);
+        if self.count == self.cap {
+            self.grow(self.cap * 3 / 2);
         }
+        let entries = self.entries;
         self.count += 1;
         let index = self.free_list;
         let entry;
@@ -169,9 +213,9 @@ impl Drop for HandleTable {
     fn drop(&mut self) {
         unsafe {
             dealloc(
-                self.entries as *mut u8,
+                self.entries.cast(),
                 Layout::from_size_align_unchecked(
-                    size_of::<Entry>() * (self.cap as usize + 1),
+                    size_of::<Entry>() * (self.cap as usize),
                     align_of::<Entry>(),
                 ),
             );
@@ -294,12 +338,11 @@ mod tests {
     }
 
     #[test]
-    fn can_allocate_last_entity_test() {
-        let mut table = HandleTable::new(512);
+    fn can_grow_handles_test() {
+        let mut table = HandleTable::new(4);
 
-        for _ in 0..512 {
-            let _a = table.alloc().unwrap();
+        for _ in 0..128 {
+            table.alloc().unwrap();
         }
-        let _a = table.alloc().unwrap_err();
     }
 }
