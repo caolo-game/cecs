@@ -4,101 +4,6 @@ mod query_tests;
 use crate::{db::ArchetypeStorage, Component};
 use std::{any::TypeId, marker::PhantomData};
 
-#[derive(Clone, Copy)]
-pub struct Ref<'a, T: 'static> {
-    inner: &'static T,
-    _m: PhantomData<&'a ()>,
-}
-
-impl<'a, T: 'static + std::fmt::Debug> std::fmt::Debug for Ref<'a, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.inner)
-    }
-}
-
-impl<'a, T: 'static> AsRef<T> for Ref<'a, T> {
-    fn as_ref(&self) -> &T {
-        self.inner
-    }
-}
-
-impl<'a, T: 'static> std::ops::Deref for Ref<'a, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.inner
-    }
-}
-
-pub struct Mut<'a, T: 'static> {
-    inner: &'static mut T,
-    _m: PhantomData<&'a mut ()>,
-}
-
-impl<'a, T: 'static + std::fmt::Debug> std::fmt::Debug for Mut<'a, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.inner)
-    }
-}
-
-impl<'a, T: 'static> AsRef<T> for Mut<'a, T> {
-    fn as_ref(&self) -> &T {
-        self.inner
-    }
-}
-
-impl<'a, T: 'static> std::ops::Deref for Mut<'a, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.inner
-    }
-}
-
-impl<'a, T: 'static> std::ops::DerefMut for Mut<'a, T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.inner
-    }
-}
-
-pub struct QueryIt<'a, T> {
-    inner: Option<Box<dyn Iterator<Item = &'a T> + 'a>>,
-    _m: PhantomData<&'a ()>,
-}
-
-impl<'a, T: 'static> Iterator for QueryIt<'a, T> {
-    type Item = Ref<'a, T>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.as_mut().and_then(|it| it.next()).map(|x| {
-            let x: &'static T = unsafe { std::mem::transmute(x) };
-            Ref {
-                inner: x,
-                _m: PhantomData,
-            }
-        })
-    }
-}
-
-pub struct QueryItMut<'a, T> {
-    inner: Option<Box<dyn Iterator<Item = &'a mut T> + 'a>>,
-    _m: PhantomData<&'a ()>,
-}
-
-impl<'a, T: 'static> Iterator for QueryItMut<'a, T> {
-    type Item = Mut<'a, T>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.as_mut().and_then(|it| it.next()).map(|x| {
-            let x: &'static mut T = unsafe { std::mem::transmute(x) };
-            Mut {
-                inner: x,
-                _m: PhantomData,
-            }
-        })
-    }
-}
-
 pub trait Queryable<'a, T> {
     type Item;
     type It: Iterator<Item = Self::Item>;
@@ -107,42 +12,28 @@ pub trait Queryable<'a, T> {
 }
 
 impl<'a, T: Component> Queryable<'a, &'a T> for ArchetypeStorage {
-    type Item = Ref<'a, T>;
-    type It = QueryIt<'a, T>;
+    type Item = &'a T;
+    type It = std::iter::Flatten<std::option::IntoIter<std::slice::Iter<'a, T>>>;
 
     fn iter(&'a self) -> Self::It {
-        let inner = self
-            .components
+        self.components
             .get(&TypeId::of::<T>())
-            .map(|columns| unsafe { (&mut *columns.get()).as_inner::<T>().iter() });
-        let inner = inner.map(|fos| {
-            let res: Box<dyn Iterator<Item = &'a T>> = Box::new(fos);
-            res
-        });
-        QueryIt {
-            inner,
-            _m: PhantomData,
-        }
+            .map(|columns| unsafe { (&mut *columns.get()).as_inner::<T>().iter() })
+            .into_iter()
+            .flatten()
     }
 }
 
 impl<'a, T: Component> Queryable<'a, &'a mut T> for ArchetypeStorage {
-    type Item = Mut<'a, T>;
-    type It = QueryItMut<'a, T>;
+    type Item = &'a mut T;
+    type It = std::iter::Flatten<std::option::IntoIter<std::slice::IterMut<'a, T>>>;
 
     fn iter(&'a self) -> Self::It {
-        let inner = self
-            .components
+        self.components
             .get(&TypeId::of::<T>())
-            .map(|columns| unsafe { (&mut *columns.get()).as_inner_mut::<T>().iter_mut() });
-        let inner = inner.map(|fos| {
-            let res: Box<dyn Iterator<Item = &'a mut T>> = Box::new(fos);
-            res
-        });
-        QueryItMut {
-            inner,
-            _m: PhantomData,
-        }
+            .map(|columns| unsafe { (&mut *columns.get()).as_inner_mut::<T>().iter_mut() })
+            .into_iter()
+            .flatten()
     }
 }
 
@@ -204,7 +95,7 @@ impl<'a> QueryPrimitive<'a> for ArchQuery<crate::entity_id::EntityId> {
 }
 
 impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<&'a T> {
-    type Item = Ref<'a, T>;
+    type Item = &'a T;
     type It = <ArchetypeStorage as Queryable<'a, &'a T>>::It;
 
     fn iter_prim(&self, archetype: &'a ArchetypeStorage) -> Self::It {
@@ -213,7 +104,7 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<&'a T> {
 }
 
 impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<&'a mut T> {
-    type Item = Mut<'a, T>;
+    type Item = &'a mut T;
     type It = <ArchetypeStorage as Queryable<'a, &'a mut T>>::It;
 
     fn iter_prim(&self, archetype: &'a ArchetypeStorage) -> Self::It {

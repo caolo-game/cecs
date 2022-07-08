@@ -1,3 +1,4 @@
+use crate::entity_id::EntityId;
 use crate::query::Query;
 
 use super::*;
