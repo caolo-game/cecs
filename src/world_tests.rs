@@ -93,15 +93,16 @@ fn can_query_entity_id_test() {
     let id2 = world.insert_entity().unwrap();
     world.set_component(id2, "poggers2".to_string()).unwrap();
 
-    let mut exp = vec![(id1, "poggers1".to_string()), (id2, "poggers2".to_string())];
+    let mut exp = vec![(id1, "poggers1"), (id2, "poggers2")];
     exp.sort_by_key(|(id, _)| *id);
 
-    // let mut act = Query::<(EntityId, &String)>::new(&world)
-    //     .iter()
-    //     .collect::<Vec<_>>();
-    // act.sort_by_key(|(id, _)| *id);
-    //
-    // assert_eq!(&exp[..], &act[..]);
+    let mut act = Query::<(EntityId, &String)>::new(&world)
+        .iter()
+        .map(|(id, s)| (id, s.as_str()))
+        .collect::<Vec<_>>();
+    act.sort_by_key(|(id, _)| *id);
+
+    assert_eq!(&exp[..], &act[..]);
 
     // test if compiles
     Query::<EntityId>::new(&world);

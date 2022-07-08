@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod query_tests;
 
-use crate::{db::ArchetypeStorage, Component};
+use crate::{db::ArchetypeStorage, Component, entity_id::EntityId};
 use std::{any::TypeId, marker::PhantomData};
 
 pub trait Queryable<'a, T> {
@@ -34,6 +34,15 @@ impl<'a, T: Component> Queryable<'a, &'a mut T> for ArchetypeStorage {
             .map(|columns| unsafe { (&mut *columns.get()).as_inner_mut::<T>().iter_mut() })
             .into_iter()
             .flatten()
+    }
+}
+
+impl<'a> Queryable<'a, EntityId> for ArchetypeStorage {
+    type Item = EntityId;
+    type It = std::iter::Copied<std::slice::Iter<'a, EntityId>>;
+
+    fn iter(&'a self) -> Self::It {
+        self.entities.iter().copied()
     }
 }
 
@@ -85,9 +94,9 @@ impl<T> Default for ArchQuery<T> {
     }
 }
 
-impl<'a> QueryPrimitive<'a> for ArchQuery<crate::entity_id::EntityId> {
-    type Item = crate::entity_id::EntityId;
-    type It = std::iter::Copied<std::slice::Iter<'a, crate::entity_id::EntityId>>;
+impl<'a> QueryPrimitive<'a> for ArchQuery<EntityId> {
+    type Item = EntityId;
+    type It = std::iter::Copied<std::slice::Iter<'a, EntityId>>;
 
     fn iter_prim(&self, archetype: &'a ArchetypeStorage) -> Self::It {
         archetype.entities.iter().copied()
