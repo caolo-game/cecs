@@ -13,6 +13,8 @@ impl Drop for Commands {
             let world = self.world.as_mut();
             world
                 .commands
+                .lock()
+                .unwrap()
                 .extend(std::mem::take(&mut self.entity_cmd).into_iter());
         }
     }

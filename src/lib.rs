@@ -1,7 +1,7 @@
 #![feature(option_get_or_insert_default)]
 #![feature(const_type_id)]
 
-use std::{any::TypeId, collections::HashMap, pin::Pin, ptr::NonNull};
+use std::{any::TypeId, collections::HashMap, pin::Pin, ptr::NonNull, sync::Mutex};
 
 use commands::EntityCommands;
 use db::ArchetypeStorage;
@@ -19,9 +19,9 @@ mod world_tests;
 
 pub struct World {
     // TODO: world can be generic over Index
-    entity_ids: EntityIndex,
-    archetypes: HashMap<TypeHash, Pin<Box<ArchetypeStorage>>>,
-    commands: Vec<EntityCommands>,
+    pub(crate) entity_ids: EntityIndex,
+    pub(crate) archetypes: HashMap<TypeHash, Pin<Box<ArchetypeStorage>>>,
+    pub(crate) commands: Mutex<Vec<EntityCommands>>,
 }
 
 type TypeHash = u64;
@@ -84,7 +84,7 @@ impl World {
         let result = Self {
             entity_ids,
             archetypes,
-            commands: Vec::default(),
+            commands: Mutex::new(Vec::default()),
         };
         let mut result = Box::pin(result);
         let void_store = Box::pin(ArchetypeStorage::empty());
@@ -93,7 +93,8 @@ impl World {
     }
 
     pub fn apply_commands(&mut self) -> WorldResult<()> {
-        for cmd in std::mem::take(&mut self.commands) {
+        let commands = std::mem::take(&mut *self.commands.lock().unwrap());
+        for cmd in commands {
             cmd.apply(self)?;
         }
         Ok(())
