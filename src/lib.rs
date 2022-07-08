@@ -3,10 +3,12 @@
 
 use std::{any::TypeId, collections::HashMap, pin::Pin, ptr::NonNull};
 
+use commands::EntityCommands;
 use db::ArchetypeStorage;
 use entity_id::EntityId;
 use handle_table::EntityIndex;
 
+pub mod commands;
 pub(crate) mod db;
 pub mod entity_id;
 pub mod handle_table;
@@ -19,6 +21,7 @@ pub struct World {
     // TODO: world can be generic over Index
     entity_ids: EntityIndex,
     archetypes: HashMap<TypeHash, Pin<Box<ArchetypeStorage>>>,
+    commands: Vec<EntityCommands>,
 }
 
 type TypeHash = u64;
@@ -81,11 +84,19 @@ impl World {
         let result = Self {
             entity_ids,
             archetypes,
+            commands: Vec::default(),
         };
         let mut result = Box::pin(result);
         let void_store = Box::pin(ArchetypeStorage::empty());
         result.archetypes.insert(VOID_TY, void_store);
         result
+    }
+
+    pub fn apply_commands(&mut self) -> WorldResult<()> {
+        for cmd in std::mem::take(&mut self.commands) {
+            cmd.apply(self)?;
+        }
+        Ok(())
     }
 
     pub fn insert_entity(&mut self) -> WorldResult<EntityId> {
