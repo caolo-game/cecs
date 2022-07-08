@@ -138,3 +138,34 @@ fn system_test() {
         assert_eq!(foo.value, 69);
     }
 }
+
+#[test]
+fn can_fetch_single_entity_test() {
+    let mut world = World::new(500);
+
+    for i in 0..4 {
+        let id = world.insert_entity().unwrap();
+        world.set_component(id, Foo { value: i }).unwrap();
+        if i % 2 == 0 {
+            world.set_component(id, "poggers".to_string()).unwrap();
+        }
+    }
+    let id = world.insert_entity().unwrap();
+    world.set_component(id, Foo { value: 0xbeef }).unwrap();
+    world.set_component(id, "winnie".to_string()).unwrap();
+    for i in 0..4 {
+        let id = world.insert_entity().unwrap();
+        world.set_component(id, Foo { value: i }).unwrap();
+        if i % 2 == 0 {
+            world.set_component(id, "poggers".to_string()).unwrap();
+        }
+        dbg!(id, i);
+    }
+
+    let q = Query::<(&mut Foo, &String)>::new(&world);
+    let (foo, s) = q.fetch(id).unwrap();
+
+    assert_eq!(foo.value, 0xbeef);
+    foo.value = 0;
+    assert_eq!(s, "winnie");
+}

@@ -190,6 +190,14 @@ impl ArchetypeStorage {
             .get(&TypeId::of::<T>())
             .and_then(|columns| unsafe { (&*columns.get()).as_inner().get(row as usize) })
     }
+
+    pub fn get_component_mut<T: 'static>(&self, row: RowIndex) -> Option<&mut T> {
+        self.components
+            .get(&TypeId::of::<T>())
+            .and_then(|columns| unsafe {
+                (&mut *columns.get()).as_inner_mut().get_mut(row as usize)
+            })
+    }
 }
 
 /// Type erased Vec
