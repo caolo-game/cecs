@@ -115,7 +115,9 @@ impl World {
             .read(id)
             .map_err(|_| WorldError::EntityNotFound)?;
         unsafe {
-            archetype.as_mut().remove(index);
+            if let Some(id) = archetype.as_mut().remove(index) {
+                self.entity_ids.update(id, (archetype, index)).unwrap();
+            }
             self.entity_ids.delete(id).unwrap();
         }
         Ok(())
@@ -154,14 +156,10 @@ impl World {
             }
         }
         archetype.set_component(index, component);
-        unsafe {
-            self.entity_ids
-                .update(
-                    entity_id,
-                    (NonNull::new_unchecked(archetype as *mut _), index),
-                )
-                .unwrap();
-        }
+        self.entity_ids
+            .update(entity_id, (NonNull::from(archetype), index))
+            .unwrap();
+
         Ok(())
     }
 

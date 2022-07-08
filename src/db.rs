@@ -86,7 +86,8 @@ impl ArchetypeStorage {
         }
         self.entities.swap_remove(row_index as usize);
         self.rows -= 1;
-        (self.rows > 0).then(|| self.entities[row_index as usize])
+        // if we have remaining entities, and the removed entity was not the last
+        (self.rows > 0 && row_index < self.rows).then(|| self.entities[row_index as usize])
     }
 
     pub fn insert_entity(&mut self, id: EntityId) -> RowIndex {
@@ -99,16 +100,22 @@ impl ArchetypeStorage {
     /// return the new index in `dst` and the entity that has been moved to this one's position, if
     /// any
     pub fn move_entity(&mut self, dst: &mut Self, index: RowIndex) -> (RowIndex, Option<EntityId>) {
+        debug_assert!(self.rows > 0);
+        debug_assert!(index < self.rows);
         self.rows -= 1;
         let entity_id = self.entities.swap_remove(index as usize);
         let mut moved = None;
-        if self.entities.len() > 0 {
+        if self.rows > 0 && index < self.rows {
+            // if we have remaining rows, and the removed row was not the last
             moved = Some(self.entities[index as usize]);
         }
         let res = dst.insert_entity(entity_id);
         for (ty, col) in self.components.iter_mut() {
             if let Some(dst) = dst.components.get_mut(ty) {
                 (col.get_mut().move_row)(col.get_mut(), dst.get_mut(), index);
+            } else {
+                // destination does not have this column
+                col.get_mut().remove(index);
             }
         }
         (res, moved)
