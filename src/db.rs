@@ -80,6 +80,7 @@ impl ArchetypeStorage {
     }
 
     /// return the updated entityid, if any
+    #[must_use]
     pub fn remove(&mut self, row_index: RowIndex) -> Option<EntityId> {
         for (_, storage) in self.components.iter_mut() {
             storage.get_mut().remove(row_index);
@@ -99,6 +100,7 @@ impl ArchetypeStorage {
 
     /// return the new index in `dst` and the entity that has been moved to this one's position, if
     /// any
+    #[must_use]
     pub fn move_entity(&mut self, dst: &mut Self, index: RowIndex) -> (RowIndex, Option<EntityId>) {
         debug_assert!(self.rows > 0);
         debug_assert!(index < self.rows);

@@ -108,7 +108,7 @@ fn can_query_entity_id_test() {
     Query::<EntityId>::new(&world);
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Foo {
     value: i32,
 }
@@ -187,4 +187,26 @@ fn optional_query_test() {
 
     // assert compiles
     Query::<(&Foo, Option<&mut String>)>::new(&world);
+}
+
+#[test]
+fn world_clone_test() {
+    let mut world = World::new(500);
+
+    for i in 0..4 {
+        let id = world.insert_entity().unwrap();
+        world.set_component(id, Foo { value: i }).unwrap();
+        if i % 2 == 0 {
+            world.set_component(id, "poggers".to_string()).unwrap();
+        }
+    }
+
+    let w2 = world.clone();
+
+    let a = Query::<(EntityId, &Foo, Option<&String>)>::new(&world).iter();
+    let b = Query::<(EntityId, &Foo, Option<&String>)>::new(&w2).iter();
+
+    for (a, b) in a.zip(b) {
+        assert_eq!(a, b);
+    }
 }

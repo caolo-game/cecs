@@ -232,9 +232,10 @@ struct Entry {
     gen: u32,
 }
 
+#[derive(Clone)]
 pub struct EntityIndex {
-    handles: HandleTable,
-    metadata: Vec<(*mut ArchetypeStorage, RowIndex, EntityId)>,
+    pub(crate) handles: HandleTable,
+    pub(crate) metadata: Vec<(*mut ArchetypeStorage, RowIndex, EntityId)>,
 }
 
 impl EntityIndex {
@@ -301,6 +302,14 @@ impl Index for EntityIndex {
         }
 
         Ok((unsafe { NonNull::new_unchecked(res.0) }, res.1))
+    }
+
+    fn len(&self) -> usize {
+        self.metadata.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 

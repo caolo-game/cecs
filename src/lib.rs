@@ -25,6 +25,31 @@ pub struct World {
     pub(crate) commands: Mutex<Vec<EntityCommands>>,
 }
 
+impl Clone for World {
+    fn clone(&self) -> Self {
+        let archetypes = self.archetypes.clone();
+        let commands = Mutex::default();
+
+        let mut entity_ids = self.entity_ids.clone();
+        for (ptr, row_index, id) in self.entity_ids.metadata.iter() {
+            let ty = unsafe { &**ptr }.ty();
+            let new_arch = &archetypes[&ty];
+            entity_ids
+                .update(
+                    *id,
+                    (NonNull::from(new_arch.as_ref().get_ref()), *row_index),
+                )
+                .unwrap();
+        }
+
+        Self {
+            entity_ids,
+            archetypes,
+            commands,
+        }
+    }
+}
+
 type TypeHash = u64;
 
 const fn hash_ty<T: 'static>() -> u64 {
@@ -71,6 +96,8 @@ pub trait Index {
     ) -> Result<(), Self::Error>;
     fn delete(&mut self, id: Self::Id) -> Result<(), Self::Error>;
     fn read(&self, id: Self::Id) -> Result<(NonNull<ArchetypeStorage>, RowIndex), Self::Error>;
+    fn len(&self) -> usize;
+    fn is_empty(&self) -> bool;
 }
 
 impl World {
