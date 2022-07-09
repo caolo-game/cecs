@@ -108,7 +108,7 @@ fn can_query_entity_id_test() {
     Query::<EntityId>::new(&world);
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 struct Foo {
     value: i32,
 }
@@ -168,4 +168,23 @@ fn can_fetch_single_entity_test() {
     assert_eq!(foo.value, 0xbeef);
     foo.value = 0;
     assert_eq!(s, "winnie");
+}
+
+#[test]
+fn optional_query_test() {
+    let mut world = World::new(500);
+
+    for i in 0..4 {
+        let id = world.insert_entity().unwrap();
+        world.set_component(id, Foo { value: i }).unwrap();
+        if i % 2 == 0 {
+            world.set_component(id, "poggers".to_string()).unwrap();
+        }
+    }
+
+    let cnt = Query::<(&Foo, Option<&String>)>::new(&world).iter().count();
+    assert_eq!(cnt, 4);
+
+    // assert compiles
+    Query::<(&Foo, Option<&mut String>)>::new(&world);
 }

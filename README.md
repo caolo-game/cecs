@@ -9,4 +9,4 @@ There are many like it, but this one is mine.
 - [ ] Generalize DB over ID
 - [ ] Allow joining across DBs
 - [ ] Common DB for multiple IDs
-- [ ] Optional Query
+- [X] Optional Query

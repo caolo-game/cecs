@@ -58,7 +58,11 @@ pub trait QueryPrimitive<'a> {
     type FetchItem;
 
     fn iter_prim(&self, archetype: &'a ArchetypeStorage) -> Self::It;
-    fn fetch_prim(&self, archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::FetchItem>;
+    fn fetch_prim(
+        &self,
+        archetype: &'a ArchetypeStorage,
+        index: RowIndex,
+    ) -> Option<Self::FetchItem>;
 }
 
 impl<T> Default for ArchQuery<T> {
@@ -78,6 +82,52 @@ impl<'a> QueryPrimitive<'a> for ArchQuery<EntityId> {
 
     fn fetch_prim(&self, archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item> {
         archetype.entities.get(index as usize).copied()
+    }
+}
+
+impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<Option<&'a T>> {
+    type Item = Option<&'a T>;
+    type It = Box<dyn Iterator<Item = Self::Item> + 'a>;
+    type FetchItem = &'a T;
+
+    fn iter_prim(&self, archetype: &'a ArchetypeStorage) -> Self::It {
+        match archetype.components.get(&TypeId::of::<T>()) {
+            Some(columns) => {
+                Box::new(unsafe { (&mut *columns.get()).as_inner::<T>().iter() }.map(Some))
+            }
+            None => Box::new(archetype.entities.iter().map(|_| None)),
+        }
+    }
+
+    fn fetch_prim(
+        &self,
+        archetype: &'a ArchetypeStorage,
+        index: RowIndex,
+    ) -> Option<Self::FetchItem> {
+        archetype.get_component::<T>(index)
+    }
+}
+
+impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<Option<&'a mut T>> {
+    type Item = Option<&'a mut T>;
+    type It = Box<dyn Iterator<Item = Self::Item> + 'a>;
+    type FetchItem = &'a mut T;
+
+    fn iter_prim(&self, archetype: &'a ArchetypeStorage) -> Self::It {
+        match archetype.components.get(&TypeId::of::<T>()) {
+            Some(columns) => {
+                Box::new(unsafe { (&mut *columns.get()).as_inner_mut::<T>().iter_mut() }.map(Some))
+            }
+            None => Box::new(archetype.entities.iter().map(|_| None)),
+        }
+    }
+
+    fn fetch_prim(
+        &self,
+        archetype: &'a ArchetypeStorage,
+        index: RowIndex,
+    ) -> Option<Self::FetchItem> {
+        archetype.get_component_mut::<T>(index)
     }
 }
 
