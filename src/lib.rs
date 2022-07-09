@@ -12,8 +12,8 @@ pub mod commands;
 pub(crate) mod db;
 pub mod entity_id;
 pub mod handle_table;
-pub mod query;
 pub mod prelude;
+pub mod query;
 
 #[cfg(test)]
 mod world_tests;
@@ -91,6 +91,10 @@ impl World {
         let void_store = Box::pin(ArchetypeStorage::empty());
         result.archetypes.insert(VOID_TY, void_store);
         result
+    }
+
+    pub fn is_id_valid(&self, id: EntityId) -> bool {
+        self.entity_ids.is_valid(id)
     }
 
     pub fn apply_commands(&mut self) -> WorldResult<()> {

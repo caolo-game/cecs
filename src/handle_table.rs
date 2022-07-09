@@ -245,6 +245,10 @@ impl EntityIndex {
             metadata: Vec::new(),
         }
     }
+
+    pub fn is_valid(&self, id: EntityId) -> bool {
+        self.handles.is_valid(id)
+    }
 }
 
 impl Index for EntityIndex {
