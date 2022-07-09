@@ -90,7 +90,7 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<Option<&'a T>> {
             Some(columns) => {
                 Box::new(unsafe { (&mut *columns.get()).as_inner::<T>().iter() }.map(Some))
             }
-            None => Box::new(archetype.entities.iter().map(|_| None)),
+            None => Box::new((0..archetype.rows).map(|_| None)),
         }
     }
 
@@ -108,7 +108,7 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<Option<&'a mut T>> {
             Some(columns) => {
                 Box::new(unsafe { (&mut *columns.get()).as_inner_mut::<T>().iter_mut() }.map(Some))
             }
-            None => Box::new(archetype.entities.iter().map(|_| None)),
+            None => Box::new((0..archetype.rows).map(|_| None)),
         }
     }
 
