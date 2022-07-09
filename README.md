@@ -3,7 +3,7 @@ There are many like it, but this one is mine.
 
 ## TODO
 
-- [ ] Command interface
+- [X] Command interface
 - [ ] Scheduling
 - [ ] Soundness guarantees
 - [ ] Generalize DB over ID
