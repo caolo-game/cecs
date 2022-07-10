@@ -203,7 +203,7 @@ impl ArchetypeStorage {
 /// Type erased Vec
 pub(crate) struct ErasedTable {
     ty_name: &'static str,
-    inner: *mut std::ffi::c_void,
+    inner: *mut u8,
     finalize: fn(&mut ErasedTable),
     /// remove is always swap_remove
     remove: fn(RowIndex, &mut ErasedTable),

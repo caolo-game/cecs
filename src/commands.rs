@@ -92,9 +92,9 @@ impl EntityCommands {
 }
 
 pub(crate) struct ErasedComponentCommand {
-    inner: *mut std::ffi::c_void,
-    apply: fn(NonNull<std::ffi::c_void>, EntityId, &mut World) -> Result<(), WorldError>,
-    drop: fn(NonNull<std::ffi::c_void>),
+    inner: *mut u8,
+    apply: fn(NonNull<u8>, EntityId, &mut World) -> Result<(), WorldError>,
+    drop: fn(NonNull<u8>),
 }
 
 impl Drop for ErasedComponentCommand {
