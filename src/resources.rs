@@ -51,6 +51,12 @@ impl ResourceStorage {
             .get(&TypeId::of::<T>())
             .map(|table| unsafe { (*table.get()).as_inner_mut::<T>() })
     }
+
+    pub fn remove<T: 'static>(&mut self) -> Option<Box<T>> {
+        self.resources
+            .remove(&TypeId::of::<T>())
+            .map(|table| unsafe { table.into_inner().into_inner() })
+    }
 }
 
 pub(crate) struct ErasedResource {
@@ -77,7 +83,9 @@ impl ErasedResource {
         Self {
             inner: (inner as *mut T).cast(),
             finalize: |resource| unsafe {
-                let _inner: Box<T> = Box::from_raw(resource.inner.cast::<T>());
+                if !resource.inner.is_null() {
+                    let _inner: Box<T> = Box::from_raw(resource.inner.cast::<T>());
+                }
             },
             clone: |resource| unsafe {
                 let val = resource.as_inner::<T>().clone();
@@ -96,5 +104,11 @@ impl ErasedResource {
     /// Must be called with the same type as `new`
     pub unsafe fn as_inner_mut<T>(&mut self) -> &mut T {
         &mut *self.inner.cast()
+    }
+
+    pub unsafe fn into_inner<T>(mut self) -> Box<T> {
+        let inner = self.inner;
+        self.inner = std::ptr::null_mut();
+        Box::from_raw(inner.cast())
     }
 }

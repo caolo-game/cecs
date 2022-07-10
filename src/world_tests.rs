@@ -227,3 +227,17 @@ fn filtered_query_test() {
         assert!(i.value % 2 == 1);
     }
 }
+
+#[test]
+fn resource_test() {
+    let mut world = World::new(4);
+
+    world.insert_resource(4i32);
+
+    let res = world.get_resource::<i32>().unwrap();
+    assert_eq!(res, &4);
+
+    world.remove_resource::<i32>();
+
+    assert!(world.get_resource::<i32>().is_none());
+}

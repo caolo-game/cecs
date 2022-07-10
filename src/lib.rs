@@ -3,7 +3,7 @@
 
 use std::{any::TypeId, collections::HashMap, pin::Pin, ptr::NonNull, sync::Mutex};
 
-use commands::EntityCommands;
+use commands::{EntityCommands, ErasedResourceCommand};
 use db::ArchetypeStorage;
 use entity_id::EntityId;
 use handle_table::EntityIndex;
@@ -24,14 +24,16 @@ pub struct World {
     // TODO: world can be generic over Index
     pub(crate) entity_ids: EntityIndex,
     pub(crate) archetypes: HashMap<TypeHash, Pin<Box<ArchetypeStorage>>>,
-    pub(crate) commands: Mutex<Vec<EntityCommands>>,
     pub(crate) resources: ResourceStorage,
+    pub(crate) commands: Mutex<Vec<EntityCommands>>,
+    pub(crate) resource_commands: Mutex<Vec<ErasedResourceCommand>>,
 }
 
 impl Clone for World {
     fn clone(&self) -> Self {
         let archetypes = self.archetypes.clone();
         let commands = Mutex::default();
+        let resource_commands = Mutex::default();
 
         let mut entity_ids = self.entity_ids.clone();
         for (ptr, row_index, id) in self.entity_ids.metadata.iter() {
@@ -52,6 +54,7 @@ impl Clone for World {
             archetypes,
             commands,
             resources,
+            resource_commands,
         }
     }
 }
@@ -118,8 +121,9 @@ impl World {
         let result = Self {
             entity_ids,
             archetypes,
-            commands: Mutex::new(Vec::default()),
             resources: ResourceStorage::new(),
+            commands: Mutex::default(),
+            resource_commands: Mutex::default(),
         };
         let mut result = Box::pin(result);
         let void_store = Box::pin(ArchetypeStorage::empty());
@@ -133,6 +137,10 @@ impl World {
 
     pub fn apply_commands(&mut self) -> WorldResult<()> {
         let commands = std::mem::take(&mut *self.commands.lock().unwrap());
+        for cmd in commands {
+            cmd.apply(self)?;
+        }
+        let commands = std::mem::take(&mut *self.resource_commands.lock().unwrap());
         for cmd in commands {
             cmd.apply(self)?;
         }
@@ -279,5 +287,17 @@ impl World {
         let res = unsafe { NonNull::new_unchecked(new_arch.as_mut().get_mut() as *mut _) };
         self.archetypes.insert(new_arch.ty(), new_arch);
         (res, moved_entity)
+    }
+
+    pub fn insert_resource<T: 'static + Clone>(&mut self, value: T) {
+        self.resources.insert(value);
+    }
+
+    pub fn remove_resource<T: 'static>(&mut self) -> Option<Box<T>> {
+        self.resources.remove::<T>()
+    }
+
+    pub fn get_resource<T: 'static>(&self) -> Option<&T> {
+        self.resources.fetch::<T>()
     }
 }

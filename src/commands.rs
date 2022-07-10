@@ -5,6 +5,7 @@ use crate::{entity_id::EntityId, Component, World, WorldError};
 pub struct Commands {
     world: NonNull<World>,
     entity_cmd: Vec<EntityCommands>,
+    resource_cmd: Vec<ErasedResourceCommand>,
 }
 
 impl Drop for Commands {
@@ -25,6 +26,7 @@ impl Commands {
         Self {
             world: NonNull::from(w),
             entity_cmd: Vec::default(),
+            resource_cmd: Vec::default(),
         }
     }
 
@@ -49,6 +51,18 @@ impl Commands {
             action: EntityAction::Delete(id),
             payload: Vec::default(),
         });
+    }
+
+    pub fn insert_resource<T: 'static + Clone>(&mut self, resource: T) {
+        self.resource_cmd
+            .push(ErasedResourceCommand::new(ResourceCommand::Insert(
+                resource,
+            )));
+    }
+
+    pub fn remove_resource<T: 'static + Clone>(&mut self) {
+        self.resource_cmd
+            .push(ErasedResourceCommand::new(ResourceCommand::<T>::Delete));
     }
 }
 
@@ -143,6 +157,60 @@ impl<T: Component> ComponentCommand<T> {
             }
             ComponentCommand::Delete => {
                 world.remove_component::<T>(entity_id)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+pub(crate) struct ErasedResourceCommand {
+    inner: *mut u8,
+    apply: fn(NonNull<u8>, &mut World) -> Result<(), WorldError>,
+    drop: fn(NonNull<u8>),
+}
+
+impl Drop for ErasedResourceCommand {
+    fn drop(&mut self) {
+        (self.drop)(NonNull::new(self.inner).unwrap());
+    }
+}
+
+impl ErasedResourceCommand {
+    pub fn new<T: 'static + Clone>(inner: ResourceCommand<T>) -> Self {
+        let inner = (Box::leak(Box::new(inner)) as *mut ResourceCommand<T>).cast();
+        Self {
+            inner,
+            drop: |ptr| {
+                let mut ptr = ptr.cast();
+                let _ptr: Box<ResourceCommand<T>> = unsafe { Box::from_raw(ptr.as_mut()) };
+            },
+            apply: |ptr, world| {
+                let mut ptr = ptr.cast();
+                let ptr: Box<ResourceCommand<T>> = unsafe { Box::from_raw(ptr.as_mut()) };
+                ptr.apply(world)?;
+                Ok(())
+            },
+        }
+    }
+
+    pub fn apply(self, world: &mut World) -> Result<(), WorldError> {
+        (self.apply)(NonNull::new(self.inner).unwrap(), world)
+    }
+}
+
+pub(crate) enum ResourceCommand<T> {
+    Insert(T),
+    Delete,
+}
+
+impl<T: 'static + Clone> ResourceCommand<T> {
+    fn apply(self, world: &mut World) -> Result<(), WorldError> {
+        match self {
+            ResourceCommand::Insert(comp) => {
+                world.insert_resource::<T>(comp);
+            }
+            ResourceCommand::Delete => {
+                world.remove_resource::<T>();
             }
         }
         Ok(())
