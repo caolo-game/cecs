@@ -300,4 +300,8 @@ impl World {
     pub fn get_resource<T: 'static>(&self) -> Option<&T> {
         self.resources.fetch::<T>()
     }
+
+    pub fn get_resource_mut<T: 'static>(&mut self) -> Option<&mut T> {
+        self.resources.fetch_mut::<T>()
+    }
 }

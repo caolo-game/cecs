@@ -3,10 +3,8 @@ There are many like it, but this one is mine.
 
 ## TODO
 
-- [X] Command interface
+- [x] Command interface
+- [ ] System stages + systems
 - [ ] Scheduling
 - [ ] Soundness guarantees
-- [ ] Generalize DB over ID
-- [ ] Allow joining across DBs
-- [ ] Common DB for multiple IDs
-- [X] Optional Query
+- [x] Optional Query
