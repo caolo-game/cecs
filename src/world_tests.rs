@@ -1,4 +1,5 @@
 use crate::entity_id::EntityId;
+use crate::query::resource_query::Res;
 use crate::query::{filters::WithOut, Query};
 
 use super::*;
@@ -231,7 +232,6 @@ fn filtered_query_test() {
 #[test]
 fn resource_test() {
     let mut world = World::new(4);
-
     world.insert_resource(4i32);
 
     let res = world.get_resource::<i32>().unwrap();
@@ -240,4 +240,16 @@ fn resource_test() {
     world.remove_resource::<i32>();
 
     assert!(world.get_resource::<i32>().is_none());
+}
+
+#[test]
+fn resource_query_test() {
+    let mut world = World::new(4);
+    world.insert_resource(4i32);
+
+    fn sys(res: Res<i32>) {
+        assert_eq!(*res, 4i32);
+    }
+
+    sys(Res::new(&world));
 }

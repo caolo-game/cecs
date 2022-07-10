@@ -1,4 +1,6 @@
 pub mod filters;
+pub mod resource_query;
+
 #[cfg(test)]
 mod query_tests;
 
@@ -91,9 +93,7 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<Option<&'a T>> {
 
     fn iter_prim(archetype: &'a ArchetypeStorage) -> Self::It {
         match archetype.components.get(&TypeId::of::<T>()) {
-            Some(columns) => {
-                Box::new(unsafe { (*columns.get()).as_inner::<T>().iter() }.map(Some))
-            }
+            Some(columns) => Box::new(unsafe { (*columns.get()).as_inner::<T>().iter() }.map(Some)),
             None => Box::new((0..archetype.rows).map(|_| None)),
         }
     }
