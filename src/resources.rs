@@ -16,6 +16,12 @@ impl Clone for ResourceStorage {
     }
 }
 
+impl Default for ResourceStorage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ResourceStorage {
     pub fn new() -> Self {
         Self {
@@ -37,13 +43,13 @@ impl ResourceStorage {
     pub fn fetch<T: 'static>(&self) -> Option<&T> {
         self.resources
             .get(&TypeId::of::<T>())
-            .map(|table| unsafe { (&*table.get()).as_inner::<T>() })
+            .map(|table| unsafe { (*table.get()).as_inner::<T>() })
     }
 
     pub fn fetch_mut<T: 'static>(&self) -> Option<&mut T> {
         self.resources
             .get(&TypeId::of::<T>())
-            .map(|table| unsafe { (&mut *table.get()).as_inner_mut::<T>() })
+            .map(|table| unsafe { (*table.get()).as_inner_mut::<T>() })
     }
 }
 
