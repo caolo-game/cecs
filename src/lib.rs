@@ -7,6 +7,7 @@ use commands::EntityCommands;
 use db::ArchetypeStorage;
 use entity_id::EntityId;
 use handle_table::EntityIndex;
+use resources::ResourceStorage;
 
 pub mod commands;
 pub(crate) mod db;
@@ -14,6 +15,7 @@ pub mod entity_id;
 pub mod handle_table;
 pub mod prelude;
 pub mod query;
+pub mod resources;
 
 #[cfg(test)]
 mod world_tests;
@@ -23,6 +25,7 @@ pub struct World {
     pub(crate) entity_ids: EntityIndex,
     pub(crate) archetypes: HashMap<TypeHash, Pin<Box<ArchetypeStorage>>>,
     pub(crate) commands: Mutex<Vec<EntityCommands>>,
+    pub(crate) resources: ResourceStorage,
 }
 
 impl Clone for World {
@@ -42,10 +45,13 @@ impl Clone for World {
                 .unwrap();
         }
 
+        let resources = self.resources.clone();
+
         Self {
             entity_ids,
             archetypes,
             commands,
+            resources,
         }
     }
 }
@@ -113,6 +119,7 @@ impl World {
             entity_ids,
             archetypes,
             commands: Mutex::new(Vec::default()),
+            resources: ResourceStorage::new(),
         };
         let mut result = Box::pin(result);
         let void_store = Box::pin(ArchetypeStorage::empty());
