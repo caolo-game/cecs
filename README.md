@@ -8,3 +8,4 @@ There are many like it, but this one is mine.
 - [ ] Scheduling
 - [ ] Soundness guarantees
 - [x] Optional Query
+- [ ] Events
