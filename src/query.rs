@@ -1,17 +1,20 @@
+pub mod filters;
 #[cfg(test)]
 mod query_tests;
 
 use crate::{db::ArchetypeStorage, entity_id::EntityId, Component, Index, RowIndex};
+use filters::Filter;
 use std::{any::TypeId, marker::PhantomData};
 
-pub struct Query<'a, T> {
+pub struct Query<'a, T, F = ()> {
     world: &'a crate::World,
-    _m: PhantomData<T>,
+    _m: PhantomData<(T, F)>,
 }
 
-impl<'a, T> Query<'a, T>
+impl<'a, T, F> Query<'a, T, F>
 where
     ArchQuery<T>: QueryFragment<'a>,
+    F: Filter,
 {
     pub fn new(world: &'a crate::World) -> Self {
         Query {
@@ -24,12 +27,19 @@ where
         self.world
             .archetypes
             .iter()
+            .filter(|(_, arch)| F::filter(arch))
             .flat_map(|(_, arch)| ArchQuery::<T>::default().iter(arch))
     }
 
     pub fn fetch(&self, id: EntityId) -> Option<<ArchQuery<T> as QueryFragment<'a>>::Item> {
         let (arch, index) = self.world.entity_ids.read(id).ok()?;
-        unsafe { ArchQuery::<T>::default().fetch(arch.as_ref(), index) }
+        unsafe {
+            if !F::filter(arch.as_ref()) {
+                return None;
+            }
+
+            ArchQuery::<T>::default().fetch(arch.as_ref(), index)
+        }
     }
 
     /// fetch the first row of the query

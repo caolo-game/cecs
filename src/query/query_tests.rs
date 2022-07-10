@@ -1,6 +1,9 @@
-use crate::entity_id::EntityId;
+use crate::{
+    entity_id::EntityId,
+    query::filters::{Filter, Or},
+};
 
-use super::*;
+use super::{filters::With, *};
 
 #[test]
 fn iter_query_test() {
@@ -141,4 +144,32 @@ fn can_mix_mut_ref_test() {
     let _ = ArchQuery::<(&String, &mut u32)>::default();
     let _ = ArchQuery::<(&mut String, &mut u32)>::default();
     let _ = ArchQuery::<(&mut u32, &mut String)>::default();
+}
+
+#[test]
+fn basic_filter_test() {
+    let mut archetype = ArchetypeStorage::empty()
+        .extend_with_column::<String>()
+        .extend_with_column::<u32>();
+
+    {
+        let id = EntityId::new(0, 1);
+        let index = archetype.insert_entity(id);
+        archetype.set_component(index, "pog".to_string());
+        archetype.set_component(index, 42u32);
+
+        let id = EntityId::new(32, 1);
+        let index = archetype.insert_entity(id);
+        archetype.set_component(index, "pog32".to_string());
+        archetype.set_component(index, 69u32);
+    }
+
+    assert!(!With::<i32>::filter(&archetype));
+
+    assert!(With::<u32>::filter(&archetype));
+
+    assert!(Or::<With<u32>, With<i32>>::filter(&archetype));
+    assert!(<(With::<u32>, With::<String>) as Filter>::filter(
+        &archetype
+    ));
 }

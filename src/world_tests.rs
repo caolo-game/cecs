@@ -1,5 +1,5 @@
 use crate::entity_id::EntityId;
-use crate::query::Query;
+use crate::query::{filters::WithOut, Query};
 
 use super::*;
 
@@ -208,5 +208,22 @@ fn world_clone_test() {
 
     for (a, b) in a.zip(b) {
         assert_eq!(a, b);
+    }
+}
+
+#[test]
+fn filtered_query_test() {
+    let mut world = World::new(500);
+
+    for i in 0..4 {
+        let id = world.insert_entity().unwrap();
+        world.set_component(id, Foo { value: i }).unwrap();
+        if i % 2 == 0 {
+            world.set_component(id, "poggers".to_string()).unwrap();
+        }
+    }
+
+    for i in Query::<&Foo, WithOut<String>>::new(&world).iter() {
+        assert!(i.value % 2 == 1);
     }
 }
