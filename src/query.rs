@@ -4,13 +4,27 @@ pub mod resource_query;
 #[cfg(test)]
 mod query_tests;
 
-use crate::{db::ArchetypeStorage, entity_id::EntityId, Component, Index, RowIndex};
+use crate::{db::ArchetypeStorage, entity_id::EntityId, Component, Index, RowIndex, World};
 use filters::Filter;
 use std::{any::TypeId, marker::PhantomData};
+
+pub trait WorldQuery<'a> {
+    fn new(db: &'a World) -> Self;
+}
 
 pub struct Query<'a, T, F = ()> {
     world: &'a crate::World,
     _m: PhantomData<(T, F)>,
+}
+
+impl<'a, T, F> WorldQuery<'a> for Query<'a, T, F>
+where
+    ArchQuery<T>: QueryFragment<'a>,
+    F: Filter,
+{
+    fn new(db: &'a World) -> Self {
+        Self::new(db)
+    }
 }
 
 impl<'a, T, F> Query<'a, T, F>

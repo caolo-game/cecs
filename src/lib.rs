@@ -16,12 +16,12 @@ pub mod handle_table;
 pub mod prelude;
 pub mod query;
 pub mod resources;
+pub mod systems;
 
 #[cfg(test)]
 mod world_tests;
 
 pub struct World {
-    // TODO: world can be generic over Index
     pub(crate) entity_ids: EntityIndex,
     pub(crate) archetypes: HashMap<TypeHash, Pin<Box<ArchetypeStorage>>>,
     pub(crate) resources: ResourceStorage,

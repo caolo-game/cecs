@@ -1,6 +1,6 @@
 use std::ptr::NonNull;
 
-use crate::{entity_id::EntityId, Component, World, WorldError};
+use crate::{entity_id::EntityId, query::WorldQuery, Component, World, WorldError};
 
 pub struct Commands {
     world: NonNull<World>,
@@ -18,6 +18,12 @@ impl Drop for Commands {
                 .unwrap()
                 .extend(std::mem::take(&mut self.entity_cmd).into_iter());
         }
+    }
+}
+
+impl<'a> WorldQuery<'a> for Commands {
+    fn new(w: &'a World) -> Self {
+        Self::new(w)
     }
 }
 

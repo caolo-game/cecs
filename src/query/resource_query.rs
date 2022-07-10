@@ -3,9 +3,17 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
+use super::WorldQuery;
+
 pub struct Res<'a, T> {
     inner: &'a T,
     _m: PhantomData<T>,
+}
+
+impl<'a, T: 'static> WorldQuery<'a> for Res<'a, T> {
+    fn new(db: &'a crate::World) -> Self {
+        Self::new(db)
+    }
 }
 
 impl<'a, T: 'static> Res<'a, T> {
@@ -52,5 +60,11 @@ impl<'a, T: 'static> Deref for ResMut<'a, T> {
 impl<'a, T: 'static> DerefMut for ResMut<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.inner
+    }
+}
+
+impl<'a, T: 'static> WorldQuery<'a> for ResMut<'a, T> {
+    fn new(db: &'a crate::World) -> Self {
+        Self::new(db)
     }
 }
