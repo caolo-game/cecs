@@ -23,8 +23,7 @@ fn iter_query_test() {
         archetype.set_component(index, 69u32);
     }
 
-    let q = ArchQuery::<&String>::default();
-    for (comp, exp) in q.iter(&archetype).zip(["pog", "pog32"].iter()) {
+    for (comp, exp) in ArchQuery::<&String>::iter(&archetype).zip(["pog", "pog32"].iter()) {
         assert_eq!(*comp, *exp);
     }
 }
@@ -47,8 +46,9 @@ fn joined_iter_test() {
         archetype.set_component(index, 69u32);
     }
 
-    let q = ArchQuery::<(&String, &u32)>::default();
-    for ((s, i), (exps, expi)) in q.iter(&archetype).zip([("pog", 42), ("pog32", 69)].iter()) {
+    for ((s, i), (exps, expi)) in
+        ArchQuery::<(&String, &u32)>::iter(&archetype).zip([("pog", 42), ("pog32", 69)].iter())
+    {
         assert_eq!(&*s, exps);
         assert_eq!(&*i, expi);
     }
@@ -72,8 +72,7 @@ fn non_existent_component_iter_is_empty_test() {
         archetype.set_component(index, 69u32);
     }
 
-    let q = ArchQuery::<(&String, &u64)>::default();
-    for _ in q.iter(&archetype) {
+    for _ in ArchQuery::<(&String, &u64)>::iter(&archetype) {
         panic!();
     }
 }
@@ -96,13 +95,11 @@ fn mutable_iterator_test() {
         archetype.set_component(index, 69u32);
     }
 
-    let q = ArchQuery::<&mut String>::default();
-    for s in q.iter(&mut archetype) {
+    for s in ArchQuery::<&mut String>::iter(&mut archetype) {
         *s = "winnie".to_string();
     }
 
-    let q = ArchQuery::<&String>::default();
-    for s in q.iter(&archetype) {
+    for s in ArchQuery::<&String>::iter(&archetype) {
         assert_eq!(*s, "winnie");
     }
 }
@@ -125,25 +122,25 @@ fn can_mix_mut_ref_test() {
         archetype.set_component(index, 69u32);
     }
 
-    for (_a, b) in ArchQuery::<(&String, &mut u32)>::default().iter(&archetype) {
+    for (_a, b) in ArchQuery::<(&String, &mut u32)>::iter(&archetype) {
         *b = 42424242;
     }
-    for val in ArchQuery::<&u32>::default().iter(&archetype) {
+    for val in ArchQuery::<&u32>::iter(&archetype) {
         assert_eq!(*val, 42424242);
     }
 
-    for (a, _b) in ArchQuery::<(&mut String, &u32)>::default().iter(&archetype) {
+    for (a, _b) in ArchQuery::<(&mut String, &u32)>::iter(&archetype) {
         *a = "winnie".to_string();
     }
 
-    for val in ArchQuery::<&String>::default().iter(&archetype) {
+    for val in ArchQuery::<&String>::iter(&archetype) {
         assert_eq!(*val, "winnie");
     }
 
     // test if compiles
-    let _ = ArchQuery::<(&String, &mut u32)>::default();
-    let _ = ArchQuery::<(&mut String, &mut u32)>::default();
-    let _ = ArchQuery::<(&mut u32, &mut String)>::default();
+    let _: ArchQuery<(&String, &mut u32)>;
+    let _: ArchQuery<(&mut String, &mut u32)>;
+    let _: ArchQuery<(&mut u32, &mut String)>;
 }
 
 #[test]
