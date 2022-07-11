@@ -26,11 +26,19 @@ impl<'a> WorldQuery<'a> for Commands {
         Self::new(w)
     }
 
-    fn exclusive_components(_set: &mut std::collections::HashSet<std::any::TypeId>) {
+    fn components_mut(_set: &mut std::collections::HashSet<std::any::TypeId>) {
         // noop
     }
 
-    fn exclusive_resources(_set: &mut std::collections::HashSet<std::any::TypeId>) {
+    fn resources_mut(_set: &mut std::collections::HashSet<std::any::TypeId>) {
+        // noop
+    }
+
+    fn components_const(_set: &mut std::collections::HashSet<std::any::TypeId>) {
+        // noop
+    }
+
+    fn resources_const(_set: &mut std::collections::HashSet<std::any::TypeId>) {
         // noop
     }
 }

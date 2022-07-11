@@ -12,9 +12,13 @@ pub trait WorldQuery<'a> {
     fn new(db: &'a World) -> Self;
 
     /// List of component types this query needs exclusive access to
-    fn exclusive_components(set: &mut HashSet<TypeId>);
+    fn components_mut(set: &mut HashSet<TypeId>);
+    /// List of component types this query needs
+    fn components_const(set: &mut HashSet<TypeId>);
     /// List of resource types this query needs exclusive access to
-    fn exclusive_resources(set: &mut HashSet<TypeId>);
+    fn resources_mut(set: &mut HashSet<TypeId>);
+    /// List of resource types this query needs
+    fn resources_const(set: &mut HashSet<TypeId>);
 }
 
 pub struct Query<'a, T, F = ()> {
@@ -31,11 +35,19 @@ where
         Self::new(db)
     }
 
-    fn exclusive_components(set: &mut HashSet<TypeId>) {
-        <ArchQuery<T> as QueryFragment>::exclusive_types(set);
+    fn components_mut(set: &mut HashSet<TypeId>) {
+        <ArchQuery<T> as QueryFragment>::types_mut(set);
     }
 
-    fn exclusive_resources(_set: &mut HashSet<TypeId>) {
+    fn resources_mut(_set: &mut HashSet<TypeId>) {
+        // noop
+    }
+
+    fn components_const(set: &mut HashSet<TypeId>) {
+        <ArchQuery<T> as QueryFragment>::types_const(set);
+    }
+
+    fn resources_const(_set: &mut HashSet<TypeId>) {
         // noop
     }
 }
@@ -88,7 +100,8 @@ pub trait QueryFragment<'a> {
 
     fn iter(archetype: &'a ArchetypeStorage) -> Self::It;
     fn fetch(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item>;
-    fn exclusive_types(set: &mut HashSet<TypeId>);
+    fn types_mut(set: &mut HashSet<TypeId>);
+    fn types_const(set: &mut HashSet<TypeId>);
 }
 
 pub trait QueryPrimitive<'a> {
@@ -97,7 +110,8 @@ pub trait QueryPrimitive<'a> {
 
     fn iter_prim(archetype: &'a ArchetypeStorage) -> Self::It;
     fn fetch_prim(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item>;
-    fn exclusive_types(set: &mut HashSet<TypeId>);
+    fn types_mut(set: &mut HashSet<TypeId>);
+    fn types_const(set: &mut HashSet<TypeId>);
 }
 
 impl<'a> QueryPrimitive<'a> for ArchQuery<EntityId> {
@@ -112,8 +126,13 @@ impl<'a> QueryPrimitive<'a> for ArchQuery<EntityId> {
         archetype.entities.get(index as usize).copied()
     }
 
-    fn exclusive_types(_set: &mut HashSet<TypeId>) {
+    fn types_mut(_set: &mut HashSet<TypeId>) {
         // noop
+    }
+
+    fn types_const(_set: &mut HashSet<TypeId>) {
+        // noop
+        // entity_id is not considered while scheduling
     }
 }
 
@@ -135,8 +154,12 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<Option<&'a T>> {
         Some(archetype.get_component::<T>(index))
     }
 
-    fn exclusive_types(_set: &mut HashSet<TypeId>) {
+    fn types_mut(_set: &mut HashSet<TypeId>) {
         // noop
+    }
+
+    fn types_const(set: &mut HashSet<TypeId>) {
+        set.insert(TypeId::of::<T>());
     }
 }
 
@@ -157,7 +180,11 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<Option<&'a mut T>> {
         Some(archetype.get_component_mut::<T>(index))
     }
 
-    fn exclusive_types(set: &mut HashSet<TypeId>) {
+    fn types_mut(set: &mut HashSet<TypeId>) {
+        set.insert(TypeId::of::<T>());
+    }
+
+    fn types_const(set: &mut HashSet<TypeId>) {
         set.insert(TypeId::of::<T>());
     }
 }
@@ -179,8 +206,12 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<&'a T> {
         archetype.get_component::<T>(index)
     }
 
-    fn exclusive_types(_set: &mut HashSet<TypeId>) {
+    fn types_mut(_set: &mut HashSet<TypeId>) {
         // noop
+    }
+
+    fn types_const(set: &mut HashSet<TypeId>) {
+        set.insert(TypeId::of::<T>());
     }
 }
 
@@ -201,7 +232,11 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<&'a mut T> {
         archetype.get_component_mut::<T>(index)
     }
 
-    fn exclusive_types(set: &mut HashSet<TypeId>) {
+    fn types_mut(set: &mut HashSet<TypeId>) {
+        set.insert(TypeId::of::<T>());
+    }
+
+    fn types_const(set: &mut HashSet<TypeId>) {
         set.insert(TypeId::of::<T>());
     }
 }
@@ -221,8 +256,12 @@ where
         Self::fetch_prim(archetype, index)
     }
 
-    fn exclusive_types(set: &mut HashSet<TypeId>) {
-        <Self as QueryPrimitive>::exclusive_types(set);
+    fn types_mut(set: &mut HashSet<TypeId>) {
+        <Self as QueryPrimitive>::types_mut(set);
+    }
+
+    fn types_const(set: &mut HashSet<TypeId>) {
+        <Self as QueryPrimitive>::types_const(set);
     }
 }
 
@@ -284,8 +323,12 @@ macro_rules! impl_tuple {
                 ))
             }
 
-            fn exclusive_types(set: &mut HashSet<TypeId>) {
-                $(<ArchQuery<$t> as QueryPrimitive>::exclusive_types(set));+
+            fn types_mut(set: &mut HashSet<TypeId>) {
+                $(<ArchQuery<$t> as QueryPrimitive>::types_mut(set));+
+            }
+
+            fn types_const(set: &mut HashSet<TypeId>) {
+                $(<ArchQuery<$t> as QueryPrimitive>::types_const(set));+
             }
         }
     };

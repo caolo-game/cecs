@@ -1,4 +1,5 @@
 use std::{
+    any::TypeId,
     marker::PhantomData,
     ops::{Deref, DerefMut},
 };
@@ -15,12 +16,20 @@ impl<'a, T: 'static> WorldQuery<'a> for Res<'a, T> {
         Self::new(db)
     }
 
-    fn exclusive_components(_set: &mut std::collections::HashSet<std::any::TypeId>) {
+    fn components_mut(_set: &mut std::collections::HashSet<TypeId>) {
         // noop
     }
 
-    fn exclusive_resources(_set: &mut std::collections::HashSet<std::any::TypeId>) {
+    fn resources_mut(_set: &mut std::collections::HashSet<TypeId>) {
         // noop
+    }
+
+    fn components_const(_set: &mut std::collections::HashSet<TypeId>) {
+        // noop
+    }
+
+    fn resources_const(set: &mut std::collections::HashSet<TypeId>) {
+        set.insert(TypeId::of::<T>());
     }
 }
 
@@ -76,11 +85,19 @@ impl<'a, T: 'static> WorldQuery<'a> for ResMut<'a, T> {
         Self::new(db)
     }
 
-    fn exclusive_components(_set: &mut std::collections::HashSet<std::any::TypeId>) {
+    fn components_mut(_set: &mut std::collections::HashSet<TypeId>) {
         // noop
     }
 
-    fn exclusive_resources(set: &mut std::collections::HashSet<std::any::TypeId>) {
-        set.insert(std::any::TypeId::of::<T>());
+    fn resources_mut(set: &mut std::collections::HashSet<TypeId>) {
+        set.insert(TypeId::of::<T>());
+    }
+
+    fn resources_const(set: &mut std::collections::HashSet<TypeId>) {
+        set.insert(TypeId::of::<T>());
+    }
+
+    fn components_const(_set: &mut std::collections::HashSet<TypeId>) {
+        // noop
     }
 }
