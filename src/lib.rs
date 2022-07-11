@@ -10,13 +10,15 @@ use handle_table::EntityIndex;
 use resources::ResourceStorage;
 
 pub mod commands;
-pub(crate) mod db;
 pub mod entity_id;
 pub mod handle_table;
 pub mod prelude;
 pub mod query;
 pub mod resources;
 pub mod systems;
+
+pub(crate) mod db;
+mod scheduler;
 
 #[cfg(test)]
 mod world_tests;

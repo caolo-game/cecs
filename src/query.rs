@@ -6,10 +6,15 @@ mod query_tests;
 
 use crate::{db::ArchetypeStorage, entity_id::EntityId, Component, Index, RowIndex, World};
 use filters::Filter;
-use std::{any::TypeId, marker::PhantomData};
+use std::{any::TypeId, collections::HashSet, marker::PhantomData};
 
 pub trait WorldQuery<'a> {
     fn new(db: &'a World) -> Self;
+
+    /// List of component types this query needs exclusive access to
+    fn exclusive_components(set: &mut HashSet<TypeId>);
+    /// List of resource types this query needs exclusive access to
+    fn exclusive_resources(set: &mut HashSet<TypeId>);
 }
 
 pub struct Query<'a, T, F = ()> {
@@ -24,6 +29,14 @@ where
 {
     fn new(db: &'a World) -> Self {
         Self::new(db)
+    }
+
+    fn exclusive_components(set: &mut HashSet<TypeId>) {
+        <ArchQuery<T> as QueryFragment>::exclusive_types(set);
+    }
+
+    fn exclusive_resources(_set: &mut HashSet<TypeId>) {
+        // noop
     }
 }
 
@@ -75,6 +88,7 @@ pub trait QueryFragment<'a> {
 
     fn iter(archetype: &'a ArchetypeStorage) -> Self::It;
     fn fetch(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item>;
+    fn exclusive_types(set: &mut HashSet<TypeId>);
 }
 
 pub trait QueryPrimitive<'a> {
@@ -83,6 +97,7 @@ pub trait QueryPrimitive<'a> {
 
     fn iter_prim(archetype: &'a ArchetypeStorage) -> Self::It;
     fn fetch_prim(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item>;
+    fn exclusive_types(set: &mut HashSet<TypeId>);
 }
 
 impl<'a> QueryPrimitive<'a> for ArchQuery<EntityId> {
@@ -95,6 +110,10 @@ impl<'a> QueryPrimitive<'a> for ArchQuery<EntityId> {
 
     fn fetch_prim(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item> {
         archetype.entities.get(index as usize).copied()
+    }
+
+    fn exclusive_types(_set: &mut HashSet<TypeId>) {
+        // noop
     }
 }
 
@@ -115,6 +134,10 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<Option<&'a T>> {
     fn fetch_prim(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item> {
         Some(archetype.get_component::<T>(index))
     }
+
+    fn exclusive_types(_set: &mut HashSet<TypeId>) {
+        // noop
+    }
 }
 
 impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<Option<&'a mut T>> {
@@ -132,6 +155,10 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<Option<&'a mut T>> {
 
     fn fetch_prim(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item> {
         Some(archetype.get_component_mut::<T>(index))
+    }
+
+    fn exclusive_types(set: &mut HashSet<TypeId>) {
+        set.insert(TypeId::of::<T>());
     }
 }
 
@@ -151,6 +178,10 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<&'a T> {
     fn fetch_prim(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item> {
         archetype.get_component::<T>(index)
     }
+
+    fn exclusive_types(_set: &mut HashSet<TypeId>) {
+        // noop
+    }
 }
 
 impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<&'a mut T> {
@@ -169,6 +200,10 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<&'a mut T> {
     fn fetch_prim(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item> {
         archetype.get_component_mut::<T>(index)
     }
+
+    fn exclusive_types(set: &mut HashSet<TypeId>) {
+        set.insert(TypeId::of::<T>());
+    }
 }
 
 impl<'a, T> QueryFragment<'a> for ArchQuery<T>
@@ -184,6 +219,10 @@ where
 
     fn fetch(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item> {
         Self::fetch_prim(archetype, index)
+    }
+
+    fn exclusive_types(set: &mut HashSet<TypeId>) {
+        <Self as QueryPrimitive>::exclusive_types(set);
     }
 }
 
@@ -243,6 +282,10 @@ macro_rules! impl_tuple {
                         ArchQuery::<$t>::fetch(archetype, index)?,
                     )*
                 ))
+            }
+
+            fn exclusive_types(set: &mut HashSet<TypeId>) {
+                $(<ArchQuery<$t> as QueryPrimitive>::exclusive_types(set));+
             }
         }
     };

@@ -25,6 +25,14 @@ impl<'a> WorldQuery<'a> for Commands {
     fn new(w: &'a World) -> Self {
         Self::new(w)
     }
+
+    fn exclusive_components(_set: &mut std::collections::HashSet<std::any::TypeId>) {
+        // noop
+    }
+
+    fn exclusive_resources(_set: &mut std::collections::HashSet<std::any::TypeId>) {
+        // noop
+    }
 }
 
 impl Commands {

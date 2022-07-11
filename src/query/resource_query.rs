@@ -14,6 +14,14 @@ impl<'a, T: 'static> WorldQuery<'a> for Res<'a, T> {
     fn new(db: &'a crate::World) -> Self {
         Self::new(db)
     }
+
+    fn exclusive_components(_set: &mut std::collections::HashSet<std::any::TypeId>) {
+        // noop
+    }
+
+    fn exclusive_resources(_set: &mut std::collections::HashSet<std::any::TypeId>) {
+        // noop
+    }
 }
 
 impl<'a, T: 'static> Res<'a, T> {
@@ -66,5 +74,13 @@ impl<'a, T: 'static> DerefMut for ResMut<'a, T> {
 impl<'a, T: 'static> WorldQuery<'a> for ResMut<'a, T> {
     fn new(db: &'a crate::World) -> Self {
         Self::new(db)
+    }
+
+    fn exclusive_components(_set: &mut std::collections::HashSet<std::any::TypeId>) {
+        // noop
+    }
+
+    fn exclusive_resources(set: &mut std::collections::HashSet<std::any::TypeId>) {
+        set.insert(std::any::TypeId::of::<T>());
     }
 }
