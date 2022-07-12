@@ -8,5 +8,4 @@ There are many like it, but this one is mine.
 - [X] Scheduling
 - [ ] Soundness guarantees
 - [x] Optional Query
-- [ ] Events
 - [X] SystemStage should_run check
