@@ -9,3 +9,4 @@ There are many like it, but this one is mine.
 - [ ] Soundness guarantees
 - [x] Optional Query
 - [ ] Events
+- [ ] SystemStage should_run check
