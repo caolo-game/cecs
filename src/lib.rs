@@ -348,10 +348,14 @@ impl World {
     where
         S: systems::IntoSystem<'a, P>,
     {
-        // # SAFETY
-        // lifetimes are managed by the World instance from now
-        let world: &'a World = unsafe { std::mem::transmute(self) };
-        (system.system().execute)(world);
+        fn run_system<'a>(world: &'a World, system: systems::ErasedSystem) {
+            let execute: &dyn Fn(&'a World) =
+                unsafe { std::mem::transmute(system.execute.as_ref()) };
+            (execute)(world);
+        }
+        run_system(self, system.system());
+        // apply commands immediately
+        self.apply_commands().unwrap();
     }
 
     pub fn tick<'a>(&'a mut self) {
