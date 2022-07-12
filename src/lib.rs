@@ -8,7 +8,7 @@ use db::ArchetypeStorage;
 use entity_id::EntityId;
 use handle_table::EntityIndex;
 use resources::ResourceStorage;
-use systems::{ShouldRunSystem, SystemStage};
+use systems::SystemStage;
 
 pub mod commands;
 pub mod entity_id;
@@ -355,15 +355,7 @@ impl World {
             tracing::trace!(stage_name = stage.name.as_ref(), "Update stage");
         }
         if let Some(condition) = stage.should_run.as_ref() {
-            fn run_system<'a>(
-                world: &'a World,
-                condition: &'a systems::ErasedSystem<'_, bool>,
-            ) -> bool {
-                let execute: &ShouldRunSystem<'_> =
-                    unsafe { std::mem::transmute(condition.execute.as_ref()) };
-                (execute)(world)
-            }
-            if !run_system(self, condition) {
+            if !unsafe { run_system(self, condition) } {
                 // stage should not run
                 return;
             }
@@ -378,31 +370,24 @@ impl World {
         }
         #[cfg(not(feature = "parallel"))]
         {
-            fn run_system<'a>(world: &'a World, system: &'a systems::ErasedSystem<'_, ()>) {
-                let execute: &dyn Fn(&'a World) =
-                    unsafe { std::mem::transmute(system.execute.as_ref()) };
-                (execute)(world);
-            }
             for system in stage.systems.iter() {
-                run_system(self, &system);
+                unsafe {
+                    run_system(self, &system);
+                }
             }
         }
         // apply commands immediately
         self.apply_commands().unwrap();
     }
 
-    pub fn run_system<'a, S, P>(&mut self, system: S)
+    pub fn run_system<'a, S, P, R>(&mut self, system: S) -> R
     where
-        S: systems::IntoSystem<'a, P, ()>,
+        S: systems::IntoSystem<'a, P, R>,
     {
-        fn run_system<'a>(world: &'a World, system: systems::ErasedSystem<()>) {
-            let execute: &dyn Fn(&'a World) =
-                unsafe { std::mem::transmute(system.execute.as_ref()) };
-            (execute)(world);
-        }
-        run_system(self, system.system());
+        let result = unsafe { run_system(self, &system.system()) };
         // apply commands immediately
         self.apply_commands().unwrap();
+        result
     }
 
     pub fn tick(&mut self) {
@@ -423,15 +408,7 @@ impl World {
             tracing::trace!(stage_name = stage.name.as_ref(), "Update stage");
         }
         if let Some(condition) = stage.should_run.as_ref() {
-            fn run_system<'a>(
-                world: &'a World,
-                condition: &'a systems::ErasedSystem<'_, bool>,
-            ) -> bool {
-                let execute: &ShouldRunSystem<'_> =
-                    unsafe { std::mem::transmute(condition.execute.as_ref()) };
-                (execute)(world)
-            }
-            if !run_system(self, condition) {
+            if !unsafe { run_system(self, condition) } {
                 // stage should not run
                 #[cfg(feature = "tracing")]
                 {
@@ -464,15 +441,7 @@ impl World {
         }
 
         if let Some(condition) = stage.should_run.as_ref() {
-            fn run_system<'a>(
-                world: &'a World,
-                condition: &'a systems::ErasedSystem<'_, bool>,
-            ) -> bool {
-                let execute: &ShouldRunSystem<'_> =
-                    unsafe { std::mem::transmute(condition.execute.as_ref()) };
-                (execute)(world)
-            }
-            if !run_system(self, condition) {
+            if !unsafe { run_system(self, condition) } {
                 // stage should not run
                 #[cfg(feature = "tracing")]
                 {
@@ -498,13 +467,27 @@ impl World {
     fn execute_systems<'a>(&'a self, group: &[usize], systems: &[systems::ErasedSystem<()>]) {
         use rayon::prelude::*;
 
-        group.par_iter().copied().for_each(|i| {
-            // # SAFETY
-            // this World instance is borrowed as mutable, so no other thread should have
-            // access to the internals
-            let execute: &dyn Fn(&'a World) =
-                unsafe { std::mem::transmute(systems[i].execute.as_ref()) };
-            (execute)(self);
+        group.par_iter().copied().for_each(|i| unsafe {
+            run_system(self, &systems[i]);
         });
     }
+}
+
+// # SAFETY
+// this World instance must be borrowed as mutable by the coller, so no other thread should have
+// access to the internals
+unsafe fn run_system<'a, R>(world: &'a World, sys: &'a systems::ErasedSystem<'_, R>) -> R {
+    #[cfg(feature = "tracing")]
+    {
+        tracing::trace!(system_name = sys.name.as_ref(), "Running system");
+    }
+
+    let execute: &systems::InnerSystem<'_, R> = { std::mem::transmute(sys.execute.as_ref()) };
+
+    #[cfg(feature = "tracing")]
+    {
+        tracing::trace!(system_name = sys.name.as_ref(), "Running system done");
+    }
+
+    (execute)(world)
 }

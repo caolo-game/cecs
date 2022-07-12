@@ -39,6 +39,7 @@ impl<'a> SystemStage<'a> {
 }
 
 pub struct ErasedSystem<'a, R> {
+    pub name: Cow<'a, str>,
     pub(crate) execute: Box<InnerSystem<'a, R>>,
     pub(crate) components_mut: fn() -> HashSet<TypeId>,
     pub(crate) resources_mut: fn() -> HashSet<TypeId>,
@@ -53,6 +54,7 @@ unsafe impl<R> Sync for ErasedSystem<'_, R> {}
 impl<'a, R> Clone for ErasedSystem<'a, R> {
     fn clone(&self) -> Self {
         Self {
+            name: self.name.clone(),
             execute: (self.factory)(),
             components_mut: self.components_mut,
             resources_mut: self.resources_mut,
@@ -86,6 +88,7 @@ macro_rules! impl_intosys_fn {
                         })
                     });
                 ErasedSystem {
+                    name: std::any::type_name::<F>().into(),
                     execute: factory(),
                     components_mut: || {
                         let mut res = HashSet::new();
