@@ -356,7 +356,7 @@ impl World {
         }
         #[cfg(not(feature = "parallel"))]
         {
-            fn run_system<'a>(world: &'a World, system: &'a systems::ErasedSystem<'_>) {
+            fn run_system<'a>(world: &'a World, system: &'a systems::ErasedSystem<'_, ()>) {
                 let execute: &dyn Fn(&'a World) =
                     unsafe { std::mem::transmute(system.execute.as_ref()) };
                 (execute)(world);
@@ -371,9 +371,9 @@ impl World {
 
     pub fn run_system<'a, S, P>(&mut self, system: S)
     where
-        S: systems::IntoSystem<'a, P>,
+        S: systems::IntoSystem<'a, P, ()>,
     {
-        fn run_system<'a>(world: &'a World, system: systems::ErasedSystem) {
+        fn run_system<'a>(world: &'a World, system: systems::ErasedSystem<()>) {
             let execute: &dyn Fn(&'a World) =
                 unsafe { std::mem::transmute(system.execute.as_ref()) };
             (execute)(world);
@@ -411,7 +411,7 @@ impl World {
     }
 
     #[cfg(feature = "parallel")]
-    fn execute_systems<'a>(&'a self, group: &[usize], systems: &[systems::ErasedSystem]) {
+    fn execute_systems<'a>(&'a self, group: &[usize], systems: &[systems::ErasedSystem<()>]) {
         use rayon::prelude::*;
 
         group.par_iter().copied().for_each(|i| {
