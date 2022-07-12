@@ -1,9 +1,9 @@
 use std::ptr::NonNull;
 
-use crate::{entity_id::EntityId, query::WorldQuery, Component, World, WorldError};
+use crate::{entity_id::EntityId, query::WorldQuery, Component, Mutex, World, WorldError};
 
 pub struct Commands {
-    world: NonNull<World>,
+    world: NonNull<Mutex<Vec<EntityCommands>>>,
     entity_cmd: Vec<EntityCommands>,
     resource_cmd: Vec<ErasedResourceCommand>,
 }
@@ -11,11 +11,9 @@ pub struct Commands {
 impl Drop for Commands {
     fn drop(&mut self) {
         unsafe {
-            let world = self.world.as_mut();
+            let world = self.world.as_ref();
             world
-                .commands
                 .lock()
-                .unwrap()
                 .extend(std::mem::take(&mut self.entity_cmd).into_iter());
         }
     }
@@ -46,7 +44,7 @@ impl<'a> WorldQuery<'a> for Commands {
 impl Commands {
     pub fn new(w: &World) -> Self {
         Self {
-            world: NonNull::from(w),
+            world: NonNull::from(&w.commands),
             entity_cmd: Vec::default(),
             resource_cmd: Vec::default(),
         }

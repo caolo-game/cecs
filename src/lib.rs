@@ -1,7 +1,7 @@
 #![feature(option_get_or_insert_default)]
 #![feature(const_type_id)]
 
-use std::{any::TypeId, collections::HashMap, pin::Pin, ptr::NonNull, sync::Mutex};
+use std::{any::TypeId, collections::HashMap, pin::Pin, ptr::NonNull};
 
 use commands::{EntityCommands, ErasedResourceCommand};
 use db::ArchetypeStorage;
@@ -23,6 +23,8 @@ mod scheduler;
 
 #[cfg(feature = "parallel")]
 pub use rayon;
+
+use parking_lot::Mutex;
 
 #[cfg(test)]
 mod world_tests;
@@ -160,11 +162,11 @@ impl World {
     }
 
     pub fn apply_commands(&mut self) -> WorldResult<()> {
-        let commands = std::mem::take(&mut *self.commands.lock().unwrap());
+        let commands = std::mem::take(&mut *self.commands.lock());
         for cmd in commands {
             cmd.apply(self)?;
         }
-        let commands = std::mem::take(&mut *self.resource_commands.lock().unwrap());
+        let commands = std::mem::take(&mut *self.resource_commands.lock());
         for cmd in commands {
             cmd.apply(self)?;
         }

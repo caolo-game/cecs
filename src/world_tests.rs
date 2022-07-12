@@ -258,7 +258,7 @@ fn resource_query_test() {
 fn world_execute_systems_test() {
     let mut world = World::new(4);
 
-    for i in 0..4_000 {
+    for i in 0..400 {
         let id = world.insert_entity().unwrap();
         world.set_component(id, Foo { value: i }).unwrap();
         if i % 2 == 0 {
