@@ -1,17 +1,34 @@
-use std::{any::TypeId, collections::HashSet};
+use std::{any::TypeId, collections::HashSet, rc::Rc};
 
 use crate::{query::WorldQuery, World};
 
+#[derive(Clone)]
 pub struct SystemStage<'a> {
     pub systems: Vec<ErasedSystem<'a>>,
 }
 
+pub type InnerSystem<'a> = Box<dyn Fn(&'a World) + 'a>;
+
 pub struct ErasedSystem<'a> {
-    pub(crate) execute: Box<dyn Fn(&'a World) + 'a>,
+    pub(crate) execute: InnerSystem<'a>,
     pub(crate) components_mut: fn() -> HashSet<TypeId>,
     pub(crate) resources_mut: fn() -> HashSet<TypeId>,
     pub(crate) components_const: fn() -> HashSet<TypeId>,
     pub(crate) resources_const: fn() -> HashSet<TypeId>,
+    factory: Rc<dyn Fn() -> InnerSystem<'a>>,
+}
+
+impl<'a> Clone for ErasedSystem<'a> {
+    fn clone(&self) -> Self {
+        Self {
+            execute: (self.factory)(),
+            components_mut: self.components_mut,
+            resources_mut: self.resources_mut,
+            components_const: self.components_const,
+            resources_const: self.resources_const,
+            factory: self.factory.clone(),
+        }
+    }
 }
 
 pub trait IntoSystem<'a, Param> {
@@ -23,15 +40,19 @@ macro_rules! impl_intosys_fn {
         impl<'a, F, $($t: WorldQuery<'a> + 'static,)*>
             IntoSystem<'a, ($($t),*,)> for F
         where
-            F: Fn($($t),*) + 'a,
+            F: Fn($($t),*) + 'static + Copy,
         {
             fn system(self) -> ErasedSystem<'a> {
+                let factory: Rc<dyn Fn()-> InnerSystem<'a>>
+                    = Rc::new(move || {
+                        Box::new(move |world: &'a World| {
+                            (self)(
+                                $(<$t>::new(world),)*
+                            );
+                        })
+                    });
                 ErasedSystem {
-                    execute: Box::new(move |world: &'a World| {
-                        self(
-                            $(<$t>::new(world),)*
-                        );
-                    }),
+                    execute: factory(),
                     components_mut: || {
                         let mut res = HashSet::new();
                         $(<$t>::components_mut(&mut res);)*
@@ -52,6 +73,7 @@ macro_rules! impl_intosys_fn {
                         $(<$t>::resources_const(&mut res);)*
                         res
                     },
+                    factory,
                 }
             }
         }

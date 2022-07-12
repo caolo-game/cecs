@@ -8,6 +8,7 @@ use db::ArchetypeStorage;
 use entity_id::EntityId;
 use handle_table::EntityIndex;
 use resources::ResourceStorage;
+use systems::SystemStage;
 
 pub mod commands;
 pub mod entity_id;
@@ -29,6 +30,9 @@ pub struct World {
     pub(crate) resources: ResourceStorage,
     pub(crate) commands: Mutex<Vec<EntityCommands>>,
     pub(crate) resource_commands: Mutex<Vec<ErasedResourceCommand>>,
+    pub(crate) systems: Vec<SystemStage<'static>>,
+    // for each system: a group of parallel systems
+    pub(crate) schedule: Vec<Vec<Vec<usize>>>,
 }
 
 impl Clone for World {
@@ -51,12 +55,17 @@ impl Clone for World {
 
         let resources = self.resources.clone();
 
+        let systems = self.systems.clone();
+        let schedule = self.schedule.clone();
+
         Self {
             entity_ids,
             archetypes,
             commands,
             resources,
             resource_commands,
+            systems,
+            schedule,
         }
     }
 }
@@ -126,6 +135,8 @@ impl World {
             resources: ResourceStorage::new(),
             commands: Mutex::default(),
             resource_commands: Mutex::default(),
+            systems: Default::default(),
+            schedule: Default::default(),
         };
         let mut result = Box::pin(result);
         let void_store = Box::pin(ArchetypeStorage::empty());
@@ -305,5 +316,32 @@ impl World {
 
     pub fn get_resource_mut<T: 'static>(&mut self) -> Option<&mut T> {
         self.resources.fetch_mut::<T>()
+    }
+
+    pub fn add_stage<'a>(&'a mut self, stage: SystemStage<'a>) {
+        let stage = unsafe { std::mem::transmute(stage) };
+        self.schedule.push(scheduler::schedule(&stage));
+        self.systems.push(stage);
+    }
+
+    pub fn tick<'a>(&'a mut self) {
+        debug_assert_eq!(self.systems.len(), self.schedule.len());
+        for i in 0..self.systems.len() {
+            self.execute_stage(i);
+            // apply commands after each stage
+            self.apply_commands().unwrap();
+        }
+    }
+    fn execute_stage<'a>(&'a self, i: usize) {
+        let schedule = &self.schedule[i];
+        let stage = &self.systems[i];
+        for group in schedule.iter() {
+            // TODO group may run in parallel
+            for i in group.iter().copied() {
+                let execute: &dyn Fn(&'a World) =
+                    unsafe { std::mem::transmute(stage.systems[i].execute.as_ref()) };
+                (execute)(self);
+            }
+        }
     }
 }
