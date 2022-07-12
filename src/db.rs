@@ -11,6 +11,9 @@ pub struct ArchetypeStorage {
     pub(crate) components: HashMap<TypeId, UnsafeCell<ErasedTable>>,
 }
 
+unsafe impl Send for ArchetypeStorage {}
+unsafe impl Sync for ArchetypeStorage {}
+
 impl Clone for ArchetypeStorage {
     fn clone(&self) -> Self {
         Self {

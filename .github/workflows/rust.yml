@@ -22,6 +22,6 @@ jobs:
         toolchain: nightly
     - uses: Swatinem/rust-cache@v1
     - name: Build
-      run: cargo build --tests --verbose
+      run: cargo build --tests --verbose --all-features
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --verbose --all-features

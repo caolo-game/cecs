@@ -21,6 +21,9 @@ pub mod systems;
 pub(crate) mod db;
 mod scheduler;
 
+#[cfg(feature = "parallel")]
+pub use rayon;
+
 #[cfg(test)]
 mod world_tests;
 
@@ -32,8 +35,13 @@ pub struct World {
     pub(crate) resource_commands: Mutex<Vec<ErasedResourceCommand>>,
     pub(crate) systems: Vec<SystemStage<'static>>,
     // for each system: a group of parallel systems
+    //
+    #[cfg(feature = "parallel")]
     pub(crate) schedule: Vec<Vec<Vec<usize>>>,
 }
+
+unsafe impl Send for World {}
+unsafe impl Sync for World {}
 
 impl Clone for World {
     fn clone(&self) -> Self {
@@ -56,6 +64,7 @@ impl Clone for World {
         let resources = self.resources.clone();
 
         let systems = self.systems.clone();
+        #[cfg(feature = "parallel")]
         let schedule = self.schedule.clone();
 
         Self {
@@ -65,6 +74,7 @@ impl Clone for World {
             resources,
             resource_commands,
             systems,
+            #[cfg(feature = "parallel")]
             schedule,
         }
     }
@@ -136,6 +146,7 @@ impl World {
             commands: Mutex::default(),
             resource_commands: Mutex::default(),
             systems: Default::default(),
+            #[cfg(feature = "parallel")]
             schedule: Default::default(),
         };
         let mut result = Box::pin(result);
@@ -318,13 +329,19 @@ impl World {
         self.resources.fetch_mut::<T>()
     }
 
-    pub fn add_stage<'a>(&'a mut self, stage: SystemStage<'a>) {
+    /// System stages are executed in the order they were added to the World
+    /// TODO: nicer scheduling API for stages
+    pub fn add_stage(&mut self, stage: SystemStage<'_>) {
         let stage = unsafe { std::mem::transmute(stage) };
-        self.schedule.push(scheduler::schedule(&stage));
+        #[cfg(feature = "parallel")]
+        {
+            self.schedule.push(scheduler::schedule(&stage));
+        }
         self.systems.push(stage);
     }
 
     pub fn tick<'a>(&'a mut self) {
+        #[cfg(feature = "parallel")]
         debug_assert_eq!(self.systems.len(), self.schedule.len());
         for i in 0..self.systems.len() {
             self.execute_stage(i);
@@ -332,16 +349,30 @@ impl World {
             self.apply_commands().unwrap();
         }
     }
+
+    #[cfg(not(feature = "parallel"))]
     fn execute_stage<'a>(&'a self, i: usize) {
+        for sys in self.systems[i].systems.iter() {
+            let execute: &dyn Fn(&'a World) = unsafe { std::mem::transmute(sys.execute.as_ref()) };
+            (execute)(self);
+        }
+    }
+
+    #[cfg(feature = "parallel")]
+    fn execute_stage<'a>(&'a self, i: usize) {
+        use rayon::prelude::*;
+
         let schedule = &self.schedule[i];
+        dbg!(schedule);
         let stage = &self.systems[i];
         for group in schedule.iter() {
             // TODO group may run in parallel
-            for i in group.iter().copied() {
+
+            group.par_iter().copied().for_each(|i| {
                 let execute: &dyn Fn(&'a World) =
                     unsafe { std::mem::transmute(stage.systems[i].execute.as_ref()) };
                 (execute)(self);
-            }
+            });
         }
     }
 }

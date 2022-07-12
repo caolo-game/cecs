@@ -253,3 +253,49 @@ fn resource_query_test() {
 
     sys(Res::new(&world));
 }
+
+#[test]
+fn world_execute_systems_test() {
+    let mut world = World::new(4);
+
+    for i in 0..4_000_000 {
+        let id = world.insert_entity().unwrap();
+        world.set_component(id, Foo { value: i }).unwrap();
+        if i % 2 == 0 {
+            world.set_component(id, "poggers".to_string()).unwrap();
+        }
+    }
+
+    fn sys0(q: Query<&mut Foo>) {
+        for foo in q.iter() {
+            foo.value = 42;
+        }
+    }
+
+    fn assert_sys(q: Query<&Foo>) {
+        for foo in q.iter() {
+            assert_eq!(foo.value, 42);
+        }
+    }
+
+    world.add_stage(
+        SystemStage::default()
+            .with_system(sys0)
+            .with_system(assert_sys)
+            .with_system(assert_sys)
+            .with_system(assert_sys)
+            .with_system(assert_sys)
+            .with_system(assert_sys)
+            .with_system(assert_sys)
+            .with_system(assert_sys)
+            .with_system(assert_sys)
+            .with_system(assert_sys)
+            .with_system(assert_sys)
+            .with_system(assert_sys),
+    );
+
+    world.tick();
+
+    assert_sys(Query::new(&world));
+    panic!("pog");
+}

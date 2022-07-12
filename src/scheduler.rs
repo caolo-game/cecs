@@ -51,12 +51,12 @@ struct QueryProperties {
 
 impl QueryProperties {
     fn is_disjoint(&self, other: &QueryProperties) -> bool {
-        self.comp_mut.is_disjoint(&self.comp_const)
-            && self.res_mut.is_disjoint(&self.res_const)
-            && self.comp_mut.is_disjoint(&self.comp_mut)
-            && self.res_mut.is_disjoint(&self.res_mut)
-            && self.comp_const.is_disjoint(&self.comp_mut)
-            && self.res_const.is_disjoint(&self.res_mut)
+        self.comp_mut.is_disjoint(&other.comp_const)
+            && self.res_mut.is_disjoint(&other.res_const)
+            && self.comp_mut.is_disjoint(&other.comp_mut)
+            && self.res_mut.is_disjoint(&other.res_mut)
+            && self.comp_const.is_disjoint(&other.comp_mut)
+            && self.res_const.is_disjoint(&other.res_mut)
     }
 
     fn extend(&mut self, props: QueryProperties) {

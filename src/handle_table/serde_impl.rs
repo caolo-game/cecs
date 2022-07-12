@@ -3,7 +3,6 @@ use serde::{
     ser::SerializeStruct,
     Deserialize, Serialize,
 };
-use smallvec::SmallVec;
 
 use super::{Entry, HandleTable};
 
@@ -51,7 +50,7 @@ impl<'de> Deserialize<'de> for HandleTable {
                 let count = seq
                     .next_element()?
                     .ok_or_else(|| de::Error::missing_field("count"))?;
-                let entries: SmallVec<[_; 64]> = seq
+                let entries: Vec<_> = seq
                     .next_element()?
                     .ok_or_else(|| de::Error::missing_field("entries"))?;
 

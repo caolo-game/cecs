@@ -2,9 +2,19 @@ use std::{any::TypeId, collections::HashSet, rc::Rc};
 
 use crate::{query::WorldQuery, World};
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct SystemStage<'a> {
     pub systems: Vec<ErasedSystem<'a>>,
+}
+
+impl<'a> SystemStage<'a> {
+    pub fn with_system<S, P>(mut self, system: S) -> Self
+    where
+        S: IntoSystem<'a, P>,
+    {
+        self.systems.push(system.system());
+        self
+    }
 }
 
 pub type InnerSystem<'a> = Box<dyn Fn(&'a World) + 'a>;
@@ -17,6 +27,9 @@ pub struct ErasedSystem<'a> {
     pub(crate) resources_const: fn() -> HashSet<TypeId>,
     factory: Rc<dyn Fn() -> InnerSystem<'a>>,
 }
+
+unsafe impl Send for ErasedSystem<'_> {}
+unsafe impl Sync for ErasedSystem<'_> {}
 
 impl<'a> Clone for ErasedSystem<'a> {
     fn clone(&self) -> Self {

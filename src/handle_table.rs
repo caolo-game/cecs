@@ -238,6 +238,9 @@ pub struct EntityIndex {
     pub(crate) metadata: Vec<(*mut ArchetypeStorage, RowIndex, EntityId)>,
 }
 
+unsafe impl Send for EntityIndex {}
+unsafe impl Sync for EntityIndex {}
+
 impl EntityIndex {
     pub fn new(capacity: u32) -> Self {
         let handles = HandleTable::new(capacity);
