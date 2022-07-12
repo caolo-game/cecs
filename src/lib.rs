@@ -347,6 +347,10 @@ impl World {
     /// Run a single stage withouth adding it to the World
     ///
     pub fn run_stage(&mut self, stage: SystemStage<'_>) {
+        #[cfg(feature = "tracing")]
+        {
+            tracing::trace!(stage_name = stage.name.as_ref(), "Update stage");
+        }
         if let Some(condition) = stage.should_run.as_ref() {
             fn run_system<'a>(
                 world: &'a World,
@@ -410,9 +414,39 @@ impl World {
 
     #[cfg(not(feature = "parallel"))]
     fn execute_stage<'a>(&'a mut self, i: usize) {
-        for sys in self.systems[i].systems.iter() {
+        let stage = &self.systems[i];
+        #[cfg(feature = "tracing")]
+        {
+            tracing::trace!(stage_name = stage.name.as_ref(), "Update stage");
+        }
+        if let Some(condition) = stage.should_run.as_ref() {
+            fn run_system<'a>(
+                world: &'a World,
+                condition: &'a systems::ErasedSystem<'_, bool>,
+            ) -> bool {
+                let execute: &ShouldRunSystem<'_> =
+                    unsafe { std::mem::transmute(condition.execute.as_ref()) };
+                (execute)(world)
+            }
+            if !run_system(self, condition) {
+                // stage should not run
+                #[cfg(feature = "tracing")]
+                {
+                    tracing::trace!(
+                        stage_name = stage.name.as_ref(),
+                        "Stage should_run was false"
+                    );
+                }
+                return;
+            }
+        }
+        for sys in stage.systems.iter() {
             let execute: &dyn Fn(&'a World) = unsafe { std::mem::transmute(sys.execute.as_ref()) };
             (execute)(self);
+        }
+        #[cfg(feature = "tracing")]
+        {
+            tracing::trace!(stage_name = stage.name.as_ref(), "Stage finished");
         }
     }
 
@@ -420,6 +454,11 @@ impl World {
     fn execute_stage(&mut self, i: usize) {
         let schedule = &self.schedule[i];
         let stage = &self.systems[i];
+
+        #[cfg(feature = "tracing")]
+        {
+            tracing::trace!(stage_name = stage.name.as_ref(), "Update stage");
+        }
 
         if let Some(condition) = stage.should_run.as_ref() {
             fn run_system<'a>(
@@ -432,12 +471,23 @@ impl World {
             }
             if !run_system(self, condition) {
                 // stage should not run
+                #[cfg(feature = "tracing")]
+                {
+                    tracing::trace!(
+                        stage_name = stage.name.as_ref(),
+                        "Stage should_run was false"
+                    );
+                }
                 return;
             }
         }
 
         for group in schedule.iter() {
             self.execute_systems(group, &stage.systems);
+        }
+        #[cfg(feature = "tracing")]
+        {
+            tracing::trace!(stage_name = stage.name.as_ref(), "Stage finished");
         }
     }
 
