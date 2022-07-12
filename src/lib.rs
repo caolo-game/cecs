@@ -18,7 +18,9 @@ pub mod query;
 pub mod resources;
 pub mod systems;
 
-pub(crate) mod db;
+mod db;
+
+#[cfg(feature = "parallel")]
 mod scheduler;
 
 #[cfg(feature = "parallel")]
@@ -35,7 +37,7 @@ pub struct World {
     pub(crate) resources: ResourceStorage,
     pub(crate) commands: Mutex<Vec<EntityCommands>>,
     pub(crate) resource_commands: Mutex<Vec<ErasedResourceCommand>>,
-    pub(crate) systems: Vec<SystemStage<'static>>,
+    pub(crate) system_stages: Vec<SystemStage<'static>>,
     // for each system: a group of parallel systems
     //
     #[cfg(feature = "parallel")]
@@ -65,7 +67,8 @@ impl Clone for World {
 
         let resources = self.resources.clone();
 
-        let systems = self.systems.clone();
+        let systems = self.system_stages.clone();
+
         #[cfg(feature = "parallel")]
         let schedule = self.schedule.clone();
 
@@ -75,7 +78,7 @@ impl Clone for World {
             commands,
             resources,
             resource_commands,
-            systems,
+            system_stages: systems,
             #[cfg(feature = "parallel")]
             schedule,
         }
@@ -147,7 +150,7 @@ impl World {
             resources: ResourceStorage::new(),
             commands: Mutex::default(),
             resource_commands: Mutex::default(),
-            systems: Default::default(),
+            system_stages: Default::default(),
             #[cfg(feature = "parallel")]
             schedule: Default::default(),
         };
@@ -341,7 +344,7 @@ impl World {
         {
             self.schedule.push(scheduler::schedule(&stage));
         }
-        self.systems.push(stage);
+        self.system_stages.push(stage);
     }
 
     /// Run a single stage withouth adding it to the World
@@ -404,8 +407,8 @@ impl World {
 
     pub fn tick(&mut self) {
         #[cfg(feature = "parallel")]
-        debug_assert_eq!(self.systems.len(), self.schedule.len());
-        for i in 0..self.systems.len() {
+        debug_assert_eq!(self.system_stages.len(), self.schedule.len());
+        for i in 0..self.system_stages.len() {
             self.execute_stage(i);
             // apply commands after each stage
             self.apply_commands().unwrap();
@@ -414,7 +417,7 @@ impl World {
 
     #[cfg(not(feature = "parallel"))]
     fn execute_stage<'a>(&'a mut self, i: usize) {
-        let stage = &self.systems[i];
+        let stage = &self.system_stages[i];
         #[cfg(feature = "tracing")]
         {
             tracing::trace!(stage_name = stage.name.as_ref(), "Update stage");
@@ -453,7 +456,7 @@ impl World {
     #[cfg(feature = "parallel")]
     fn execute_stage(&mut self, i: usize) {
         let schedule = &self.schedule[i];
-        let stage = &self.systems[i];
+        let stage = &self.system_stages[i];
 
         #[cfg(feature = "tracing")]
         {
