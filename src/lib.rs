@@ -347,11 +347,6 @@ impl World {
     /// Run a single stage withouth adding it to the World
     ///
     pub fn run_stage(&mut self, stage: SystemStage<'_>) {
-        fn run_system<'a>(world: &'a World, system: &'a systems::ErasedSystem<'_>) {
-            let execute: &dyn Fn(&'a World) =
-                unsafe { std::mem::transmute(system.execute.as_ref()) };
-            (execute)(world);
-        }
         #[cfg(feature = "parallel")]
         {
             let schedule = scheduler::schedule(&stage);
@@ -360,8 +355,15 @@ impl World {
             }
         }
         #[cfg(not(feature = "parallel"))]
-        for system in stage.systems.iter() {
-            run_system(self, &system);
+        {
+            fn run_system<'a>(world: &'a World, system: &'a systems::ErasedSystem<'_>) {
+                let execute: &dyn Fn(&'a World) =
+                    unsafe { std::mem::transmute(system.execute.as_ref()) };
+                (execute)(world);
+            }
+            for system in stage.systems.iter() {
+                run_system(self, &system);
+            }
         }
         // apply commands immediately
         self.apply_commands().unwrap();
@@ -381,7 +383,7 @@ impl World {
         self.apply_commands().unwrap();
     }
 
-    pub fn tick<'a>(&'a mut self) {
+    pub fn tick(&mut self) {
         #[cfg(feature = "parallel")]
         debug_assert_eq!(self.systems.len(), self.schedule.len());
         for i in 0..self.systems.len() {
@@ -400,9 +402,7 @@ impl World {
     }
 
     #[cfg(feature = "parallel")]
-    fn execute_stage<'a>(&'a mut self, i: usize) {
-        use rayon::prelude::*;
-
+    fn execute_stage(&mut self, i: usize) {
         let schedule = &self.schedule[i];
         let stage = &self.systems[i];
         for group in schedule.iter() {
