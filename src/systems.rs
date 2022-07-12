@@ -1,13 +1,34 @@
-use std::{any::TypeId, collections::HashSet, rc::Rc};
+use std::{any::TypeId, borrow::Cow, collections::HashSet, rc::Rc};
 
 use crate::{query::WorldQuery, World};
 
-#[derive(Clone, Default)]
+pub type InnerSystem<'a, R> = dyn Fn(&'a World) -> R + 'a;
+pub type ShouldRunSystem<'a> = InnerSystem<'a, bool>;
+
+#[derive(Clone)]
 pub struct SystemStage<'a> {
+    pub name: Cow<'a, str>,
+    pub should_run: Option<ErasedSystem<'a, bool>>,
     pub systems: Vec<ErasedSystem<'a, ()>>,
 }
 
 impl<'a> SystemStage<'a> {
+    pub fn new<'b: 'a, N: Into<Cow<'b, str>>>(name: N) -> Self {
+        Self {
+            name: name.into(),
+            should_run: None,
+            systems: Vec::with_capacity(4),
+        }
+    }
+
+    pub fn with_should_run<S, P>(mut self, system: S) -> Self
+    where
+        S: IntoSystem<'a, P, bool>,
+    {
+        self.should_run = Some(system.system());
+        self
+    }
+
     pub fn with_system<S, P>(mut self, system: S) -> Self
     where
         S: IntoSystem<'a, P, ()>,
@@ -17,15 +38,13 @@ impl<'a> SystemStage<'a> {
     }
 }
 
-pub type InnerSystem<'a, R> = Box<dyn Fn(&'a World) -> R + 'a>;
-
 pub struct ErasedSystem<'a, R> {
-    pub(crate) execute: InnerSystem<'a, R>,
+    pub(crate) execute: Box<InnerSystem<'a, R>>,
     pub(crate) components_mut: fn() -> HashSet<TypeId>,
     pub(crate) resources_mut: fn() -> HashSet<TypeId>,
     pub(crate) components_const: fn() -> HashSet<TypeId>,
     pub(crate) resources_const: fn() -> HashSet<TypeId>,
-    factory: Rc<dyn Fn() -> InnerSystem<'a, R>>,
+    factory: Rc<dyn Fn() -> Box<InnerSystem<'a, R>>>,
 }
 
 unsafe impl<R> Send for ErasedSystem<'_, R> {}
@@ -50,17 +69,19 @@ pub trait IntoSystem<'a, Param, R> {
 
 macro_rules! impl_intosys_fn {
     ($($t: ident),* $(,)*) => {
+        #[allow(unused_parens)]
+        #[allow(unused_mut)]
         impl<'a, R, F, $($t: WorldQuery<'a> + 'static,)*>
-            IntoSystem<'a, ($($t),*,), R> for F
+            IntoSystem<'a, ($($t),*), R> for F
         where
             F: Fn($($t),*) -> R + 'static + Copy,
         {
             fn system(self) -> ErasedSystem<'a, R> {
-                let factory: Rc<dyn Fn()-> InnerSystem<'a, R>>
+                let factory: Rc<dyn Fn()-> Box<InnerSystem<'a, R>>>
                     = Rc::new(move || {
-                        Box::new(move |world: &'a World| {
+                        Box::new(move |_world: &'a World| {
                             (self)(
-                                $(<$t>::new(world),)*
+                                $(<$t>::new(_world),)*
                             )
                         })
                     });
@@ -93,6 +114,7 @@ macro_rules! impl_intosys_fn {
     };
 }
 
+impl_intosys_fn!();
 impl_intosys_fn!(Q0);
 impl_intosys_fn!(Q0, Q1);
 impl_intosys_fn!(Q0, Q1, Q2);

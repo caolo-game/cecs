@@ -8,7 +8,7 @@ use db::ArchetypeStorage;
 use entity_id::EntityId;
 use handle_table::EntityIndex;
 use resources::ResourceStorage;
-use systems::SystemStage;
+use systems::{ShouldRunSystem, SystemStage};
 
 pub mod commands;
 pub mod entity_id;
@@ -347,6 +347,21 @@ impl World {
     /// Run a single stage withouth adding it to the World
     ///
     pub fn run_stage(&mut self, stage: SystemStage<'_>) {
+        if let Some(condition) = stage.should_run.as_ref() {
+            fn run_system<'a>(
+                world: &'a World,
+                condition: &'a systems::ErasedSystem<'_, bool>,
+            ) -> bool {
+                let execute: &ShouldRunSystem<'_> =
+                    unsafe { std::mem::transmute(condition.execute.as_ref()) };
+                (execute)(world)
+            }
+            if !run_system(self, condition) {
+                // stage should not run
+                return;
+            }
+        }
+
         #[cfg(feature = "parallel")]
         {
             let schedule = scheduler::schedule(&stage);
@@ -405,6 +420,22 @@ impl World {
     fn execute_stage(&mut self, i: usize) {
         let schedule = &self.schedule[i];
         let stage = &self.systems[i];
+
+        if let Some(condition) = stage.should_run.as_ref() {
+            fn run_system<'a>(
+                world: &'a World,
+                condition: &'a systems::ErasedSystem<'_, bool>,
+            ) -> bool {
+                let execute: &ShouldRunSystem<'_> =
+                    unsafe { std::mem::transmute(condition.execute.as_ref()) };
+                (execute)(world)
+            }
+            if !run_system(self, condition) {
+                // stage should not run
+                return;
+            }
+        }
+
         for group in schedule.iter() {
             self.execute_systems(group, &stage.systems);
         }

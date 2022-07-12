@@ -51,9 +51,15 @@ impl<'a, T: 'static> Deref for Res<'a, T> {
     }
 }
 
+impl<'a, T: 'static> AsRef<T> for Res<'a, T> {
+    fn as_ref(&self) -> &T {
+        self.inner
+    }
+}
+
 pub struct ResMut<'a, T> {
     inner: &'a mut T,
-    _m: PhantomData<T>,
+    _m: PhantomData<fn() -> &'a mut T>,
 }
 
 impl<'a, T: 'static> ResMut<'a, T> {
@@ -76,6 +82,18 @@ impl<'a, T: 'static> Deref for ResMut<'a, T> {
 
 impl<'a, T: 'static> DerefMut for ResMut<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
+        self.inner
+    }
+}
+
+impl<'a, T: 'static> AsRef<T> for ResMut<'a, T> {
+    fn as_ref(&self) -> &T {
+        self.inner
+    }
+}
+
+impl<'a, T: 'static> AsMut<T> for ResMut<'a, T> {
+    fn as_mut(&mut self) -> &mut T {
         self.inner
     }
 }

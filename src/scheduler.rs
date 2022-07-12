@@ -70,7 +70,7 @@ impl QueryProperties {
 #[cfg(test)]
 mod tests {
 
-    use crate::{commands::Commands, prelude::Query, systems::IntoSystem};
+    use crate::{commands::Commands, prelude::Query};
 
     use super::*;
 
@@ -82,15 +82,12 @@ mod tests {
         fn system_3(_q: Query<&mut i32>) {}
         fn system_4(_q: Query<&String>) {}
 
-        let stage = SystemStage {
-            systems: vec![
-                system_0.system(),
-                system_1.system(),
-                system_2.system(),
-                system_3.system(),
-                system_4.system(),
-            ],
-        };
+        let stage = SystemStage::new("many_systems")
+            .with_system(system_0)
+            .with_system(system_1)
+            .with_system(system_2)
+            .with_system(system_3)
+            .with_system(system_4);
 
         let schedule = schedule(&stage);
 

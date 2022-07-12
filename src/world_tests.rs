@@ -1,4 +1,5 @@
 use crate::entity_id::EntityId;
+use crate::prelude::ResMut;
 use crate::query::resource_query::Res;
 use crate::query::{filters::WithOut, Query};
 
@@ -256,7 +257,7 @@ fn resource_query_test() {
 
 #[test]
 fn world_execute_systems_test() {
-    let mut world = World::new(4);
+    let mut world = World::new(400);
 
     for i in 0..400 {
         let id = world.insert_entity().unwrap();
@@ -279,7 +280,7 @@ fn world_execute_systems_test() {
     }
 
     world.add_stage(
-        SystemStage::default()
+        SystemStage::new("many_systems")
             .with_system(sys0)
             .with_system(assert_sys)
             .with_system(assert_sys)
@@ -299,8 +300,39 @@ fn world_execute_systems_test() {
     world.run_system(assert_sys);
 
     world.run_stage(
-        SystemStage::default()
+        SystemStage::new("")
             .with_system(assert_sys)
             .with_system(assert_sys),
     );
+}
+
+#[test]
+fn can_skip_stage_test() {
+    let mut world = World::new(4);
+
+    world.insert_resource(0i32);
+
+    fn system(mut q: ResMut<i32>) {
+        *q += 1i32;
+    }
+
+    fn should_not_run() -> bool {
+        false
+    }
+
+    world.run_stage(
+        SystemStage::new("instant-run")
+            .with_should_run(should_not_run)
+            .with_system(system),
+    );
+
+    world.add_stage(
+        SystemStage::new("tick-run")
+            .with_should_run(should_not_run)
+            .with_system(system),
+    );
+
+    world.tick();
+
+    assert_eq!(world.get_resource::<i32>().unwrap(), &0);
 }
