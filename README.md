@@ -4,8 +4,8 @@ There are many like it, but this one is mine.
 ## TODO
 
 - [x] Command interface
-- [ ] System stages + systems
-- [ ] Scheduling
+- [X] System stages + systems
+- [X] Scheduling
 - [ ] Soundness guarantees
 - [x] Optional Query
 - [ ] Events
