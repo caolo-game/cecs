@@ -297,4 +297,10 @@ fn world_execute_systems_test() {
     world.tick();
 
     world.run_system(assert_sys);
+
+    world.run_stage(
+        SystemStage::default()
+            .with_system(assert_sys)
+            .with_system(assert_sys),
+    );
 }

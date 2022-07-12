@@ -344,6 +344,29 @@ impl World {
         self.systems.push(stage);
     }
 
+    /// Run a single stage withouth adding it to the World
+    ///
+    pub fn run_stage(&mut self, stage: SystemStage<'_>) {
+        fn run_system<'a>(world: &'a World, system: &'a systems::ErasedSystem<'_>) {
+            let execute: &dyn Fn(&'a World) =
+                unsafe { std::mem::transmute(system.execute.as_ref()) };
+            (execute)(world);
+        }
+        #[cfg(feature = "parallel")]
+        {
+            let schedule = scheduler::schedule(&stage);
+            for group in schedule {
+                self.execute_systems(&group, &stage.systems)
+            }
+        }
+        #[cfg(not(feature = "parallel"))]
+        for system in stage.systems.iter() {
+            run_system(self, &system);
+        }
+        // apply commands immediately
+        self.apply_commands().unwrap();
+    }
+
     pub fn run_system<'a, S, P>(&mut self, system: S)
     where
         S: systems::IntoSystem<'a, P>,
@@ -381,19 +404,23 @@ impl World {
         use rayon::prelude::*;
 
         let schedule = &self.schedule[i];
-        dbg!(schedule);
         let stage = &self.systems[i];
         for group in schedule.iter() {
-            // TODO group may run in parallel
-
-            group.par_iter().copied().for_each(|i| {
-                // # SAFETY
-                // this World instance is borrowed as mutable, so no other thread should have
-                // access to the internals
-                let execute: &dyn Fn(&'a World) =
-                    unsafe { std::mem::transmute(stage.systems[i].execute.as_ref()) };
-                (execute)(self);
-            });
+            self.execute_systems(group, &stage.systems);
         }
+    }
+
+    #[cfg(feature = "parallel")]
+    fn execute_systems<'a>(&'a self, group: &[usize], systems: &[systems::ErasedSystem]) {
+        use rayon::prelude::*;
+
+        group.par_iter().copied().for_each(|i| {
+            // # SAFETY
+            // this World instance is borrowed as mutable, so no other thread should have
+            // access to the internals
+            let execute: &dyn Fn(&'a World) =
+                unsafe { std::mem::transmute(systems[i].execute.as_ref()) };
+            (execute)(self);
+        });
     }
 }
