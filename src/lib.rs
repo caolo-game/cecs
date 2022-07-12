@@ -332,12 +332,24 @@ impl World {
     /// System stages are executed in the order they were added to the World
     /// TODO: nicer scheduling API for stages
     pub fn add_stage(&mut self, stage: SystemStage<'_>) {
+        // # SAFETY
+        // lifetimes are managed by the World instance from now
         let stage = unsafe { std::mem::transmute(stage) };
         #[cfg(feature = "parallel")]
         {
             self.schedule.push(scheduler::schedule(&stage));
         }
         self.systems.push(stage);
+    }
+
+    pub fn run_system<'a, S, P>(&mut self, system: S)
+    where
+        S: systems::IntoSystem<'a, P>,
+    {
+        // # SAFETY
+        // lifetimes are managed by the World instance from now
+        let world: &'a World = unsafe { std::mem::transmute(self) };
+        (system.system().execute)(world);
     }
 
     pub fn tick<'a>(&'a mut self) {
@@ -351,7 +363,7 @@ impl World {
     }
 
     #[cfg(not(feature = "parallel"))]
-    fn execute_stage<'a>(&'a self, i: usize) {
+    fn execute_stage<'a>(&'a mut self, i: usize) {
         for sys in self.systems[i].systems.iter() {
             let execute: &dyn Fn(&'a World) = unsafe { std::mem::transmute(sys.execute.as_ref()) };
             (execute)(self);
@@ -359,7 +371,7 @@ impl World {
     }
 
     #[cfg(feature = "parallel")]
-    fn execute_stage<'a>(&'a self, i: usize) {
+    fn execute_stage<'a>(&'a mut self, i: usize) {
         use rayon::prelude::*;
 
         let schedule = &self.schedule[i];
@@ -369,6 +381,9 @@ impl World {
             // TODO group may run in parallel
 
             group.par_iter().copied().for_each(|i| {
+                // # SAFETY
+                // this World instance is borrowed as mutable, so no other thread should have
+                // access to the internals
                 let execute: &dyn Fn(&'a World) =
                     unsafe { std::mem::transmute(stage.systems[i].execute.as_ref()) };
                 (execute)(self);

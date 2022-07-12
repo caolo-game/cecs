@@ -258,7 +258,7 @@ fn resource_query_test() {
 fn world_execute_systems_test() {
     let mut world = World::new(4);
 
-    for i in 0..4_000_000 {
+    for i in 0..4_000 {
         let id = world.insert_entity().unwrap();
         world.set_component(id, Foo { value: i }).unwrap();
         if i % 2 == 0 {
@@ -296,6 +296,5 @@ fn world_execute_systems_test() {
 
     world.tick();
 
-    assert_sys(Query::new(&world));
-    panic!("pog");
+    world.run_system(assert_sys);
 }
