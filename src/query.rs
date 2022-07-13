@@ -83,6 +83,20 @@ where
         }
     }
 
+    pub fn contains(&self, id: EntityId) -> bool {
+        let (arch, _index) = match self.world.entity_ids.read(id).ok() {
+            None => return false,
+            Some(x) => x,
+        };
+        unsafe {
+            if !F::filter(arch.as_ref()) {
+                return false;
+            }
+
+            ArchQuery::<T>::contains(arch.as_ref())
+        }
+    }
+
     /// fetch the first row of the query
     /// panic if no row was found
     pub fn one(&self) -> <ArchQuery<T> as QueryFragment<'a>>::Item {
@@ -102,6 +116,7 @@ pub trait QueryFragment<'a> {
     fn fetch(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item>;
     fn types_mut(set: &mut HashSet<TypeId>);
     fn types_const(set: &mut HashSet<TypeId>);
+    fn contains(archetype: &'a ArchetypeStorage) -> bool;
 }
 
 pub trait QueryPrimitive<'a> {
@@ -110,6 +125,7 @@ pub trait QueryPrimitive<'a> {
 
     fn iter_prim(archetype: &'a ArchetypeStorage) -> Self::It;
     fn fetch_prim(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item>;
+    fn contains_prim(archetype: &'a ArchetypeStorage) -> bool;
     fn types_mut(set: &mut HashSet<TypeId>);
     fn types_const(set: &mut HashSet<TypeId>);
 }
@@ -133,6 +149,10 @@ impl<'a> QueryPrimitive<'a> for ArchQuery<EntityId> {
     fn types_const(_set: &mut HashSet<TypeId>) {
         // noop
         // entity_id is not considered while scheduling
+    }
+
+    fn contains_prim(_archetype: &'a ArchetypeStorage) -> bool {
+        true
     }
 }
 
@@ -161,6 +181,10 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<Option<&'a T>> {
     fn types_const(set: &mut HashSet<TypeId>) {
         set.insert(TypeId::of::<T>());
     }
+
+    fn contains_prim(_archetype: &'a ArchetypeStorage) -> bool {
+        true
+    }
 }
 
 impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<Option<&'a mut T>> {
@@ -187,6 +211,10 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<Option<&'a mut T>> {
     fn types_const(set: &mut HashSet<TypeId>) {
         set.insert(TypeId::of::<T>());
     }
+
+    fn contains_prim(_archetype: &'a ArchetypeStorage) -> bool {
+        true
+    }
 }
 
 impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<&'a T> {
@@ -204,6 +232,10 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<&'a T> {
 
     fn fetch_prim(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item> {
         archetype.get_component::<T>(index)
+    }
+
+    fn contains_prim(archetype: &'a ArchetypeStorage) -> bool {
+        archetype.contains_column::<T>()
     }
 
     fn types_mut(_set: &mut HashSet<TypeId>) {
@@ -232,6 +264,10 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<&'a mut T> {
         archetype.get_component_mut::<T>(index)
     }
 
+    fn contains_prim(archetype: &'a ArchetypeStorage) -> bool {
+        archetype.contains_column::<T>()
+    }
+
     fn types_mut(set: &mut HashSet<TypeId>) {
         set.insert(TypeId::of::<T>());
     }
@@ -254,6 +290,10 @@ where
 
     fn fetch(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item> {
         Self::fetch_prim(archetype, index)
+    }
+
+    fn contains(archetype: &'a ArchetypeStorage) -> bool {
+        Self::contains_prim(archetype)
     }
 
     fn types_mut(set: &mut HashSet<TypeId>) {
@@ -321,6 +361,12 @@ macro_rules! impl_tuple {
                         ArchQuery::<$t>::fetch(archetype, index)?,
                     )*
                 ))
+            }
+
+            fn contains(archetype: &'a ArchetypeStorage) -> bool {
+                    $(
+                        ArchQuery::<$t>::contains(archetype)
+                    )&&*
             }
 
             fn types_mut(set: &mut HashSet<TypeId>) {
