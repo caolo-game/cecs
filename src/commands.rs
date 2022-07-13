@@ -104,6 +104,9 @@ impl EntityCommands {
             EntityAction::Insert => world.insert_entity()?,
             EntityAction::Delete(id) => return world.delete_entity(id),
         };
+        if !world.is_id_valid(id) {
+            return Err(WorldError::EntityNotFound);
+        }
         for cmd in self.payload {
             cmd.apply(id, world)?;
         }
