@@ -299,6 +299,7 @@ impl EntityIndex {
                         let default_archetype = self.0.archetypes.get_mut(&0).unwrap();
 
                         let index = default_archetype.insert_entity(id);
+                        default_archetype.set_component(index, ());
                         let ptr = &mut *default_archetype.as_mut() as *mut ArchetypeStorage;
                         (ptr, index, id)
                     })
