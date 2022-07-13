@@ -45,6 +45,9 @@ unsafe impl Sync for HandleTable {}
 
 const SENTINEL: u32 = !0;
 
+#[cfg(feature = "serde")]
+type SerializedMetadata = Vec<(crate::TypeHash, u32, EntityId)>;
+
 impl HandleTable {
     pub fn new(initial_capacity: u32) -> Self {
         assert!(initial_capacity < ENTITY_INDEX_MASK);
@@ -252,6 +255,109 @@ impl EntityIndex {
 
     pub fn is_valid(&self, id: EntityId) -> bool {
         self.handles.is_valid(id)
+    }
+
+    #[cfg(feature = "serde")]
+    pub fn save<S: serde::Serializer>(&self, s: S) -> Result<(), S::Error> {
+        use serde::ser::SerializeStruct;
+
+        let mut s = s.serialize_struct("EntityIndex", 2)?;
+        s.serialize_field("handles", &self.handles)?;
+        // serialize archetype type, row_index, entity_id tuples
+        s.serialize_field(
+            "rows",
+            &self
+                .metadata
+                .iter()
+                .map(|(ptr, row, id)| unsafe {
+                    (ptr.as_ref().map(|x| x.ty).unwrap_or(0), *row, *id)
+                })
+                .collect::<SerializedMetadata>(),
+        )?;
+
+        Ok(())
+    }
+
+    #[cfg(feature = "serde")]
+    pub fn load<'a, D: serde::Deserializer<'a>>(
+        d: D,
+        world: &mut crate::World,
+    ) -> Result<Self, D::Error> {
+        use serde::de::{self, MapAccess, Visitor};
+
+        use crate::World;
+
+        struct Vis<'a>(&'a mut World);
+
+        impl<'a> Vis<'a> {
+            fn rows_to_metadata(
+                self,
+                rows: SerializedMetadata,
+            ) -> Vec<(*mut ArchetypeStorage, RowIndex, EntityId)> {
+                rows.into_iter()
+                    .map(move |(_type_id, _row_index, id)| {
+                        let default_archetype = self.0.archetypes.get_mut(&0).unwrap();
+
+                        let index = default_archetype.insert_entity(id);
+                        let ptr: *mut ArchetypeStorage = &mut *default_archetype.as_mut() as *mut _;
+                        (ptr, index, id)
+                    })
+                    .collect()
+            }
+        }
+
+        impl<'a, 'de> Visitor<'de> for Vis<'a> {
+            type Value = EntityIndex;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("EntityIndex")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let handles = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+
+                let meta: SerializedMetadata = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
+
+                Ok(EntityIndex {
+                    handles,
+                    metadata: self.rows_to_metadata(meta),
+                })
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<EntityIndex, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut handles: Option<HandleTable> = None;
+                let mut rows: Option<SerializedMetadata> = None;
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        "handles" => {
+                            handles = Some(map.next_value()?);
+                        }
+                        "rows" => {
+                            rows = Some(map.next_value()?);
+                        }
+                        _ => {}
+                    }
+                }
+                let handles = handles.ok_or_else(|| de::Error::missing_field("handles"))?;
+                let rows = rows.ok_or_else(|| de::Error::missing_field("handles"))?;
+                Ok(EntityIndex {
+                    handles,
+                    metadata: self.rows_to_metadata(rows),
+                })
+            }
+        }
+
+        d.deserialize_struct("EntityIndex", &["handles", "rows"], Vis(world))
     }
 }
 
