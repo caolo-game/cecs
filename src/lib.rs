@@ -160,6 +160,10 @@ impl World {
         result
     }
 
+    pub fn num_entities(&self) -> usize {
+        self.entity_ids.len()
+    }
+
     pub fn is_id_valid(&self, id: EntityId) -> bool {
         self.entity_ids.is_valid(id)
     }
