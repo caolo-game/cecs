@@ -136,7 +136,7 @@ pub trait Index {
 }
 
 impl World {
-    pub fn new(initial_capacity: u32) -> Pin<Box<Self>> {
+    pub fn new(initial_capacity: u32) -> Self {
         // FIXME: can't add assert to const fn...
         // the `hash_ty` function assumes that TypeId is a u64 under the hood
         debug_assert_eq!(std::mem::size_of::<TypeId>(), std::mem::size_of::<u64>());
@@ -144,7 +144,7 @@ impl World {
         let entity_ids = EntityIndex::new(initial_capacity);
 
         let archetypes = HashMap::with_capacity(128);
-        let result = Self {
+        let mut result = Self {
             entity_ids,
             archetypes,
             resources: ResourceStorage::new(),
@@ -154,7 +154,6 @@ impl World {
             #[cfg(feature = "parallel")]
             schedule: Default::default(),
         };
-        let mut result = Box::pin(result);
         let void_store = Box::pin(ArchetypeStorage::empty());
         result.archetypes.insert(VOID_TY, void_store);
         result
@@ -174,9 +173,7 @@ impl World {
     ///
     /// Components must be serialized and restored by the caller!
     #[cfg(feature = "serde")]
-    pub fn load_entity_ids<'a, D: serde::Deserializer<'a>>(
-        d: D,
-    ) -> Result<Pin<Box<Self>>, D::Error> {
+    pub fn load_entity_ids<'a, D: serde::Deserializer<'a>>(d: D) -> Result<Self, D::Error> {
         let mut result = Self::new(0);
         let index = EntityIndex::load(d, &mut result)?;
         result.entity_ids = index;
