@@ -9,7 +9,7 @@ use std::{
 
 use crate::{
     entity_id::{EntityId, ENTITY_GEN_MASK, ENTITY_INDEX_MASK},
-    ArchetypeStorage, Index, RowIndex,
+    ArchetypeStorage, RowIndex,
 };
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -362,13 +362,8 @@ impl EntityIndex {
 
         d.deserialize_struct("EntityIndex", &["handles", "rows"], Vis(world))
     }
-}
 
-impl Index for EntityIndex {
-    type Id = EntityId;
-    type Error = HandleTableError;
-
-    fn allocate(&mut self) -> Result<Self::Id, Self::Error> {
+    pub fn allocate(&mut self) -> Result<EntityId, HandleTableError> {
         let id = self.handles.alloc()?;
         let index = self.metadata.len() as u32;
         self.metadata.push((std::ptr::null_mut(), 0, id));
@@ -376,18 +371,18 @@ impl Index for EntityIndex {
         Ok(id)
     }
 
-    fn update(
+    pub fn update(
         &mut self,
-        id: Self::Id,
+        id: EntityId,
         payload: (NonNull<ArchetypeStorage>, RowIndex),
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), HandleTableError> {
         let index = self.handles.get(id).ok_or(HandleTableError::NotFound)? as usize;
         debug_assert_eq!(self.metadata[index].2, id);
         self.metadata[index] = (payload.0.as_ptr(), payload.1, id);
         Ok(())
     }
 
-    fn delete(&mut self, id: Self::Id) -> Result<(), Self::Error> {
+    pub fn delete(&mut self, id: EntityId) -> Result<(), HandleTableError> {
         if !self.handles.is_valid(id) {
             return Err(HandleTableError::NotFound);
         }
@@ -406,7 +401,10 @@ impl Index for EntityIndex {
         Ok(())
     }
 
-    fn read(&self, id: Self::Id) -> Result<(NonNull<ArchetypeStorage>, RowIndex), Self::Error> {
+    pub fn read(
+        &self,
+        id: EntityId,
+    ) -> Result<(NonNull<ArchetypeStorage>, RowIndex), HandleTableError> {
         let index = self.handles.get(id).ok_or(HandleTableError::NotFound)? as usize;
         let res = self.metadata[index];
         if res.0.is_null() {
@@ -416,11 +414,11 @@ impl Index for EntityIndex {
         Ok((unsafe { NonNull::new_unchecked(res.0) }, res.1))
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.metadata.len()
     }
 
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 }

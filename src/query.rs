@@ -4,7 +4,7 @@ pub mod resource_query;
 #[cfg(test)]
 mod query_tests;
 
-use crate::{archetype::ArchetypeStorage, entity_id::EntityId, Component, Index, RowIndex, World};
+use crate::{archetype::ArchetypeStorage, entity_id::EntityId, Component, RowIndex, World};
 use filters::Filter;
 use std::{any::TypeId, collections::HashSet, marker::PhantomData};
 

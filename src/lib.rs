@@ -126,22 +126,6 @@ pub trait Component: 'static {}
 #[cfg(not(feature = "clone"))]
 impl<T: 'static> Component for T {}
 
-pub trait Index {
-    type Id;
-    type Error;
-
-    fn allocate(&mut self) -> Result<Self::Id, Self::Error>;
-    fn update(
-        &mut self,
-        id: Self::Id,
-        payload: (NonNull<ArchetypeStorage>, RowIndex),
-    ) -> Result<(), Self::Error>;
-    fn delete(&mut self, id: Self::Id) -> Result<(), Self::Error>;
-    fn read(&self, id: Self::Id) -> Result<(NonNull<ArchetypeStorage>, RowIndex), Self::Error>;
-    fn len(&self) -> usize;
-    fn is_empty(&self) -> bool;
-}
-
 impl World {
     pub fn new(initial_capacity: u32) -> Self {
         // FIXME: can't add assert to const fn...
