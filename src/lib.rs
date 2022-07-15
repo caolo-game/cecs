@@ -1,4 +1,3 @@
-#![feature(option_get_or_insert_default)]
 #![feature(const_type_id)]
 
 use std::{any::TypeId, collections::HashMap, pin::Pin, ptr::NonNull};
