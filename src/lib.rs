@@ -349,7 +349,7 @@ impl World {
         (res, moved_entity)
     }
 
-    pub fn insert_resource<T: 'static + Clone>(&mut self, value: T) {
+    pub fn insert_resource<T: Component>(&mut self, value: T) {
         self.resources.insert(value);
     }
 
