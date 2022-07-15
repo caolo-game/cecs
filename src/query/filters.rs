@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use crate::{db::ArchetypeStorage, Component};
+use crate::{archetype::ArchetypeStorage, Component};
 
 pub trait Filter {
     fn filter(archetype: &ArchetypeStorage) -> bool;

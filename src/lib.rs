@@ -3,8 +3,8 @@
 
 use std::{any::TypeId, collections::HashMap, pin::Pin, ptr::NonNull};
 
+use archetype::ArchetypeStorage;
 use commands::{EntityCommands, ErasedResourceCommand};
-use db::ArchetypeStorage;
 use entity_id::EntityId;
 use handle_table::EntityIndex;
 use resources::ResourceStorage;
@@ -18,7 +18,7 @@ pub mod query;
 pub mod resources;
 pub mod systems;
 
-mod db;
+mod archetype;
 
 #[cfg(feature = "parallel")]
 mod scheduler;
