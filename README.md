@@ -1,6 +1,6 @@
 # Cecs
 
-Cecs, pronounced [ˈkɛks]a is an ECS implementation supporting Cao-Lo.
+Cecs, pronounced [ˈkɛks] is an ECS implementation supporting Cao-Lo.
 
 There are many like it, but this one is mine.
 
