@@ -79,6 +79,17 @@ macro_rules! impl_intosys_fn {
             F: Fn($($t),*) -> R + 'static + Copy,
         {
             fn system(self) -> ErasedSystem<'a, R> {
+                #[cfg(debug_assertions)]
+                {
+                    let mut _props = crate::query::QueryProperties::default();
+                    // assert queries
+                    $(
+                        let p = crate::query::ensure_query_valid::<$t>();
+                        assert!(p.is_disjoint(&_props));
+                        _props.extend(p);
+                    )*
+                }
+                // TODO: assert that the queries are disjoint
                 let factory: Rc<dyn Fn()-> Box<InnerSystem<'a, R>>>
                     = Rc::new(move || {
                         Box::new(move |_world: &'a World| {

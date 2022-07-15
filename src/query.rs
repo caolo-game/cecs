@@ -21,6 +21,62 @@ pub(crate) trait WorldQuery<'a> {
     fn resources_const(set: &mut HashSet<TypeId>);
 }
 
+#[derive(Default)]
+pub struct QueryProperties {
+    pub comp_mut: HashSet<TypeId>,
+    pub comp_const: HashSet<TypeId>,
+    pub res_mut: HashSet<TypeId>,
+    pub res_const: HashSet<TypeId>,
+}
+
+impl QueryProperties {
+    pub fn is_disjoint(&self, other: &QueryProperties) -> bool {
+        self.comp_mut.is_disjoint(&other.comp_const)
+            && self.res_mut.is_disjoint(&other.res_const)
+            && self.comp_mut.is_disjoint(&other.comp_mut)
+            && self.res_mut.is_disjoint(&other.res_mut)
+            && self.comp_const.is_disjoint(&other.comp_mut)
+            && self.res_const.is_disjoint(&other.res_mut)
+    }
+
+    pub fn extend(&mut self, props: QueryProperties) {
+        self.comp_mut.extend(props.comp_mut.into_iter());
+        self.res_mut.extend(props.res_mut.into_iter());
+        self.comp_const.extend(props.comp_const.into_iter());
+        self.res_const.extend(props.res_const.into_iter());
+    }
+}
+
+/// Test if this query is valid and return its properties
+#[inline]
+#[allow(unused)]
+pub(crate) fn ensure_query_valid<'a, T: WorldQuery<'a>>() -> QueryProperties {
+    let mut comp_mut = HashSet::new();
+    let mut comp_const = HashSet::new();
+
+    T::components_mut(&mut comp_mut);
+    T::components_const(&mut comp_const);
+
+    assert!(
+        comp_mut.is_disjoint(&comp_const),
+        "A query may not borrow the same type as both mutable and immutable,
+{}",
+        std::any::type_name::<T>()
+    );
+
+    // resources do not need asserts here
+    let mut res_mut = HashSet::new();
+    let mut res_const = HashSet::new();
+    T::resources_mut(&mut res_mut);
+    T::resources_const(&mut res_const);
+    QueryProperties {
+        comp_mut,
+        comp_const,
+        res_mut,
+        res_const,
+    }
+}
+
 pub struct Query<'a, T, F = ()> {
     world: &'a crate::World,
     _m: PhantomData<(T, F)>,
@@ -208,8 +264,8 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<Option<&'a mut T>> {
         set.insert(TypeId::of::<T>());
     }
 
-    fn types_const(set: &mut HashSet<TypeId>) {
-        set.insert(TypeId::of::<T>());
+    fn types_const(_set: &mut HashSet<TypeId>) {
+        // noop
     }
 
     fn contains_prim(_archetype: &'a ArchetypeStorage) -> bool {
@@ -269,11 +325,13 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<&'a mut T> {
     }
 
     fn types_mut(set: &mut HashSet<TypeId>) {
-        set.insert(TypeId::of::<T>());
+        let ty = TypeId::of::<T>();
+        debug_assert!(!set.contains(&ty), "A query may only borrow a type once");
+        set.insert(ty);
     }
 
-    fn types_const(set: &mut HashSet<TypeId>) {
-        set.insert(TypeId::of::<T>());
+    fn types_const(_set: &mut HashSet<TypeId>) {
+        // noop
     }
 }
 

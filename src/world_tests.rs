@@ -369,3 +369,56 @@ fn save_load_test() {
 
     assert_eq!(ids, seen);
 }
+
+#[test]
+fn borrowing_same_type_const_twice_is_ok_test() {
+    fn sys(_valid_query1: Query<(&i32, &i32)>, _valid_query2: Query<(&i32, &i32)>) {}
+
+    let mut world = World::new(1);
+
+    world.run_system(sys);
+}
+
+#[test]
+#[should_panic]
+#[cfg(debug_assertions)]
+fn invalid_query_panics_double_mut_test() {
+    fn sys(_invalid_query: Query<(&mut i32, &mut i32)>) {}
+
+    let mut world = World::new(1);
+
+    world.run_system(sys);
+}
+
+#[test]
+#[should_panic]
+#[cfg(debug_assertions)]
+fn invalid_query_panics_test() {
+    fn sys(_invalid_query: Query<(&i32, &mut i32)>) {}
+
+    let mut world = World::new(1);
+
+    world.run_system(sys);
+}
+
+#[test]
+#[should_panic]
+#[cfg(debug_assertions)]
+fn borrowing_same_type_mutable_twice_panics_test() {
+    fn sys(_valid_query_1: Query<&mut i32>, _valid_query_2: Query<&mut i32>) {}
+
+    let mut world = World::new(1);
+
+    world.run_system(sys);
+}
+
+#[test]
+#[should_panic]
+#[cfg(debug_assertions)]
+fn borrowing_same_resource_mutable_twice_panics_test() {
+    fn sys(_valid_query_1: Res<i32>, _valid_query_2: ResMut<i32>) {}
+
+    let mut world = World::new(1);
+
+    world.run_system(sys);
+}

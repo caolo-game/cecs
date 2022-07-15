@@ -1,6 +1,4 @@
-use std::{any::TypeId, collections::HashSet};
-
-use crate::systems::SystemStage;
+use crate::{query::QueryProperties, systems::SystemStage};
 
 pub type Schedule = Vec<Vec<usize>>;
 
@@ -40,31 +38,6 @@ pub fn schedule(stage: &SystemStage) -> Schedule {
         history.push(props);
     }
     result
-}
-
-struct QueryProperties {
-    comp_mut: HashSet<TypeId>,
-    comp_const: HashSet<TypeId>,
-    res_mut: HashSet<TypeId>,
-    res_const: HashSet<TypeId>,
-}
-
-impl QueryProperties {
-    fn is_disjoint(&self, other: &QueryProperties) -> bool {
-        self.comp_mut.is_disjoint(&other.comp_const)
-            && self.res_mut.is_disjoint(&other.res_const)
-            && self.comp_mut.is_disjoint(&other.comp_mut)
-            && self.res_mut.is_disjoint(&other.res_mut)
-            && self.comp_const.is_disjoint(&other.comp_mut)
-            && self.res_const.is_disjoint(&other.res_mut)
-    }
-
-    fn extend(&mut self, props: QueryProperties) {
-        self.comp_mut.extend(props.comp_mut.into_iter());
-        self.res_mut.extend(props.res_mut.into_iter());
-        self.comp_const.extend(props.comp_const.into_iter());
-        self.res_const.extend(props.res_const.into_iter());
-    }
 }
 
 #[cfg(test)]
