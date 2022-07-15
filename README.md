@@ -1,4 +1,4 @@
-# Cecs
+# Cecs 🍪
 
 Cecs, pronounced [ˈkɛks] is an ECS implementation supporting Cao-Lo.
 
