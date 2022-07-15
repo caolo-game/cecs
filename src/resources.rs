@@ -1,9 +1,12 @@
 use std::{any::TypeId, cell::UnsafeCell, collections::HashMap};
 
+use crate::Component;
+
 pub struct ResourceStorage {
     pub(crate) resources: HashMap<TypeId, UnsafeCell<ErasedResource>>,
 }
 
+#[cfg(feature = "clone")]
 impl Clone for ResourceStorage {
     fn clone(&self) -> Self {
         Self {
@@ -29,7 +32,7 @@ impl ResourceStorage {
         }
     }
 
-    pub fn insert<T: 'static + Clone>(&mut self, value: T) {
+    pub fn insert<T: Component>(&mut self, value: T) {
         match self.resources.entry(TypeId::of::<T>()) {
             std::collections::hash_map::Entry::Occupied(mut x) => {
                 x.insert(UnsafeCell::new(ErasedResource::new(value)));
@@ -62,6 +65,7 @@ impl ResourceStorage {
 pub(crate) struct ErasedResource {
     inner: *mut u8,
     finalize: fn(&mut ErasedResource),
+    #[cfg(feature = "clone")]
     clone: fn(&ErasedResource) -> ErasedResource,
 }
 
@@ -71,6 +75,7 @@ impl Drop for ErasedResource {
     }
 }
 
+#[cfg(feature = "clone")]
 impl Clone for ErasedResource {
     fn clone(&self) -> Self {
         (self.clone)(self)
@@ -78,7 +83,7 @@ impl Clone for ErasedResource {
 }
 
 impl ErasedResource {
-    pub fn new<T: Clone>(value: T) -> Self {
+    pub fn new<T: Component>(value: T) -> Self {
         let inner = Box::leak(Box::new(value));
         Self {
             inner: (inner as *mut T).cast(),
@@ -87,6 +92,7 @@ impl ErasedResource {
                     let _inner: Box<T> = Box::from_raw(resource.inner.cast::<T>());
                 }
             },
+            #[cfg(feature = "clone")]
             clone: |resource| unsafe {
                 let val = resource.as_inner::<T>().clone();
                 ErasedResource::new(val)

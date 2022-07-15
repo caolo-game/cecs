@@ -1,7 +1,7 @@
 use std::{any::TypeId, cell::UnsafeCell, collections::HashMap};
 
 // TODO: use dense storage instead of the Vec because of archetypes
-use crate::{entity_id::EntityId, hash_ty, RowIndex, TypeHash};
+use crate::{entity_id::EntityId, hash_ty, Component, RowIndex, TypeHash};
 
 // TODO: hide from public interface, because it's fairly unsafe
 pub struct ArchetypeStorage {
@@ -14,6 +14,7 @@ pub struct ArchetypeStorage {
 unsafe impl Send for ArchetypeStorage {}
 unsafe impl Sync for ArchetypeStorage {}
 
+#[cfg(feature = "clone")]
 impl Clone for ArchetypeStorage {
     fn clone(&self) -> Self {
         Self {
@@ -149,11 +150,11 @@ impl ArchetypeStorage {
         self.components.contains_key(&hash)
     }
 
-    pub fn extended_hash<T: 'static + Clone>(&self) -> TypeHash {
+    pub fn extended_hash<T: Component>(&self) -> TypeHash {
         self.ty ^ hash_ty::<T>()
     }
 
-    pub fn extend_with_column<T: 'static + Clone>(&self) -> Self {
+    pub fn extend_with_column<T: Component>(&self) -> Self {
         assert!(!self.contains_column::<T>());
 
         let mut result = self.clone_empty();
@@ -166,7 +167,7 @@ impl ArchetypeStorage {
         result
     }
 
-    pub fn reduce_with_column<T: 'static + Clone>(&self) -> Self {
+    pub fn reduce_with_column<T: Component>(&self) -> Self {
         assert!(self.contains_column::<T>());
 
         let mut result = self.clone_empty();
@@ -210,6 +211,7 @@ pub(crate) struct ErasedTable {
     finalize: fn(&mut ErasedTable),
     /// remove is always swap_remove
     remove: fn(RowIndex, &mut ErasedTable),
+    #[cfg(feature = "clone")]
     clone: fn(&ErasedTable) -> ErasedTable,
     clone_empty: fn() -> ErasedTable,
     /// src, dst
@@ -230,6 +232,7 @@ impl Drop for ErasedTable {
     }
 }
 
+#[cfg(feature = "clone")]
 impl Clone for ErasedTable {
     fn clone(&self) -> Self {
         (self.clone)(self)
@@ -245,7 +248,7 @@ impl std::fmt::Debug for ErasedTable {
 }
 
 impl ErasedTable {
-    pub fn new<T: 'static + Clone>(table: Vec<T>) -> Self {
+    pub fn new<T: crate::Component>(table: Vec<T>) -> Self {
         Self {
             ty_name: std::any::type_name::<T>(),
             inner: Box::into_raw(Box::new(table)).cast(),
@@ -259,6 +262,7 @@ impl ErasedTable {
                 let v = erased_table.as_inner_mut::<T>();
                 v.swap_remove(entity_id as usize);
             },
+            #[cfg(feature = "clone")]
             clone: |table: &ErasedTable| {
                 let inner = unsafe { table.as_inner::<T>() };
                 let res: Vec<T> = inner.clone();

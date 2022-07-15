@@ -8,6 +8,7 @@ edition = "2021"
 [features]
 default=["parallel", "serde", "tracing"]
 parallel=["rayon"]
+clone=[]
 
 [dependencies]
 parking_lot = "0.12.1"

@@ -30,6 +30,7 @@ pub struct HandleTable {
     count: u32,
 }
 
+#[cfg(feature = "clone")]
 impl Clone for HandleTable {
     fn clone(&self) -> Self {
         let mut result = Self::new(self.cap);
@@ -207,6 +208,7 @@ impl HandleTable {
         unsafe { std::slice::from_raw_parts(self.entries, self.cap as usize) }
     }
 
+    #[allow(unused)]
     fn entries_mut(&mut self) -> &mut [Entry] {
         unsafe { std::slice::from_raw_parts_mut(self.entries, self.cap as usize) }
     }
@@ -235,7 +237,7 @@ struct Entry {
     gen: u32,
 }
 
-#[derive(Clone)]
+#[cfg_attr(feature = "clone", derive(Clone))]
 pub struct EntityIndex {
     pub(crate) handles: HandleTable,
     pub(crate) metadata: Vec<(*mut ArchetypeStorage, RowIndex, EntityId)>,

@@ -192,6 +192,7 @@ fn optional_query_test() {
 }
 
 #[test]
+#[cfg(feature = "clone")]
 fn world_clone_test() {
     let mut world = World::new(500);
 

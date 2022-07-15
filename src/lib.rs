@@ -46,6 +46,7 @@ pub struct World {
 unsafe impl Send for World {}
 unsafe impl Sync for World {}
 
+#[cfg(feature = "clone")]
 impl Clone for World {
     fn clone(&self) -> Self {
         let archetypes = self.archetypes.clone();
@@ -115,8 +116,15 @@ pub type WorldResult<T> = Result<T, WorldError>;
 pub type RowIndex = u32;
 
 /// The end goal is to have a clonable ECS, that's why we have the Clone restriction.
+#[cfg(feature = "clone")]
 pub trait Component: 'static + Clone {}
+#[cfg(feature = "clone")]
 impl<T: 'static + Clone> Component for T {}
+
+#[cfg(not(feature = "clone"))]
+pub trait Component: 'static {}
+#[cfg(not(feature = "clone"))]
+impl<T: 'static> Component for T {}
 
 pub trait Index {
     type Id;
