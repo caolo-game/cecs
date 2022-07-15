@@ -8,7 +8,7 @@ use crate::{archetype::ArchetypeStorage, entity_id::EntityId, Component, Index, 
 use filters::Filter;
 use std::{any::TypeId, collections::HashSet, marker::PhantomData};
 
-pub trait WorldQuery<'a> {
+pub(crate) trait WorldQuery<'a> {
     fn new(db: &'a World) -> Self;
 
     /// List of component types this query needs exclusive access to
