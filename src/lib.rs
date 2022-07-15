@@ -497,8 +497,10 @@ impl World {
 }
 
 // # SAFETY
-// this World instance must be borrowed as mutable by the coller, so no other thread should have
+// this World instance must be borrowed as mutable by the caller, so no other thread should have
 // access to the internals
+//
+// The system's queries must be disjoint to any other concurrently running system's
 unsafe fn run_system<'a, R>(world: &'a World, sys: &'a systems::ErasedSystem<'_, R>) -> R {
     #[cfg(feature = "tracing")]
     {
