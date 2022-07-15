@@ -9,7 +9,7 @@ repository = "https://github.com/caolo-game/cecs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default=["parallel", "serde", "tracing"]
+default=["parallel", "tracing"]
 parallel=["rayon"]
 clone=[]
 
