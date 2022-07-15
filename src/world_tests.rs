@@ -117,8 +117,8 @@ struct Foo {
 
 #[test]
 fn system_test() {
-    fn my_system(q: Query<(&mut Foo, EntityId)>) {
-        for (foo, _id) in q.iter() {
+    fn my_system(mut q: Query<(&mut Foo, EntityId)>) {
+        for (foo, _id) in q.iter_mut() {
             foo.value = 69;
         }
     }
@@ -164,8 +164,8 @@ fn can_fetch_single_entity_test() {
         dbg!(id, i);
     }
 
-    let q = Query::<(&mut Foo, &String)>::new(&world);
-    let (foo, s) = q.fetch(id).unwrap();
+    let mut q = Query::<(&mut Foo, &String)>::new(&world);
+    let (foo, s) = q.fetch_mut(id).unwrap();
 
     assert_eq!(foo.value, 0xbeef);
     foo.value = 0;
@@ -268,8 +268,8 @@ fn world_execute_systems_test() {
         }
     }
 
-    fn sys0(q: Query<&mut Foo>) {
-        for foo in q.iter() {
+    fn sys0(mut q: Query<&mut Foo>) {
+        for foo in q.iter_mut() {
             foo.value = 42;
         }
     }
@@ -421,5 +421,17 @@ fn borrowing_same_resource_mutable_twice_panics_test() {
 
     let mut world = World::new(1);
 
+    world.run_system(sys);
+}
+
+#[test]
+fn can_iterate_over_immutable_iter_of_refmut_component_test() {
+    fn sys(q: Query<&mut i32>) {
+        for i in q.iter() {
+            assert_eq!(i, &69);
+        }
+    }
+
+    let mut world = World::new(1);
     world.run_system(sys);
 }

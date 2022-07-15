@@ -95,7 +95,7 @@ fn mutable_iterator_test() {
         archetype.set_component(index, 69u32);
     }
 
-    for s in ArchQuery::<&mut String>::iter(&mut archetype) {
+    for s in ArchQuery::<&mut String>::iter_mut(&mut archetype) {
         *s = "winnie".to_string();
     }
 
@@ -122,14 +122,14 @@ fn can_mix_mut_ref_test() {
         archetype.set_component(index, 69u32);
     }
 
-    for (_a, b) in ArchQuery::<(&String, &mut u32)>::iter(&archetype) {
+    for (_a, b) in ArchQuery::<(&String, &mut u32)>::iter_mut(&archetype) {
         *b = 42424242;
     }
     for val in ArchQuery::<&u32>::iter(&archetype) {
         assert_eq!(*val, 42424242);
     }
 
-    for (a, _b) in ArchQuery::<(&mut String, &u32)>::iter(&archetype) {
+    for (a, _b) in ArchQuery::<(&mut String, &u32)>::iter_mut(&archetype) {
         *a = "winnie".to_string();
     }
 

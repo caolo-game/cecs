@@ -77,12 +77,12 @@ pub(crate) fn ensure_query_valid<'a, T: WorldQuery<'a>>() -> QueryProperties {
     }
 }
 
-pub struct Query<'a, T, F = ()> {
-    world: &'a crate::World,
+pub struct Query<T, F = ()> {
+    world: std::ptr::NonNull<crate::World>,
     _m: PhantomData<(T, F)>,
 }
 
-impl<'a, T, F> WorldQuery<'a> for Query<'a, T, F>
+impl<'a, T, F> WorldQuery<'a> for Query<T, F>
 where
     ArchQuery<T>: QueryFragment<'a>,
     F: Filter,
@@ -108,29 +108,45 @@ where
     }
 }
 
-impl<'a, T, F> Query<'a, T, F>
+impl<'a, T, F> Query<T, F>
 where
     ArchQuery<T>: QueryFragment<'a>,
     F: Filter,
 {
     pub fn new(world: &'a crate::World) -> Self {
         Query {
-            world,
+            world: std::ptr::NonNull::from(world),
             _m: PhantomData,
         }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = <ArchQuery<T> as QueryFragment<'a>>::Item> {
-        self.world
-            .archetypes
-            .iter()
-            .filter(|(_, arch)| F::filter(arch))
-            .flat_map(|(_, arch)| ArchQuery::<T>::iter(arch))
+        unsafe {
+            self.world
+                .as_ref()
+                .archetypes
+                .iter()
+                .filter(|(_, arch)| F::filter(arch))
+                .flat_map(|(_, arch)| ArchQuery::<T>::iter(arch))
+        }
+    }
+
+    pub fn iter_mut(
+        &mut self,
+    ) -> impl Iterator<Item = <ArchQuery<T> as QueryFragment<'a>>::ItemMut> {
+        unsafe {
+            self.world
+                .as_ref()
+                .archetypes
+                .iter()
+                .filter(|(_, arch)| F::filter(arch))
+                .flat_map(|(_, arch)| ArchQuery::<T>::iter_mut(arch))
+        }
     }
 
     pub fn fetch(&self, id: EntityId) -> Option<<ArchQuery<T> as QueryFragment<'a>>::Item> {
-        let (arch, index) = self.world.entity_ids.read(id).ok()?;
         unsafe {
+            let (arch, index) = self.world.as_ref().entity_ids.read(id).ok()?;
             if !F::filter(arch.as_ref()) {
                 return None;
             }
@@ -139,12 +155,23 @@ where
         }
     }
 
-    pub fn contains(&self, id: EntityId) -> bool {
-        let (arch, _index) = match self.world.entity_ids.read(id).ok() {
-            None => return false,
-            Some(x) => x,
-        };
+    pub fn fetch_mut(&mut self, id: EntityId) -> Option<<ArchQuery<T> as QueryFragment<'a>>::ItemMut> {
         unsafe {
+            let (arch, index) = self.world.as_ref().entity_ids.read(id).ok()?;
+            if !F::filter(arch.as_ref()) {
+                return None;
+            }
+
+            ArchQuery::<T>::fetch_mut(arch.as_ref(), index)
+        }
+    }
+
+    pub fn contains(&self, id: EntityId) -> bool {
+        unsafe {
+            let (arch, _index) = match self.world.as_ref().entity_ids.read(id).ok() {
+                None => return false,
+                Some(x) => x,
+            };
             if !F::filter(arch.as_ref()) {
                 return false;
             }
@@ -167,9 +194,13 @@ pub struct ArchQuery<T> {
 pub trait QueryFragment<'a> {
     type Item;
     type It: Iterator<Item = Self::Item> + 'a;
+    type ItemMut;
+    type ItMut: Iterator<Item = Self::ItemMut> + 'a;
 
     fn iter(archetype: &'a ArchetypeStorage) -> Self::It;
+    fn iter_mut(archetype: &'a ArchetypeStorage) -> Self::ItMut;
     fn fetch(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item>;
+    fn fetch_mut(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::ItemMut>;
     fn types_mut(set: &mut HashSet<TypeId>);
     fn types_const(set: &mut HashSet<TypeId>);
     fn contains(archetype: &'a ArchetypeStorage) -> bool;
@@ -178,9 +209,13 @@ pub trait QueryFragment<'a> {
 pub trait QueryPrimitive<'a> {
     type Item;
     type It: Iterator<Item = Self::Item> + 'a;
+    type ItemMut;
+    type ItMut: Iterator<Item = Self::ItemMut> + 'a;
 
     fn iter_prim(archetype: &'a ArchetypeStorage) -> Self::It;
+    fn iter_prim_mut(archetype: &'a ArchetypeStorage) -> Self::ItMut;
     fn fetch_prim(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item>;
+    fn fetch_prim_mut(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::ItemMut>;
     fn contains_prim(archetype: &'a ArchetypeStorage) -> bool;
     fn types_mut(set: &mut HashSet<TypeId>);
     fn types_const(set: &mut HashSet<TypeId>);
@@ -189,13 +224,23 @@ pub trait QueryPrimitive<'a> {
 impl<'a> QueryPrimitive<'a> for ArchQuery<EntityId> {
     type Item = EntityId;
     type It = std::iter::Copied<std::slice::Iter<'a, EntityId>>;
+    type ItemMut = EntityId;
+    type ItMut = std::iter::Copied<std::slice::Iter<'a, EntityId>>;
 
     fn iter_prim(archetype: &'a ArchetypeStorage) -> Self::It {
         archetype.entities.iter().copied()
     }
 
+    fn iter_prim_mut(archetype: &'a ArchetypeStorage) -> Self::ItMut {
+        Self::iter_prim(archetype)
+    }
+
     fn fetch_prim(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item> {
         archetype.entities.get(index as usize).copied()
+    }
+
+    fn fetch_prim_mut(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::ItemMut> {
+        Self::fetch_prim(archetype, index)
     }
 
     fn types_mut(_set: &mut HashSet<TypeId>) {
@@ -218,6 +263,8 @@ impl<'a> QueryPrimitive<'a> for ArchQuery<EntityId> {
 impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<Option<&'a T>> {
     type Item = Option<&'a T>;
     type It = Box<dyn Iterator<Item = Self::Item> + 'a>;
+    type ItemMut = Option<&'a T>;
+    type ItMut = Box<dyn Iterator<Item = Self::Item> + 'a>;
 
     fn iter_prim(archetype: &'a ArchetypeStorage) -> Self::It {
         match archetype.components.get(&TypeId::of::<T>()) {
@@ -226,8 +273,16 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<Option<&'a T>> {
         }
     }
 
+    fn iter_prim_mut(archetype: &'a ArchetypeStorage) -> Self::ItMut {
+        Self::iter_prim(archetype)
+    }
+
     fn fetch_prim(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item> {
         Some(archetype.get_component::<T>(index))
+    }
+
+    fn fetch_prim_mut(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::ItemMut> {
+        Self::fetch_prim(archetype, index)
     }
 
     fn types_mut(_set: &mut HashSet<TypeId>) {
@@ -244,10 +299,19 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<Option<&'a T>> {
 }
 
 impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<Option<&'a mut T>> {
-    type Item = Option<&'a mut T>;
+    type Item = Option<&'a T>;
     type It = Box<dyn Iterator<Item = Self::Item> + 'a>;
+    type ItemMut = Option<&'a mut T>;
+    type ItMut = Box<dyn Iterator<Item = Self::ItemMut> + 'a>;
 
     fn iter_prim(archetype: &'a ArchetypeStorage) -> Self::It {
+        match archetype.components.get(&TypeId::of::<T>()) {
+            Some(columns) => Box::new(unsafe { (*columns.get()).as_inner::<T>().iter() }.map(Some)),
+            None => Box::new((0..archetype.rows).map(|_| None)),
+        }
+    }
+
+    fn iter_prim_mut(archetype: &'a ArchetypeStorage) -> Self::ItMut {
         match archetype.components.get(&TypeId::of::<T>()) {
             Some(columns) => {
                 Box::new(unsafe { (*columns.get()).as_inner_mut::<T>().iter_mut() }.map(Some))
@@ -257,6 +321,10 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<Option<&'a mut T>> {
     }
 
     fn fetch_prim(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item> {
+        Some(archetype.get_component::<T>(index))
+    }
+
+    fn fetch_prim_mut(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::ItemMut> {
         Some(archetype.get_component_mut::<T>(index))
     }
 
@@ -276,6 +344,8 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<Option<&'a mut T>> {
 impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<&'a T> {
     type Item = &'a T;
     type It = std::iter::Flatten<std::option::IntoIter<std::slice::Iter<'a, T>>>;
+    type ItemMut = &'a T;
+    type ItMut = std::iter::Flatten<std::option::IntoIter<std::slice::Iter<'a, T>>>;
 
     fn iter_prim(archetype: &'a ArchetypeStorage) -> Self::It {
         archetype
@@ -290,6 +360,10 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<&'a T> {
         archetype.get_component::<T>(index)
     }
 
+    fn fetch_prim_mut(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::ItemMut> {
+        Self::fetch_prim(archetype, index)
+    }
+
     fn contains_prim(archetype: &'a ArchetypeStorage) -> bool {
         archetype.contains_column::<T>()
     }
@@ -301,13 +375,28 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<&'a T> {
     fn types_const(set: &mut HashSet<TypeId>) {
         set.insert(TypeId::of::<T>());
     }
+
+    fn iter_prim_mut(archetype: &'a ArchetypeStorage) -> Self::ItMut {
+        Self::iter_prim(archetype)
+    }
 }
 
 impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<&'a mut T> {
-    type Item = &'a mut T;
-    type It = std::iter::Flatten<std::option::IntoIter<std::slice::IterMut<'a, T>>>;
+    type Item = &'a T;
+    type It = std::iter::Flatten<std::option::IntoIter<std::slice::Iter<'a, T>>>;
+    type ItemMut = &'a mut T;
+    type ItMut = std::iter::Flatten<std::option::IntoIter<std::slice::IterMut<'a, T>>>;
 
     fn iter_prim(archetype: &'a ArchetypeStorage) -> Self::It {
+        archetype
+            .components
+            .get(&TypeId::of::<T>())
+            .map(|columns| unsafe { (*columns.get()).as_inner::<T>().iter() })
+            .into_iter()
+            .flatten()
+    }
+
+    fn iter_prim_mut(archetype: &'a ArchetypeStorage) -> Self::ItMut {
         archetype
             .components
             .get(&TypeId::of::<T>())
@@ -317,6 +406,10 @@ impl<'a, T: Component> QueryPrimitive<'a> for ArchQuery<&'a mut T> {
     }
 
     fn fetch_prim(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item> {
+        archetype.get_component::<T>(index)
+    }
+
+    fn fetch_prim_mut(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::ItemMut> {
         archetype.get_component_mut::<T>(index)
     }
 
@@ -341,13 +434,23 @@ where
 {
     type Item = <Self as QueryPrimitive<'a>>::Item;
     type It = <Self as QueryPrimitive<'a>>::It;
+    type ItemMut = <Self as QueryPrimitive<'a>>::ItemMut;
+    type ItMut = <Self as QueryPrimitive<'a>>::ItMut;
 
     fn iter(archetype: &'a ArchetypeStorage) -> Self::It {
         Self::iter_prim(archetype)
     }
 
+    fn iter_mut(archetype: &'a ArchetypeStorage) -> Self::ItMut {
+        Self::iter_prim_mut(archetype)
+    }
+
     fn fetch(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item> {
         Self::fetch_prim(archetype, index)
+    }
+
+    fn fetch_mut(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::ItemMut> {
+        Self::fetch_prim_mut(archetype, index)
     }
 
     fn contains(archetype: &'a ArchetypeStorage) -> bool {
@@ -367,6 +470,7 @@ where
 //
 
 pub struct TupleIterator<'a, Inner, Constraint>(Inner, PhantomData<&'a Constraint>);
+pub struct TupleIteratorMut<'a, Inner, Constraint>(Inner, PhantomData<&'a Constraint>);
 
 macro_rules! impl_tuple {
     ($($idx: tt : $t: ident),+ $(,)?) => {
@@ -398,6 +502,34 @@ macro_rules! impl_tuple {
             }
         }
 
+        impl<'a, $($t,)+> Iterator for TupleIteratorMut<
+            'a
+            , ($( <ArchQuery<$t> as QueryFragment<'a>>::ItMut,)*)
+            , ($($t),+)
+        >
+        where
+            $(
+                $t: 'a,
+                ArchQuery<$t>: QueryFragment<'a>,
+            )+
+        {
+            type Item = (
+                $(
+                <ArchQuery<$t> as QueryFragment<'a>>::ItemMut,
+                )*
+            );
+
+            fn next(&mut self) -> Option<Self::Item> {
+                Some((
+                    $(
+                        // TODO: optimization opportunity: only call next() on the first iterator
+                        // and call next_unchecked() on the rest
+                        self.0.$idx.next()?
+                    ),+
+                ))
+            }
+        }
+
         impl<'a, $($t,)+> QueryFragment<'a> for ArchQuery<($($t,)+)>
         where
         $(
@@ -407,16 +539,31 @@ macro_rules! impl_tuple {
         {
             type Item=($(<ArchQuery<$t> as QueryPrimitive<'a>>::Item),+);
             type It=TupleIterator<'a, ($(<ArchQuery<$t> as QueryPrimitive<'a>>::It,)+),($($t,)+)>;
+            type ItemMut=($(<ArchQuery<$t> as QueryPrimitive<'a>>::ItemMut),+);
+            type ItMut=TupleIteratorMut<'a, ($(<ArchQuery<$t> as QueryPrimitive<'a>>::ItMut,)+),($($t,)+)>;
 
             fn iter(archetype: &'a ArchetypeStorage) -> Self::It
             {
                 TupleIterator(($( ArchQuery::<$t>::iter(archetype) ),+), PhantomData)
             }
 
+            fn iter_mut(archetype: &'a ArchetypeStorage) -> Self::ItMut
+            {
+                TupleIteratorMut(($( ArchQuery::<$t>::iter_mut(archetype) ),+), PhantomData)
+            }
+
             fn fetch(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::Item> {
                 Some((
                     $(
                         ArchQuery::<$t>::fetch(archetype, index)?,
+                    )*
+                ))
+            }
+
+            fn fetch_mut(archetype: &'a ArchetypeStorage, index: RowIndex) -> Option<Self::ItemMut> {
+                Some((
+                    $(
+                        ArchQuery::<$t>::fetch_mut(archetype, index)?,
                     )*
                 ))
             }
