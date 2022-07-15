@@ -268,8 +268,10 @@ fn world_execute_systems_test() {
         }
     }
 
-    fn sys0(mut q: Query<&mut Foo>) {
-        for foo in q.iter_mut() {
+    // FIXME: i'd like to be able to specify queries like this,
+    // without using the same lifetime for all tuple items
+    fn sys0(mut q: Query<(&mut Foo, &())>) {
+        for (foo, _) in q.iter_mut() {
             foo.value = 42;
         }
     }
@@ -426,9 +428,9 @@ fn borrowing_same_resource_mutable_twice_panics_test() {
 
 #[test]
 fn can_iterate_over_immutable_iter_of_refmut_component_test() {
-    fn sys(q: Query<&mut i32>) {
-        for i in q.iter() {
-            assert_eq!(i, &69);
+    fn sys(q: Query<(&mut i32, &u32)>) {
+        for (a, _b) in q.iter() {
+            assert_eq!(a, &69);
         }
     }
 

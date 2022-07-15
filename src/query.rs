@@ -155,7 +155,10 @@ where
         }
     }
 
-    pub fn fetch_mut(&mut self, id: EntityId) -> Option<<ArchQuery<T> as QueryFragment<'a>>::ItemMut> {
+    pub fn fetch_mut(
+        &mut self,
+        id: EntityId,
+    ) -> Option<<ArchQuery<T> as QueryFragment<'a>>::ItemMut> {
         unsafe {
             let (arch, index) = self.world.as_ref().entity_ids.read(id).ok()?;
             if !F::filter(arch.as_ref()) {
