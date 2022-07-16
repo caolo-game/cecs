@@ -131,6 +131,9 @@ pub(crate) struct ErasedComponentCommand {
     drop: fn(NonNull<u8>),
 }
 
+unsafe impl Send for ErasedComponentCommand {}
+unsafe impl Sync for ErasedComponentCommand {}
+
 impl Drop for ErasedComponentCommand {
     fn drop(&mut self) {
         if !self.inner.is_null() {
@@ -188,6 +191,9 @@ pub(crate) struct ErasedResourceCommand {
     apply: fn(NonNull<u8>, &mut World) -> Result<(), WorldError>,
     drop: fn(NonNull<u8>),
 }
+
+unsafe impl Send for ErasedResourceCommand {}
+unsafe impl Sync for ErasedResourceCommand {}
 
 impl Drop for ErasedResourceCommand {
     fn drop(&mut self) {
