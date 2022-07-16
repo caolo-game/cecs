@@ -270,14 +270,14 @@ fn world_execute_systems_test() {
 
     // FIXME: i'd like to be able to specify queries like this,
     // without using the same lifetime for all tuple items
-    fn sys0(mut q: Query<(&mut Foo, &())>) {
+    fn sys0<'a>(mut q: Query<(&'a mut Foo, &'a ())>) {
         for (foo, _) in q.iter_mut() {
             foo.value = 42;
         }
     }
 
-    fn assert_sys(q: Query<&Foo>) {
-        for foo in q.iter() {
+    fn assert_sys(q: Query<(&Foo, &())>) {
+        for (foo, _) in q.iter() {
             assert_eq!(foo.value, 42);
         }
     }

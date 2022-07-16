@@ -131,6 +131,19 @@ where
         }
     }
 
+    /// # LIMITATION
+    ///
+    /// Currently `iter_mut` requires that all lifetimes in the Query are the same, like so:
+    /// ```
+    /// use cecs::prelude::*;
+    /// fn my_system<'a>(mut q: Query<(&'a mut i32, &'a u32)>) {
+    ///     for (foo, _) in q.iter_mut() {
+    ///         *foo = 42;
+    ///     }
+    /// }
+    /// let mut world = World::new(0);
+    /// world.run_system(my_system);
+    /// ```
     pub fn iter_mut(
         &mut self,
     ) -> impl Iterator<Item = <ArchQuery<T> as QueryFragment<'a>>::ItemMut> {
@@ -155,6 +168,19 @@ where
         }
     }
 
+    /// # LIMITATION
+    ///
+    /// Currently `fetch_mut` requires that all lifetimes in the Query are the same, like so:
+    /// ```
+    /// use cecs::prelude::*;
+    /// fn my_system<'a>(mut q: Query<(&'a mut i32, &'a u32)>) {
+    ///     if let Some((foo, _)) = q.fetch_mut(EntityId::default()) {
+    ///         *foo = 42;
+    ///     }
+    /// }
+    /// let mut world = World::new(0);
+    /// world.run_system(my_system);
+    /// ```
     pub fn fetch_mut(
         &mut self,
         id: EntityId,
