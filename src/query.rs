@@ -82,6 +82,9 @@ pub struct Query<T, F = ()> {
     _m: PhantomData<(T, F)>,
 }
 
+unsafe impl<T, F> Send for Query<T, F> {}
+unsafe impl<T, F> Sync for Query<T, F> {}
+
 impl<'a, T, F> WorldQuery<'a> for Query<T, F>
 where
     ArchQuery<T>: QueryFragment<'a>,
