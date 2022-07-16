@@ -200,7 +200,7 @@ impl HandleTable {
         if index >= self.cap as usize {
             return false;
         }
-        let entry = self.entries()[index];
+        let entry = &self.entries()[index];
         entry.gen == gen
     }
 
