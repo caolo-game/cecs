@@ -192,6 +192,30 @@ fn optional_query_test() {
 }
 
 #[test]
+#[cfg(feature = "parallel")]
+fn test_parallel() {
+    use rayon::prelude::*;
+
+    let mut world = World::new(500);
+
+    for i in 0..4 {
+        let id = world.insert_entity().unwrap();
+        world.set_component(id, Foo { value: i }).unwrap();
+        if i % 2 == 0 {
+            world.set_component(id, "poggers".to_string()).unwrap();
+        }
+    }
+
+    fn par_sys<'a>(mut q: Query<(&'a mut Foo, &'a String)>) {
+        q.iter_mut().par_bridge().for_each(|(foo, _)| {
+            foo.value += 1;
+        });
+    }
+
+    world.run_system(par_sys);
+}
+
+#[test]
 #[cfg(feature = "clone")]
 fn world_clone_test() {
     let mut world = World::new(500);
