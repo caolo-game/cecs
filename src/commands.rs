@@ -70,14 +70,14 @@ impl<'a> Commands<'a> {
         });
     }
 
-    pub fn insert_resource<T: 'static + Clone>(&mut self, resource: T) {
+    pub fn insert_resource<T: Component>(&mut self, resource: T) {
         self.resource_cmd
             .push(ErasedResourceCommand::new(ResourceCommand::Insert(
                 resource,
             )));
     }
 
-    pub fn remove_resource<T: 'static + Clone>(&mut self) {
+    pub fn remove_resource<T: Component>(&mut self) {
         self.resource_cmd
             .push(ErasedResourceCommand::new(ResourceCommand::<T>::Delete));
     }
@@ -196,7 +196,7 @@ impl Drop for ErasedResourceCommand {
 }
 
 impl ErasedResourceCommand {
-    pub fn new<T: 'static + Clone>(inner: ResourceCommand<T>) -> Self {
+    pub fn new<T: Component>(inner: ResourceCommand<T>) -> Self {
         let inner = (Box::leak(Box::new(inner)) as *mut ResourceCommand<T>).cast();
         Self {
             inner,
@@ -223,7 +223,7 @@ pub(crate) enum ResourceCommand<T> {
     Delete,
 }
 
-impl<T: 'static + Clone> ResourceCommand<T> {
+impl<T: Component> ResourceCommand<T> {
     fn apply(self, world: &mut World) -> Result<(), WorldError> {
         match self {
             ResourceCommand::Insert(comp) => {

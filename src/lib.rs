@@ -115,16 +115,26 @@ pub enum WorldError {
 pub type WorldResult<T> = Result<T, WorldError>;
 pub type RowIndex = u32;
 
+#[cfg(feature = "parallel")]
+pub trait ParallelComponent: Send + Sync {}
+#[cfg(not(feature = "parallel"))]
+pub trait ParallelComponent {}
+
+#[cfg(feature = "parallel")]
+impl<T: Send + Sync> ParallelComponent for T {}
+#[cfg(not(feature = "parallel"))]
+impl<T> ParallelComponent for T {}
+
 /// The end goal is to have a clonable ECS, that's why we have the Clone restriction.
 #[cfg(feature = "clone")]
-pub trait Component: 'static + Clone {}
+pub trait Component: 'static + Clone + ParallelComponent {}
 #[cfg(feature = "clone")]
-impl<T: 'static + Clone> Component for T {}
+impl<T: 'static + Clone + ParallelComponent> Component for T {}
 
 #[cfg(not(feature = "clone"))]
-pub trait Component: 'static {}
+pub trait Component: 'static + ParallelComponent {}
 #[cfg(not(feature = "clone"))]
-impl<T: 'static> Component for T {}
+impl<T: 'static + ParallelComponent> Component for T {}
 
 impl World {
     pub fn new(initial_capacity: u32) -> Self {
