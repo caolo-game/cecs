@@ -504,6 +504,11 @@ where
 pub struct TupleIterator<'a, Inner, Constraint>(Inner, PhantomData<&'a Constraint>);
 pub struct TupleIteratorMut<'a, Inner, Constraint>(Inner, PhantomData<&'a Constraint>);
 
+unsafe impl<'a, Inner, Constraint> Send for TupleIterator<'a, Inner, Constraint> {}
+unsafe impl<'a, Inner, Constraint> Sync for TupleIterator<'a, Inner, Constraint> {}
+unsafe impl<'a, Inner, Constraint> Send for TupleIteratorMut<'a, Inner, Constraint> {}
+unsafe impl<'a, Inner, Constraint> Sync for TupleIteratorMut<'a, Inner, Constraint> {}
+
 macro_rules! impl_tuple {
     ($($idx: tt : $t: ident),+ $(,)?) => {
         impl<'a, $($t,)+> Iterator for TupleIterator<
