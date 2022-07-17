@@ -368,6 +368,8 @@ impl EntityIndex {
         let index = self.metadata.len() as u32;
         self.metadata.push((std::ptr::null_mut(), 0, id));
         self.handles.update(id, index);
+        #[cfg(feature = "tracing")]
+        tracing::trace!(id = tracing::field::display(id), "Allocated entity");
         Ok(id)
     }
 
@@ -377,12 +379,19 @@ impl EntityIndex {
         payload: (NonNull<ArchetypeStorage>, RowIndex),
     ) -> Result<(), HandleTableError> {
         let index = self.handles.get(id).ok_or(HandleTableError::NotFound)? as usize;
-        debug_assert_eq!(self.metadata[index].2, id);
+        debug_assert_eq!(
+            self.metadata[index].2, id,
+            "Metadata corruption! Found: {} Expected: {}",
+            self.metadata[index].2, id
+        );
         self.metadata[index] = (payload.0.as_ptr(), payload.1, id);
         Ok(())
     }
 
     pub fn delete(&mut self, id: EntityId) -> Result<(), HandleTableError> {
+        #[cfg(feature = "tracing")]
+        tracing::trace!(id = tracing::field::display(id), "Deleting entity");
+
         if !self.handles.is_valid(id) {
             return Err(HandleTableError::NotFound);
         }

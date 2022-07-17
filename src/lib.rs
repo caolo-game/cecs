@@ -219,10 +219,15 @@ impl World {
                 ),
             )
             .unwrap();
+        #[cfg(feature = "tracing")]
+        tracing::trace!(id = tracing::field::display(id), "Inserted entity");
         Ok(id)
     }
 
     pub fn delete_entity(&mut self, id: EntityId) -> WorldResult<()> {
+        #[cfg(feature = "tracing")]
+        tracing::trace!(id = tracing::field::display(id), "Delete entity");
+
         let (mut archetype, index) = self
             .entity_ids
             .read(id)
@@ -329,6 +334,7 @@ impl World {
     }
 
     #[inline(never)]
+    #[must_use]
     fn insert_archetype<T: Component>(
         &mut self,
         archetype: &mut ArchetypeStorage,
@@ -376,9 +382,7 @@ impl World {
     ///
     pub fn run_stage(&mut self, stage: SystemStage<'_>) {
         #[cfg(feature = "tracing")]
-        {
-            tracing::trace!(stage_name = stage.name.as_ref(), "Update stage");
-        }
+        tracing::trace!(stage_name = stage.name.as_ref(), "Update stage");
         if let Some(condition) = stage.should_run.as_ref() {
             if !unsafe { run_system(self, condition) } {
                 // stage should not run
@@ -428,20 +432,18 @@ impl World {
     #[cfg(not(feature = "parallel"))]
     fn execute_stage<'a>(&'a mut self, i: usize) {
         let stage = &self.system_stages[i];
+
         #[cfg(feature = "tracing")]
-        {
-            tracing::trace!(stage_name = stage.name.as_ref(), "Update stage");
-        }
+        tracing::trace!(stage_name = stage.name.as_ref(), "• Run stage");
+
         if let Some(condition) = stage.should_run.as_ref() {
             if !unsafe { run_system(self, condition) } {
                 // stage should not run
                 #[cfg(feature = "tracing")]
-                {
-                    tracing::trace!(
-                        stage_name = stage.name.as_ref(),
-                        "Stage should_run was false"
-                    );
-                }
+                tracing::trace!(
+                    stage_name = stage.name.as_ref(),
+                    "Stage should_run was false"
+                );
                 return;
             }
         }
@@ -450,9 +452,7 @@ impl World {
             (execute)(self);
         }
         #[cfg(feature = "tracing")]
-        {
-            tracing::trace!(stage_name = stage.name.as_ref(), "Stage finished");
-        }
+        tracing::trace!(stage_name = stage.name.as_ref(), "✓ Run stage finished");
     }
 
     #[cfg(feature = "parallel")]
@@ -461,20 +461,16 @@ impl World {
         let stage = &self.system_stages[i];
 
         #[cfg(feature = "tracing")]
-        {
-            tracing::trace!(stage_name = stage.name.as_ref(), "Update stage");
-        }
+        tracing::trace!(stage_name = stage.name.as_ref(), "• Run stage");
 
         if let Some(condition) = stage.should_run.as_ref() {
             if !unsafe { run_system(self, condition) } {
                 // stage should not run
                 #[cfg(feature = "tracing")]
-                {
-                    tracing::trace!(
-                        stage_name = stage.name.as_ref(),
-                        "Stage should_run was false"
-                    );
-                }
+                tracing::trace!(
+                    stage_name = stage.name.as_ref(),
+                    "Stage should_run was false"
+                );
                 return;
             }
         }
@@ -483,9 +479,7 @@ impl World {
             self.execute_systems(group, &stage.systems);
         }
         #[cfg(feature = "tracing")]
-        {
-            tracing::trace!(stage_name = stage.name.as_ref(), "Stage finished");
-        }
+        tracing::trace!(stage_name = stage.name.as_ref(), "✓ Run stage finished");
     }
 
     #[cfg(feature = "parallel")]
@@ -505,16 +499,12 @@ impl World {
 // The system's queries must be disjoint to any other concurrently running system's
 unsafe fn run_system<'a, R>(world: &'a World, sys: &'a systems::ErasedSystem<'_, R>) -> R {
     #[cfg(feature = "tracing")]
-    {
-        tracing::trace!(system_name = sys.name.as_ref(), "Running system");
-    }
+    tracing::trace!(system_name = sys.name.as_ref(), "• Running system");
 
     let execute: &systems::InnerSystem<'_, R> = { std::mem::transmute(sys.execute.as_ref()) };
 
     #[cfg(feature = "tracing")]
-    {
-        tracing::trace!(system_name = sys.name.as_ref(), "Running system done");
-    }
+    tracing::trace!(system_name = sys.name.as_ref(), "✓ Running system done");
 
     (execute)(world)
 }
