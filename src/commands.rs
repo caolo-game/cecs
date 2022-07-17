@@ -7,6 +7,9 @@ pub struct Commands<'a> {
     resource_cmd: &'a CommandBuffer<ErasedResourceCommand>,
 }
 
+unsafe impl<'a> Send for Commands<'a> {}
+unsafe impl<'a> Sync for Commands<'a> {}
+
 impl<'a> WorldQuery<'a> for Commands<'a> {
     fn new(w: &'a World, commands_index: usize) -> Self {
         Self::new(w, commands_index)
