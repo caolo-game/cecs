@@ -10,7 +10,7 @@ repository = "https://github.com/caolo-game/cecs"
 
 [features]
 default=["parallel", "tracing"]
-parallel=["rayon"]
+parallel=["dep:rayon"]
 clone=[]
 
 [dependencies]
