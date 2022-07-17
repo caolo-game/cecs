@@ -1,24 +1,15 @@
 use std::ptr::NonNull;
 
-use crate::{entity_id::EntityId, query::WorldQuery, Component, Mutex, World, WorldError};
+use crate::{entity_id::EntityId, query::WorldQuery, CommandBuffer, Component, World, WorldError};
 
 pub struct Commands<'a> {
-    world: &'a Mutex<Vec<EntityCommands>>,
-    entity_cmd: Vec<EntityCommands>,
-    resource_cmd: Vec<ErasedResourceCommand>,
-}
-
-impl Drop for Commands<'_> {
-    fn drop(&mut self) {
-        self.world
-            .lock()
-            .extend(std::mem::take(&mut self.entity_cmd).into_iter());
-    }
+    entity_cmd: &'a CommandBuffer<EntityCommands>,
+    resource_cmd: &'a CommandBuffer<ErasedResourceCommand>,
 }
 
 impl<'a> WorldQuery<'a> for Commands<'a> {
-    fn new(w: &'a World) -> Self {
-        Self::new(w)
+    fn new(w: &'a World, commands_index: usize) -> Self {
+        Self::new(w, commands_index)
     }
 
     fn components_mut(_set: &mut std::collections::HashSet<std::any::TypeId>) {
@@ -39,47 +30,59 @@ impl<'a> WorldQuery<'a> for Commands<'a> {
 }
 
 impl<'a> Commands<'a> {
-    pub fn new(w: &'a World) -> Self {
+    pub(crate) fn new(w: &'a World, commands_index: usize) -> Self {
         Self {
-            world: &w.commands,
-            entity_cmd: Vec::default(),
-            resource_cmd: Vec::default(),
+            entity_cmd: &w.commands[commands_index],
+            resource_cmd: &w.resource_commands[commands_index],
         }
     }
 
     pub fn entity(&mut self, id: EntityId) -> &mut EntityCommands {
-        self.entity_cmd.push(EntityCommands {
-            action: EntityAction::Fetch(id),
-            payload: Vec::default(),
-        });
-        self.entity_cmd.last_mut().unwrap()
+        unsafe {
+            let cmd = &mut *self.entity_cmd.get();
+            cmd.push(EntityCommands {
+                action: EntityAction::Fetch(id),
+                payload: Vec::default(),
+            });
+            cmd.last_mut().unwrap()
+        }
     }
 
     pub fn spawn(&mut self) -> &mut EntityCommands {
-        self.entity_cmd.push(EntityCommands {
-            action: EntityAction::Insert,
-            payload: Vec::default(),
-        });
-        self.entity_cmd.last_mut().unwrap()
+        unsafe {
+            let cmd = &mut *self.entity_cmd.get();
+            cmd.push(EntityCommands {
+                action: EntityAction::Insert,
+                payload: Vec::default(),
+            });
+            cmd.last_mut().unwrap()
+        }
     }
 
     pub fn delete(&mut self, id: EntityId) {
-        self.entity_cmd.push(EntityCommands {
-            action: EntityAction::Delete(id),
-            payload: Vec::default(),
-        });
+        unsafe {
+            let cmd = &mut *self.entity_cmd.get();
+            cmd.push(EntityCommands {
+                action: EntityAction::Delete(id),
+                payload: Vec::default(),
+            });
+        }
     }
 
     pub fn insert_resource<T: Component>(&mut self, resource: T) {
-        self.resource_cmd
-            .push(ErasedResourceCommand::new(ResourceCommand::Insert(
+        unsafe {
+            let cmd = &mut *self.resource_cmd.get();
+            cmd.push(ErasedResourceCommand::new(ResourceCommand::Insert(
                 resource,
             )));
+        }
     }
 
     pub fn remove_resource<T: Component>(&mut self) {
-        self.resource_cmd
-            .push(ErasedResourceCommand::new(ResourceCommand::<T>::Delete));
+        unsafe {
+            let cmd = &mut *self.resource_cmd.get();
+            cmd.push(ErasedResourceCommand::new(ResourceCommand::<T>::Delete));
+        }
     }
 }
 
@@ -254,7 +257,7 @@ mod tests {
     fn can_add_entity_via_cmd_test() {
         let mut world = World::new(100);
 
-        let mut cmd = Commands::new(&mut world);
+        let mut cmd = world.ensure_commands();
         cmd.spawn().insert(69i32);
         cmd.spawn().insert(69i32);
         cmd.spawn().insert(69i32);
@@ -281,7 +284,7 @@ mod tests {
 
         let _c = Query::<&i32>::new(&world).fetch(id).unwrap();
 
-        let mut cmd = Commands::new(&mut world);
+        let mut cmd = world.ensure_commands();
         cmd.entity(id).remove::<i32>();
         drop(cmd);
         world.apply_commands().unwrap();
@@ -302,7 +305,7 @@ mod tests {
 
         let _c = Query::<&i32>::new(&world).fetch(id).unwrap();
 
-        let mut cmd = Commands::new(&mut world);
+        let mut cmd = world.ensure_commands();
         cmd.delete(id);
         drop(cmd);
         world.apply_commands().unwrap();

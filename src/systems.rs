@@ -2,7 +2,7 @@ use std::{any::TypeId, borrow::Cow, collections::HashSet, rc::Rc};
 
 use crate::{query::WorldQuery, World};
 
-pub type InnerSystem<'a, R> = dyn Fn(&'a World) -> R + 'a;
+pub type InnerSystem<'a, R> = dyn Fn(&'a World, usize) -> R + 'a;
 pub type ShouldRunSystem<'a> = InnerSystem<'a, bool>;
 
 #[derive(Clone)]
@@ -33,13 +33,26 @@ impl<'a> SystemStage<'a> {
     where
         S: IntoSystem<'a, P, ()>,
     {
-        self.systems.push(system.system());
+        let commands_index;
+        #[cfg(feature = "parallel")]
+        {
+            commands_index = self.systems.len();
+        }
+        #[cfg(not(feature = "parallel"))]
+        {
+            commands_index = 0;
+        }
+
+        let mut system = system.system();
+        system.commands_index = commands_index;
+        self.systems.push(system);
         self
     }
 }
 
 pub struct ErasedSystem<'a, R> {
     pub name: Cow<'a, str>,
+    pub commands_index: usize,
     pub(crate) execute: Box<InnerSystem<'a, R>>,
     pub(crate) components_mut: fn() -> HashSet<TypeId>,
     pub(crate) resources_mut: fn() -> HashSet<TypeId>,
@@ -55,6 +68,7 @@ impl<'a, R> Clone for ErasedSystem<'a, R> {
     fn clone(&self) -> Self {
         Self {
             name: self.name.clone(),
+            commands_index: self.commands_index.clone(),
             execute: (self.factory)(),
             components_mut: self.components_mut,
             resources_mut: self.resources_mut,
@@ -89,18 +103,18 @@ macro_rules! impl_intosys_fn {
                         _props.extend(p);
                     )*
                 }
-                // TODO: assert that the queries are disjoint
                 let factory: Rc<dyn Fn()-> Box<InnerSystem<'a, R>>>
                     = Rc::new(move || {
-                        Box::new(move |_world: &'a World| {
+                        Box::new(move |_world: &'a World, _commands_index| {
                             (self)(
-                                $(<$t>::new(_world),)*
+                                $(<$t>::new(_world, _commands_index),)*
                             )
                         })
                     });
                 ErasedSystem {
                     name: std::any::type_name::<F>().into(),
                     execute: factory(),
+                    commands_index: 0,
                     components_mut: || {
                         let mut res = HashSet::new();
                         $(<$t>::components_mut(&mut res);)*

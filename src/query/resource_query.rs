@@ -12,7 +12,7 @@ pub struct Res<'a, T> {
 }
 
 impl<'a, T: 'static> WorldQuery<'a> for Res<'a, T> {
-    fn new(db: &'a crate::World) -> Self {
+    fn new(db: &'a crate::World, _commands_index: usize) -> Self {
         Self::new(db)
     }
 
@@ -99,7 +99,7 @@ impl<'a, T: 'static> AsMut<T> for ResMut<'a, T> {
 }
 
 impl<'a, T: 'static> WorldQuery<'a> for ResMut<'a, T> {
-    fn new(db: &'a crate::World) -> Self {
+    fn new(db: &'a crate::World, _commands_index: usize) -> Self {
         Self::new(db)
     }
 

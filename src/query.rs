@@ -9,7 +9,7 @@ use filters::Filter;
 use std::{any::TypeId, collections::HashSet, marker::PhantomData};
 
 pub(crate) trait WorldQuery<'a> {
-    fn new(db: &'a World) -> Self;
+    fn new(db: &'a World, commands_index: usize) -> Self;
 
     /// List of component types this query needs exclusive access to
     fn components_mut(set: &mut HashSet<TypeId>);
@@ -90,7 +90,7 @@ where
     ArchQuery<T>: QueryFragment<'a>,
     F: Filter,
 {
-    fn new(db: &'a World) -> Self {
+    fn new(db: &'a World, _commands_index: usize) -> Self {
         Self::new(db)
     }
 

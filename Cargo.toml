@@ -14,7 +14,6 @@ parallel=["rayon"]
 clone=[]
 
 [dependencies]
-parking_lot = "0.12.1"
 rayon = {version= "1.5.3", optional=true}
 serde = { version = "1", features = ["derive"], optional=true}
 thiserror = "1"

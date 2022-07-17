@@ -25,17 +25,17 @@ mod scheduler;
 #[cfg(feature = "parallel")]
 pub use rayon;
 
-use parking_lot::Mutex;
-
 #[cfg(test)]
 mod world_tests;
+
+type CommandBuffer<T> = std::cell::UnsafeCell<Vec<T>>;
 
 pub struct World {
     pub(crate) entity_ids: EntityIndex,
     pub(crate) archetypes: HashMap<TypeHash, Pin<Box<ArchetypeStorage>>>,
     pub(crate) resources: ResourceStorage,
-    pub(crate) commands: Mutex<Vec<EntityCommands>>,
-    pub(crate) resource_commands: Mutex<Vec<ErasedResourceCommand>>,
+    pub(crate) commands: Vec<CommandBuffer<EntityCommands>>,
+    pub(crate) resource_commands: Vec<CommandBuffer<ErasedResourceCommand>>,
     pub(crate) system_stages: Vec<SystemStage<'static>>,
     // for each system: a group of parallel systems
     //
@@ -50,8 +50,8 @@ unsafe impl Sync for World {}
 impl Clone for World {
     fn clone(&self) -> Self {
         let archetypes = self.archetypes.clone();
-        let commands = Mutex::default();
-        let resource_commands = Mutex::default();
+        let commands = Vec::default();
+        let resource_commands = Vec::default();
 
         let mut entity_ids = self.entity_ids.clone();
         for (ptr, row_index, id) in self.entity_ids.metadata.iter() {
@@ -149,8 +149,8 @@ impl World {
             entity_ids,
             archetypes,
             resources: ResourceStorage::new(),
-            commands: Mutex::default(),
-            resource_commands: Mutex::default(),
+            commands: Vec::default(),
+            resource_commands: Vec::default(),
             system_stages: Default::default(),
             #[cfg(feature = "parallel")]
             schedule: Default::default(),
@@ -190,14 +190,20 @@ impl World {
     }
 
     pub fn apply_commands(&mut self) -> WorldResult<()> {
-        let commands = std::mem::take(&mut *self.commands.lock());
-        for cmd in commands {
-            cmd.apply(self)?;
+        let mut commands = std::mem::take(&mut self.commands);
+        for commands in commands.iter_mut() {
+            for cmd in commands.get_mut().drain(0..) {
+                cmd.apply(self)?;
+            }
         }
-        let commands = std::mem::take(&mut *self.resource_commands.lock());
-        for cmd in commands {
-            cmd.apply(self)?;
+        self.commands = commands;
+        let mut commands = std::mem::take(&mut self.resource_commands);
+        for commands in commands.iter_mut() {
+            for cmd in commands.get_mut().drain(0..) {
+                cmd.apply(self)?;
+            }
         }
+        self.resource_commands = commands;
         Ok(())
     }
 
@@ -392,6 +398,7 @@ impl World {
 
         #[cfg(feature = "parallel")]
         {
+            self.resize_commands(stage.systems.len());
             let schedule = scheduler::schedule(&stage);
             for group in schedule {
                 self.execute_systems(&group, &stage.systems)
@@ -399,6 +406,7 @@ impl World {
         }
         #[cfg(not(feature = "parallel"))]
         {
+            self.resize_commands(1);
             for system in stage.systems.iter() {
                 unsafe {
                     run_system(self, &system);
@@ -413,6 +421,7 @@ impl World {
     where
         S: systems::IntoSystem<'a, P, R>,
     {
+        self.resize_commands(1);
         let result = unsafe { run_system(self, &system.system()) };
         // apply commands immediately
         self.apply_commands().unwrap();
@@ -431,6 +440,8 @@ impl World {
 
     #[cfg(not(feature = "parallel"))]
     fn execute_stage<'a>(&'a mut self, i: usize) {
+        self.prepare_stage(i);
+
         let stage = &self.system_stages[i];
 
         #[cfg(feature = "tracing")]
@@ -457,6 +468,8 @@ impl World {
 
     #[cfg(feature = "parallel")]
     fn execute_stage(&mut self, i: usize) {
+        self.prepare_stage(i);
+
         let schedule = &self.schedule[i];
         let stage = &self.system_stages[i];
 
@@ -482,6 +495,19 @@ impl World {
         tracing::trace!(stage_name = stage.name.as_ref(), "✓ Run stage finished");
     }
 
+    fn prepare_stage(&mut self, i: usize) {
+        let stage = &self.system_stages[i];
+        let len = stage.systems.len();
+        self.resize_commands(len);
+    }
+
+    fn resize_commands(&mut self, len: usize) {
+        self.commands
+            .resize_with(len, std::cell::UnsafeCell::default);
+        self.resource_commands
+            .resize_with(len, std::cell::UnsafeCell::default);
+    }
+
     #[cfg(feature = "parallel")]
     fn execute_systems<'a>(&'a self, group: &[usize], systems: &[systems::ErasedSystem<()>]) {
         use rayon::prelude::*;
@@ -489,6 +515,12 @@ impl World {
         group.par_iter().copied().for_each(|i| unsafe {
             run_system(self, &systems[i]);
         });
+    }
+
+    /// Constructs a new [[Commands]] instance with initialized buffers in this world
+    pub fn ensure_commands(&mut self) -> prelude::Commands {
+        self.resize_commands(1);
+        commands::Commands::new(self, 0)
     }
 }
 
@@ -501,10 +533,11 @@ unsafe fn run_system<'a, R>(world: &'a World, sys: &'a systems::ErasedSystem<'_,
     #[cfg(feature = "tracing")]
     tracing::trace!(system_name = sys.name.as_ref(), "• Running system");
 
+    let index = sys.commands_index;
     let execute: &systems::InnerSystem<'_, R> = { std::mem::transmute(sys.execute.as_ref()) };
 
     #[cfg(feature = "tracing")]
     tracing::trace!(system_name = sys.name.as_ref(), "✓ Running system done");
 
-    (execute)(world)
+    (execute)(world, index)
 }
