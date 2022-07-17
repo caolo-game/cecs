@@ -144,8 +144,9 @@ impl Drop for ErasedComponentCommand {
 
 impl ErasedComponentCommand {
     pub fn apply(mut self, id: EntityId, world: &mut World) -> Result<(), WorldError> {
-        let result = (self.apply)(NonNull::new(self.inner).unwrap(), id, world);
+        let ptr = NonNull::new(self.inner).unwrap();
         self.inner = std::ptr::null_mut();
+        let result = (self.apply)(ptr, id, world);
         result
     }
 
