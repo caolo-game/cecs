@@ -1,3 +1,4 @@
+pub use crate::bundle::Bundle;
 pub use crate::commands::Commands;
 pub use crate::entity_id::EntityId;
 pub use crate::query::filters::*;

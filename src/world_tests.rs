@@ -461,3 +461,22 @@ fn can_iterate_over_immutable_iter_of_refmut_component_test() {
     let mut world = World::new(1);
     world.run_system(sys);
 }
+
+#[test]
+fn can_insert_bundle_test() {
+    let mut world = World::new(2);
+
+    let entity_id = world.insert_entity().unwrap();
+    let entity_id2 = world.insert_entity().unwrap();
+
+    world.set_bundle(entity_id, (42i32, 38u32)).unwrap();
+    world
+        .set_bundle(entity_id2, ("exo".to_string(), "poggers", 62i32, 88u32))
+        .unwrap();
+
+    let a = world.get_component::<i32>(entity_id).unwrap();
+    assert_eq!(a, &42);
+
+    let a = world.get_component::<u32>(entity_id).unwrap();
+    assert_eq!(a, &38);
+}

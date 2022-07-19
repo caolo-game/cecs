@@ -6,9 +6,11 @@ use archetype::ArchetypeStorage;
 use commands::{EntityCommands, ErasedResourceCommand};
 use entity_id::EntityId;
 use handle_table::EntityIndex;
+use prelude::Bundle;
 use resources::ResourceStorage;
 use systems::SystemStage;
 
+pub mod bundle;
 pub mod commands;
 pub mod entity_id;
 pub mod handle_table;
@@ -247,24 +249,18 @@ impl World {
         Ok(())
     }
 
-    pub fn set_component<T: Component>(
-        &mut self,
-        entity_id: EntityId,
-        component: T,
-    ) -> WorldResult<()> {
+    pub fn set_bundle<T: Bundle>(&mut self, entity_id: EntityId, bundle: T) -> WorldResult<()> {
         let (mut archetype, mut index) = self
             .entity_ids
             .read(entity_id)
             .map_err(|_| WorldError::EntityNotFound)?;
         let mut archetype = unsafe { archetype.as_mut() };
-        if !archetype.contains_column::<T>() {
-            let new_ty = archetype.extended_hash::<T>();
-            if !self.archetypes.contains_key(&new_ty) {
-                let (mut res, updated_entity) = self.insert_archetype::<T>(
-                    archetype,
-                    index,
-                    archetype.extend_with_column::<T>(),
-                );
+
+        if !bundle.can_insert(archetype) {
+            let new_hash = T::compute_hash(archetype.ty);
+            if !self.archetypes.contains_key(&new_hash) {
+                let new_arch = T::extend(archetype);
+                let (mut res, updated_entity) = self.insert_archetype(archetype, index, new_arch);
                 if let Some(updated_entity) = updated_entity {
                     self.entity_ids
                         .update(updated_entity, (NonNull::from(archetype), index))
@@ -273,7 +269,7 @@ impl World {
                 archetype = unsafe { res.as_mut() };
                 index = 0;
             } else {
-                let new_arch = self.archetypes.get_mut(&new_ty).unwrap();
+                let new_arch = self.archetypes.get_mut(&new_hash).unwrap();
                 let (i, updated_entity) = archetype.move_entity(new_arch, index);
                 if let Some(updated_entity) = updated_entity {
                     self.entity_ids
@@ -284,12 +280,19 @@ impl World {
                 archetype = new_arch.as_mut().get_mut();
             }
         }
-        archetype.set_component(index, component);
+        bundle.insert(archetype, index)?;
         self.entity_ids
             .update(entity_id, (NonNull::from(archetype), index))
             .unwrap();
-
         Ok(())
+    }
+
+    pub fn set_component<T: Component>(
+        &mut self,
+        entity_id: EntityId,
+        component: T,
+    ) -> WorldResult<()> {
+        self.set_bundle(entity_id, (component,))
     }
 
     pub fn get_component<T: Component>(&self, entity_id: EntityId) -> Option<&T> {
@@ -309,7 +312,7 @@ impl World {
         let new_ty = archetype.extended_hash::<T>();
         if !self.archetypes.contains_key(&new_ty) {
             let (mut res, updated_entity) =
-                self.insert_archetype::<T>(archetype, index, archetype.reduce_with_column::<T>());
+                self.insert_archetype(archetype, index, archetype.reduce_with_column::<T>());
             if let Some(updated_entity) = updated_entity {
                 self.entity_ids
                     .update(updated_entity, (NonNull::from(archetype), index))
@@ -341,7 +344,7 @@ impl World {
 
     #[inline(never)]
     #[must_use]
-    fn insert_archetype<T: Component>(
+    fn insert_archetype(
         &mut self,
         archetype: &mut ArchetypeStorage,
         row_index: RowIndex,

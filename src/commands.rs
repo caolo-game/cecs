@@ -184,7 +184,7 @@ impl<T: Component> ComponentCommand<T> {
     fn apply(self, entity_id: EntityId, world: &mut World) -> Result<(), WorldError> {
         match self {
             ComponentCommand::Insert(comp) => {
-                world.set_component::<T>(entity_id, comp)?;
+                world.set_component(entity_id, comp)?;
             }
             ComponentCommand::Delete => {
                 world.remove_component::<T>(entity_id)?;

@@ -141,7 +141,7 @@ impl HandleTable {
         // pop element off the free list
         //
         if self.count == self.cap {
-            self.grow(self.cap * 3 / 2);
+            self.grow((self.cap as f32 * 3.0 / 2.0).ceil() as u32);
         }
         let entries = self.entries;
         self.count += 1;
