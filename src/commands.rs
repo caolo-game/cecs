@@ -90,6 +90,7 @@ impl<'a> Commands<'a> {
 }
 
 pub struct EntityCommands {
+    /// if the action is delete, then `payload` is ignored
     action: EntityAction,
     payload: Vec<ErasedComponentCommand>,
 }
