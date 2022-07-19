@@ -462,8 +462,9 @@ impl World {
             }
         }
         for sys in stage.systems.iter() {
-            let execute: &dyn Fn(&'a World) = unsafe { std::mem::transmute(sys.execute.as_ref()) };
-            (execute)(self);
+            let execute: &dyn Fn(&'a World, usize) =
+                unsafe { std::mem::transmute(sys.execute.as_ref()) };
+            (execute)(self, 0);
         }
         #[cfg(feature = "tracing")]
         tracing::trace!(stage_name = stage.name.as_ref(), "✓ Run stage finished");
