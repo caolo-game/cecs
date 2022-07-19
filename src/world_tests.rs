@@ -1,3 +1,5 @@
+use commands::Commands;
+
 use crate::entity_id::EntityId;
 use crate::prelude::ResMut;
 use crate::query::resource_query::Res;
@@ -479,4 +481,20 @@ fn can_insert_bundle_test() {
 
     let a = world.get_component::<u32>(entity_id).unwrap();
     assert_eq!(a, &38);
+}
+
+#[test]
+fn can_insert_bundle_via_command_test() {
+    let mut world = World::new(2);
+
+    fn sys(mut cmd: Commands) {
+        cmd.spawn().insert_bundle((42i32, 38u32));
+    }
+
+    world.run_system(sys);
+
+    for (a, b) in Query::<(&u32, &i32)>::new(&world).iter() {
+        assert_eq!(a, &38);
+        assert_eq!(b, &42);
+    }
 }

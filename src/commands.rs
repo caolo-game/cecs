@@ -1,6 +1,9 @@
 use std::ptr::NonNull;
 
-use crate::{entity_id::EntityId, query::WorldQuery, CommandBuffer, Component, World, WorldError};
+use crate::{
+    entity_id::EntityId, prelude::Bundle, query::WorldQuery, CommandBuffer, Component, World,
+    WorldError,
+};
 
 pub struct Commands<'a> {
     entity_cmd: &'a CommandBuffer<EntityCommands>,
@@ -118,16 +121,24 @@ impl EntityCommands {
     }
 
     pub fn insert<T: Component>(&mut self, component: T) -> &mut Self {
+        self.payload.push(ErasedComponentCommand::from_component(
+            ComponentCommand::Insert(component),
+        ));
+        self
+    }
+
+    pub fn insert_bundle<T: Bundle>(&mut self, component: T) -> &mut Self {
         self.payload
-            .push(ErasedComponentCommand::new(ComponentCommand::Insert(
+            .push(ErasedComponentCommand::from_bundle(BundleCommand::Insert(
                 component,
             )));
         self
     }
 
     pub fn remove<T: Component>(&mut self) -> &mut Self {
-        self.payload
-            .push(ErasedComponentCommand::new(ComponentCommand::<T>::Delete));
+        self.payload.push(ErasedComponentCommand::from_component(
+            ComponentCommand::<T>::Delete,
+        ));
         self
     }
 }
@@ -157,7 +168,7 @@ impl ErasedComponentCommand {
         result
     }
 
-    pub fn new<T: Component>(inner: ComponentCommand<T>) -> Self {
+    pub fn from_component<T: Component>(inner: ComponentCommand<T>) -> Self {
         let inner = (Box::leak(Box::new(inner)) as *mut ComponentCommand<T>).cast();
         Self {
             inner,
@@ -172,6 +183,38 @@ impl ErasedComponentCommand {
                 Ok(())
             },
         }
+    }
+
+    pub fn from_bundle<T: Bundle>(inner: BundleCommand<T>) -> Self {
+        let inner = (Box::leak(Box::new(inner)) as *mut BundleCommand<T>).cast();
+        Self {
+            inner,
+            drop: |ptr| {
+                let mut ptr = ptr.cast();
+                let _ptr: Box<BundleCommand<T>> = unsafe { Box::from_raw(ptr.as_mut()) };
+            },
+            apply: |ptr, id, world| {
+                let mut ptr = ptr.cast();
+                let ptr: Box<BundleCommand<T>> = unsafe { Box::from_raw(ptr.as_mut()) };
+                ptr.apply(id, world)?;
+                Ok(())
+            },
+        }
+    }
+}
+
+pub(crate) enum BundleCommand<T> {
+    Insert(T),
+}
+
+impl<T: Bundle> BundleCommand<T> {
+    fn apply(self, entity_id: EntityId, world: &mut World) -> Result<(), WorldError> {
+        match self {
+            BundleCommand::Insert(bundle) => {
+                world.set_bundle(entity_id, bundle)?;
+            }
+        }
+        Ok(())
     }
 }
 
