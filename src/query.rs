@@ -123,6 +123,19 @@ where
         }
     }
 
+    /// Count the number of entities this query spans
+    pub fn count(&self) -> usize {
+        unsafe {
+            self.world
+                .as_ref()
+                .archetypes
+                .iter()
+                .filter(|(_, arch)| F::filter(arch))
+                .map(|(_, arch)| arch.len())
+                .sum::<usize>()
+        }
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = <ArchQuery<T> as QueryFragment<'a>>::Item> {
         unsafe {
             self.world
