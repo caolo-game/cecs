@@ -162,6 +162,20 @@ impl World {
         result
     }
 
+    #[cfg(feature = "parallel")]
+    pub fn write_schedule(&self, mut w: impl std::fmt::Write) -> std::fmt::Result {
+        for (i, stage) in self.system_stages.iter().enumerate() {
+            writeln!(w, "Stage {}:", stage.name)?;
+            for (j, group) in self.schedule[i].iter().enumerate() {
+                writeln!(w, "\tGroup {}:", j)?;
+                for k in group.iter() {
+                    writeln!(w, "\t\t- {}", stage.systems[*k].name)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Saved (only!) the entity ids.
     ///
     /// Components must be serialized and restored by the caller!
