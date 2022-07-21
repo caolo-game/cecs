@@ -9,15 +9,84 @@ pub type ShouldRunSystem<'a> = InnerSystem<'a, bool>;
 pub struct SystemStage<'a> {
     pub name: Cow<'a, str>,
     pub should_run: Vec<ErasedSystem<'a, bool>>,
-    pub systems: Vec<ErasedSystem<'a, ()>>,
+    pub systems: StageSystems<'a>,
+}
+
+#[derive(Clone)]
+pub enum StageSystems<'a> {
+    Serial(Vec<ErasedSystem<'a, ()>>),
+    #[cfg(feature = "parallel")]
+    Parallel(Vec<ErasedSystem<'a, ()>>),
+}
+
+impl<'a> StageSystems<'a> {
+    pub fn push(&mut self, sys: ErasedSystem<'a, ()>) {
+        match self {
+            StageSystems::Serial(v) => v.push(sys),
+            #[cfg(feature = "parallel")]
+            StageSystems::Parallel(v) => v.push(sys),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            StageSystems::Serial(v) => v.len(),
+            #[cfg(feature = "parallel")]
+            StageSystems::Parallel(v) => v.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn as_slice(&self) -> &[ErasedSystem<'a, ()>] {
+        match self {
+            StageSystems::Serial(v) => v.as_slice(),
+            #[cfg(feature = "parallel")]
+            StageSystems::Parallel(v) => v.as_slice(),
+        }
+    }
+
+    /// Returns `true` if the stage systems is [`Serial`].
+    ///
+    /// [`Serial`]: StageSystems::Serial
+    pub fn is_serial(&self) -> bool {
+        matches!(self, Self::Serial(..))
+    }
+
+    /// Returns `true` if the stage systems is [`Parallel`].
+    ///
+    /// [`Parallel`]: StageSystems::Parallel
+    #[cfg(feature = "parallel")]
+    pub fn is_parallel(&self) -> bool {
+        matches!(self, Self::Parallel(..))
+    }
+
+    #[cfg(not(feature = "parallel"))]
+    pub fn is_parallel(&self) -> bool {
+        false
+    }
 }
 
 impl<'a> SystemStage<'a> {
-    pub fn new<'b: 'a, N: Into<Cow<'b, str>>>(name: N) -> Self {
+    pub fn serial<'b: 'a, N: Into<Cow<'b, str>>>(name: N) -> Self {
         Self {
             name: name.into(),
             should_run: Vec::with_capacity(1),
-            systems: Vec::with_capacity(4),
+            systems: StageSystems::Serial(Vec::with_capacity(4)),
+        }
+    }
+
+    /// If `feature=parallel` is disabled, then this created a `serial` SystemStage
+    pub fn parallel<'b: 'a, N: Into<Cow<'b, str>>>(name: N) -> Self {
+        Self {
+            name: name.into(),
+            should_run: Vec::with_capacity(1),
+            #[cfg(feature = "parallel")]
+            systems: StageSystems::Parallel(Vec::with_capacity(4)),
+            #[cfg(not(feature = "parallel"))]
+            systems: StageSystems::Serial(Vec::with_capacity(4)),
         }
     }
 

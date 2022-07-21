@@ -8,15 +8,24 @@ pub fn schedule(stage: &SystemStage) -> Schedule {
     if stage.systems.is_empty() {
         return vec![];
     }
+
+    let systems = match &stage.systems {
+        crate::systems::StageSystems::Serial(v) => {
+            // trivial schedule
+            return vec![(0..v.len()).collect()];
+        }
+        crate::systems::StageSystems::Parallel(s) => s,
+    };
+
     let mut result = vec![vec![0]];
     let mut history = vec![QueryProperties {
-        comp_mut: (stage.systems[0].components_mut)(),
-        comp_const: (stage.systems[0].components_const)(),
-        res_mut: (stage.systems[0].resources_mut)(),
-        res_const: (stage.systems[0].resources_const)(),
+        comp_mut: (systems[0].components_mut)(),
+        comp_const: (systems[0].components_const)(),
+        res_mut: (systems[0].resources_mut)(),
+        res_const: (systems[0].resources_const)(),
     }];
 
-    'systems: for (sys_index, sys) in stage.systems.iter().enumerate().skip(1) {
+    'systems: for (sys_index, sys) in systems.iter().enumerate().skip(1) {
         let props = QueryProperties {
             comp_mut: (sys.components_mut)(),
             res_mut: (sys.resources_mut)(),
@@ -55,7 +64,7 @@ mod tests {
         fn system_3(_q: Query<&mut i32>) {}
         fn system_4(_q: Query<&String>) {}
 
-        let stage = SystemStage::new("many_systems")
+        let stage = SystemStage::parallel("many_systems")
             .with_system(system_0)
             .with_system(system_1)
             .with_system(system_2)

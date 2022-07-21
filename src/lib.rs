@@ -169,7 +169,7 @@ impl World {
             for (j, group) in self.schedule[i].iter().enumerate() {
                 writeln!(w, "\tGroup {}:", j)?;
                 for k in group.iter() {
-                    writeln!(w, "\t\t- {}", stage.systems[*k].name)?;
+                    writeln!(w, "\t\t- {}", stage.systems.as_slice()[*k].name)?;
                 }
             }
         }
@@ -406,32 +406,24 @@ impl World {
     pub fn run_stage(&mut self, stage: SystemStage<'_>) {
         #[cfg(feature = "tracing")]
         tracing::trace!(stage_name = stage.name.as_ref(), "Update stage");
-        for condition in stage.should_run.iter() {
-            if !unsafe { run_system(self, condition) } {
-                // stage should not run
-                return;
-            }
-        }
 
+        let i = self.system_stages.len();
+        // # SAFETY
+        // lifetimes are managed by the World instance from now
+        let stage = unsafe { std::mem::transmute(stage) };
+
+        // move stage into the world
         #[cfg(feature = "parallel")]
-        {
-            self.resize_commands(stage.systems.len());
-            let schedule = scheduler::schedule(&stage);
-            for group in schedule {
-                self.execute_systems(&group, &stage.systems)
-            }
-        }
-        #[cfg(not(feature = "parallel"))]
-        {
-            self.resize_commands(1);
-            for system in stage.systems.iter() {
-                unsafe {
-                    run_system(self, &system);
-                }
-            }
-        }
-        // apply commands immediately
-        self.apply_commands().unwrap();
+        self.schedule.push(crate::scheduler::schedule(&stage));
+
+        self.system_stages.push(stage);
+
+        self.execute_stage(i);
+
+        // pop the stage after execution, one-shot stages are not stored
+        self.system_stages.pop();
+        #[cfg(feature = "parallel")]
+        self.schedule.pop();
     }
 
     pub fn run_system<'a, S, P, R>(&mut self, system: S) -> R
@@ -455,40 +447,8 @@ impl World {
         }
     }
 
-    #[cfg(not(feature = "parallel"))]
-    fn execute_stage<'a>(&'a mut self, i: usize) {
-        self.prepare_stage(i);
-
-        let stage = &self.system_stages[i];
-
-        #[cfg(feature = "tracing")]
-        tracing::trace!(stage_name = stage.name.as_ref(), "• Run stage");
-
-        if let Some(condition) = stage.should_run.as_ref() {
-            if !unsafe { run_system(self, condition) } {
-                // stage should not run
-                #[cfg(feature = "tracing")]
-                tracing::trace!(
-                    stage_name = stage.name.as_ref(),
-                    "Stage should_run was false"
-                );
-                return;
-            }
-        }
-        for sys in stage.systems.iter() {
-            let execute: &dyn Fn(&'a World, usize) =
-                unsafe { std::mem::transmute(sys.execute.as_ref()) };
-            (execute)(self, 0);
-        }
-        #[cfg(feature = "tracing")]
-        tracing::trace!(stage_name = stage.name.as_ref(), "✓ Run stage finished");
-    }
-
-    #[cfg(feature = "parallel")]
     fn execute_stage(&mut self, i: usize) {
-        self.prepare_stage(i);
-
-        let schedule = &self.schedule[i];
+        self.resize_commands(self.system_stages[i].systems.len());
         let stage = &self.system_stages[i];
 
         #[cfg(feature = "tracing")]
@@ -506,17 +466,24 @@ impl World {
             }
         }
 
-        for group in schedule.iter() {
-            self.execute_systems(group, &stage.systems);
+        match stage.systems {
+            systems::StageSystems::Serial(ref systems) => {
+                for system in systems.iter() {
+                    unsafe {
+                        run_system(self, &system);
+                    }
+                }
+            }
+            #[cfg(feature = "parallel")]
+            systems::StageSystems::Parallel(ref systems) => {
+                let schedule = &self.schedule[i];
+                for group in schedule {
+                    self.execute_systems_parallel(&group, &systems)
+                }
+            }
         }
         #[cfg(feature = "tracing")]
         tracing::trace!(stage_name = stage.name.as_ref(), "✓ Run stage finished");
-    }
-
-    fn prepare_stage(&mut self, i: usize) {
-        let stage = &self.system_stages[i];
-        let len = stage.systems.len();
-        self.resize_commands(len);
     }
 
     fn resize_commands(&mut self, len: usize) {
@@ -527,7 +494,11 @@ impl World {
     }
 
     #[cfg(feature = "parallel")]
-    fn execute_systems<'a>(&'a self, group: &[usize], systems: &[systems::ErasedSystem<()>]) {
+    fn execute_systems_parallel<'a>(
+        &'a self,
+        group: &[usize],
+        systems: &[systems::ErasedSystem<()>],
+    ) {
         use rayon::prelude::*;
 
         group.par_iter().copied().for_each(|i| unsafe {
