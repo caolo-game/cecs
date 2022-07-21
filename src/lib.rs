@@ -406,7 +406,7 @@ impl World {
     pub fn run_stage(&mut self, stage: SystemStage<'_>) {
         #[cfg(feature = "tracing")]
         tracing::trace!(stage_name = stage.name.as_ref(), "Update stage");
-        if let Some(condition) = stage.should_run.as_ref() {
+        for condition in stage.should_run.iter() {
             if !unsafe { run_system(self, condition) } {
                 // stage should not run
                 return;
@@ -494,7 +494,7 @@ impl World {
         #[cfg(feature = "tracing")]
         tracing::trace!(stage_name = stage.name.as_ref(), "• Run stage");
 
-        if let Some(condition) = stage.should_run.as_ref() {
+        for condition in stage.should_run.iter() {
             if !unsafe { run_system(self, condition) } {
                 // stage should not run
                 #[cfg(feature = "tracing")]

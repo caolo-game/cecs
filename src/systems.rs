@@ -8,7 +8,7 @@ pub type ShouldRunSystem<'a> = InnerSystem<'a, bool>;
 #[derive(Clone)]
 pub struct SystemStage<'a> {
     pub name: Cow<'a, str>,
-    pub should_run: Option<ErasedSystem<'a, bool>>,
+    pub should_run: Vec<ErasedSystem<'a, bool>>,
     pub systems: Vec<ErasedSystem<'a, ()>>,
 }
 
@@ -16,16 +16,17 @@ impl<'a> SystemStage<'a> {
     pub fn new<'b: 'a, N: Into<Cow<'b, str>>>(name: N) -> Self {
         Self {
             name: name.into(),
-            should_run: None,
+            should_run: Vec::with_capacity(1),
             systems: Vec::with_capacity(4),
         }
     }
 
+    /// Multiple should_runs will be executed serially, and "and'ed" together
     pub fn with_should_run<S, P>(mut self, system: S) -> Self
     where
         S: IntoSystem<'a, P, bool>,
     {
-        self.should_run = Some(system.system());
+        self.should_run.push(system.system());
         self
     }
 
