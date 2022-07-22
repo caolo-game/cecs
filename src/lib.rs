@@ -176,6 +176,15 @@ impl World {
         Ok(())
     }
 
+    /// Writes entity ids and their archetype hash
+    pub fn write_entities(&self, mut w: impl std::fmt::Write) -> std::fmt::Result {
+        for (arch, _, id) in self.entity_ids.metadata.iter() {
+            let ty = unsafe { (**arch).ty() };
+            write!(w, "{}: {}, ", id, ty)?;
+        }
+        Ok(())
+    }
+
     /// Saved (only!) the entity ids.
     ///
     /// Components must be serialized and restored by the caller!
