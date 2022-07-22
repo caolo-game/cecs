@@ -218,17 +218,25 @@ impl World {
         #[cfg(feature = "tracing")]
         tracing::trace!("• Running commands");
         let mut commands = std::mem::take(&mut self.commands);
-        for commands in commands.iter_mut() {
+        for (_i, commands) in commands.iter_mut().enumerate() {
+            #[cfg(feature = "tracing")]
+            tracing::trace!("• Running command list {}", _i);
             for cmd in commands.get_mut().drain(0..) {
                 cmd.apply(self)?;
             }
+            #[cfg(feature = "tracing")]
+            tracing::trace!("✓ Running command list {}", _i);
         }
         self.commands = commands;
         let mut commands = std::mem::take(&mut self.resource_commands);
-        for commands in commands.iter_mut() {
+        for (_i, commands) in commands.iter_mut().enumerate() {
+            #[cfg(feature = "tracing")]
+            tracing::trace!("• Running resource command list {}", _i);
             for cmd in commands.get_mut().drain(0..) {
                 cmd.apply(self)?;
             }
+            #[cfg(feature = "tracing")]
+            tracing::trace!("✓ Running resource command list {}", _i);
         }
         self.resource_commands = commands;
 
