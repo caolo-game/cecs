@@ -163,7 +163,7 @@ impl World {
     }
 
     #[cfg(feature = "parallel")]
-    pub fn write_schedule(&self, mut w: impl std::fmt::Write) -> std::fmt::Result {
+    pub fn write_schedule(&self, mut w: impl std::io::Write) -> std::io::Result<()> {
         for (i, stage) in self.system_stages.iter().enumerate() {
             writeln!(w, "Stage {}:", stage.name)?;
             for (j, group) in self.schedule[i].iter().enumerate() {
@@ -177,7 +177,7 @@ impl World {
     }
 
     /// Writes entity ids and their archetype hash
-    pub fn write_entities(&self, mut w: impl std::fmt::Write) -> std::fmt::Result {
+    pub fn write_entities(&self, mut w: impl std::io::Write) -> std::io::Result<()> {
         for (arch, _, id) in self.entity_ids.metadata.iter() {
             let ty = unsafe { (**arch).ty() };
             write!(w, "{}: {}, ", id, ty)?;
