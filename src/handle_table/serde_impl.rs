@@ -50,7 +50,7 @@ impl<'de> Deserialize<'de> for HandleTable {
                 let count = seq
                     .next_element()?
                     .ok_or_else(|| de::Error::missing_field("count"))?;
-                let entries: Vec<_> = seq
+                let entries: Vec<Entry> = seq
                     .next_element()?
                     .ok_or_else(|| de::Error::missing_field("entries"))?;
 
@@ -64,9 +64,7 @@ impl<'de> Deserialize<'de> for HandleTable {
                     ));
                 }
 
-                for (i, entry) in entries.into_iter().enumerate() {
-                    result.entries_mut()[i] = entry;
-                }
+                result.entries_mut().copy_from_slice(&entries);
 
                 Ok(result)
             }
@@ -123,9 +121,7 @@ impl<'de> Deserialize<'de> for HandleTable {
                     ));
                 }
 
-                for (i, entry) in entries.into_iter().enumerate() {
-                    result.entries_mut()[i] = entry;
-                }
+                result.entries_mut().copy_from_slice(&entries);
 
                 Ok(result)
             }
