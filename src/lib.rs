@@ -1,6 +1,6 @@
 #![feature(const_type_id)]
 
-use std::{any::TypeId, collections::HashMap, pin::Pin, ptr::NonNull};
+use std::{any::TypeId, collections::BTreeMap, pin::Pin, ptr::NonNull};
 
 use archetype::ArchetypeStorage;
 use commands::{EntityCommands, ErasedResourceCommand};
@@ -34,7 +34,7 @@ type CommandBuffer<T> = std::cell::UnsafeCell<Vec<T>>;
 
 pub struct World {
     pub(crate) entity_ids: EntityIndex,
-    pub(crate) archetypes: HashMap<TypeHash, Pin<Box<ArchetypeStorage>>>,
+    pub(crate) archetypes: BTreeMap<TypeHash, Pin<Box<ArchetypeStorage>>>,
     pub(crate) resources: ResourceStorage,
     pub(crate) commands: Vec<CommandBuffer<EntityCommands>>,
     pub(crate) resource_commands: Vec<CommandBuffer<ErasedResourceCommand>>,
@@ -146,10 +146,9 @@ impl World {
 
         let entity_ids = EntityIndex::new(initial_capacity);
 
-        let archetypes = HashMap::with_capacity(128);
         let mut result = Self {
             entity_ids,
-            archetypes,
+            archetypes: BTreeMap::new(),
             resources: ResourceStorage::new(),
             commands: Vec::default(),
             resource_commands: Vec::default(),

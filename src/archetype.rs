@@ -1,4 +1,4 @@
-use std::{any::TypeId, cell::UnsafeCell, collections::HashMap};
+use std::{any::TypeId, cell::UnsafeCell, collections::BTreeMap};
 
 // TODO: use dense storage instead of the Vec because of archetypes
 use crate::{entity_id::EntityId, hash_ty, Component, RowIndex, TypeHash};
@@ -8,7 +8,7 @@ pub struct ArchetypeStorage {
     pub(crate) ty: TypeHash,
     pub(crate) rows: u32,
     pub(crate) entities: Vec<EntityId>,
-    pub(crate) components: HashMap<TypeId, UnsafeCell<ErasedTable>>,
+    pub(crate) components: BTreeMap<TypeId, UnsafeCell<ErasedTable>>,
 }
 
 unsafe impl Send for ArchetypeStorage {}
@@ -57,7 +57,7 @@ impl std::fmt::Debug for ArchetypeStorage {
 impl ArchetypeStorage {
     pub fn empty() -> Self {
         let ty = hash_ty::<()>();
-        let mut components = HashMap::new();
+        let mut components = BTreeMap::new();
         components.insert(
             TypeId::of::<()>(),
             UnsafeCell::new(ErasedTable::new(Vec::<()>::default())),
@@ -182,7 +182,7 @@ impl ArchetypeStorage {
             ty: self.ty,
             rows: 0,
             entities: Vec::with_capacity(self.entities.len()),
-            components: HashMap::from_iter(
+            components: BTreeMap::from_iter(
                 self.components
                     .iter()
                     .map(|(id, col)| (*id, (unsafe { &*col.get() }.clone_empty)()))
