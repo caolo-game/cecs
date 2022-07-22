@@ -206,6 +206,8 @@ impl World {
     }
 
     pub fn apply_commands(&mut self) -> WorldResult<()> {
+        #[cfg(feature = "tracing")]
+        tracing::trace!("• Running commands");
         let mut commands = std::mem::take(&mut self.commands);
         for commands in commands.iter_mut() {
             for cmd in commands.get_mut().drain(0..) {
@@ -220,6 +222,9 @@ impl World {
             }
         }
         self.resource_commands = commands;
+
+        #[cfg(feature = "tracing")]
+        tracing::trace!("✓ Running commands done");
         Ok(())
     }
 
