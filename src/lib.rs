@@ -16,6 +16,7 @@ pub mod entity_id;
 pub mod handle_table;
 pub mod prelude;
 pub mod query;
+pub mod query_set;
 pub mod resources;
 pub mod systems;
 
