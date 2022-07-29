@@ -36,12 +36,12 @@ fn pair_query_set_test() {
 fn triplet_query_set_test() {
     fn sys<'a>(
         mut q: QuerySet<(
+            Query<(&'a mut Foo, &'a Bar)>,
+            Query<(&'a mut Foo, &'a Bar, &'a mut i32)>,
             Query<&'a mut Foo>,
-            Query<(&'a mut Foo, &'a Bar, &'a mut i32)>,
-            Query<(&'a mut Foo, &'a Bar, &'a mut i32)>,
         )>,
     ) {
-        for foo in q.q0_mut().iter_mut() {
+        for foo in q.q2_mut().iter_mut() {
             assert_eq!(foo.value, 0);
             foo.value = 42;
         }
