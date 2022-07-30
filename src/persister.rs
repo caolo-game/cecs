@@ -6,7 +6,7 @@ use std::{cell::RefCell, collections::BTreeMap};
 
 use crate::{entity_id::EntityId, prelude::Query, Component, World};
 
-type IntermediateValue = ron::Value;
+type ErasedValue = ron::Value;
 
 pub struct WorldPersister {
     savers: RefCell<BTreeMap<&'static str, ErasedSaver>>,
@@ -48,6 +48,14 @@ impl WorldPersister {
         }
         root.end()
     }
+
+    pub fn load<'a, D: serde::Deserializer<'a>>(
+        &self,
+        out: &mut World,
+        d: D,
+    ) -> Result<(), D::Error> {
+        todo!()
+    }
 }
 
 struct ErasedSaver {
@@ -57,7 +65,7 @@ struct ErasedSaver {
     // implements Serialize
     //
     // TODO: return error?
-    for_each: fn(&World, &mut dyn FnMut(IntermediateValue)),
+    for_each: fn(&World, &mut dyn FnMut(ErasedValue)),
     count: fn(&World) -> usize,
 }
 
@@ -69,7 +77,7 @@ impl ErasedSaver {
             for_each: |world, fun| {
                 for (id, val) in Query::<(EntityId, &T)>::new(world).iter() {
                     let value = ron::to_string(&(id, val)).unwrap();
-                    let value = ron::from_str(&value).unwrap();
+                    let value: ErasedValue = ron::from_str(&value).unwrap();
                     fun(value);
                 }
             },
@@ -83,7 +91,7 @@ impl ErasedSaver {
         world: &World,
     ) -> Result<S::Ok, S::Error> {
         let mut s = s.serialize_seq(Some((self.count)(world)))?;
-        (self.for_each)(world, &mut |value: IntermediateValue| {
+        (self.for_each)(world, &mut |value: ErasedValue| {
             s.serialize_element(&value).unwrap();
         });
         s.end()
@@ -116,22 +124,35 @@ mod tests {
 
     #[test]
     fn save_test() {
-        let mut world = World::new(4);
+        let mut world0 = World::new(4);
 
         for i in 0u32..10u32 {
-            let id = world.insert_entity().unwrap();
-            world.set_component(id, 42i32).unwrap();
-            world.set_component(id, i).unwrap();
-            world.set_component(id, Foo { value: i }).unwrap();
+            let id = world0.insert_entity().unwrap();
+            world0.set_component(id, 42i32).unwrap();
+            world0.set_component(id, i).unwrap();
+            world0.set_component(id, Foo { value: i }).unwrap();
         }
 
         let mut p = WorldPersister::default();
         p.register_component::<i32>();
         p.register_component::<Foo>();
-        p.set_world(&mut world);
-
+        p.set_world(&mut world0);
         let result = serde_json::to_string_pretty(&p).unwrap();
+        println!("{}", result);
 
-        panic!("{}", result);
+        let mut world1 = World::new(4);
+        p.load(
+            &mut world1,
+            &mut serde_json::Deserializer::from_str(result.as_str()),
+        );
+
+        for ((id0, i0, f0), (id1, i1, f1)) in Query::<(EntityId, &i32, &Foo)>::new(&world0)
+            .iter()
+            .zip(Query::<(EntityId, &i32, &Foo)>::new(&world1).iter())
+        {
+            assert_eq!(id0, id1);
+            assert_eq!(i0, i1);
+            assert_eq!(f0.value, f1.value);
+        }
     }
 }

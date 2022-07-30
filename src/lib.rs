@@ -189,19 +189,6 @@ impl World {
         Ok(())
     }
 
-    /// Load saved entity ids.
-    ///
-    /// Note that all entities will be loaded into the empty archetype.
-    ///
-    /// Components must be serialized and restored by the caller!
-    #[cfg(feature = "serde")]
-    pub fn load_entity_ids<'a, D: serde::Deserializer<'a>>(d: D) -> Result<Self, D::Error> {
-        let mut result = Self::new(0);
-        let index = EntityIndex::load(d, &mut result)?;
-        result.entity_ids = index;
-        Ok(result)
-    }
-
     pub fn num_entities(&self) -> usize {
         self.entity_ids.len()
     }
