@@ -492,7 +492,7 @@ impl World {
             systems::StageSystems::Serial(ref systems) => {
                 for system in systems.iter() {
                     unsafe {
-                        run_system(self, &system);
+                        run_system(self, system);
                     }
                 }
             }
@@ -500,7 +500,7 @@ impl World {
             systems::StageSystems::Parallel(ref systems) => {
                 let schedule = &self.schedule[i];
                 for group in schedule {
-                    self.execute_systems_parallel(&group, &systems)
+                    self.execute_systems_parallel(group, systems)
                 }
             }
         }

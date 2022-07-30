@@ -138,7 +138,7 @@ impl<'a, R> Clone for ErasedSystem<'a, R> {
     fn clone(&self) -> Self {
         Self {
             name: self.name.clone(),
-            commands_index: self.commands_index.clone(),
+            commands_index: self.commands_index,
             execute: (self.factory)(),
             components_mut: self.components_mut,
             resources_mut: self.resources_mut,

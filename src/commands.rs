@@ -164,8 +164,7 @@ impl ErasedComponentCommand {
     pub fn apply(mut self, id: EntityId, world: &mut World) -> Result<(), WorldError> {
         let ptr = NonNull::new(self.inner).unwrap();
         self.inner = std::ptr::null_mut();
-        let result = (self.apply)(ptr, id, world);
-        result
+        (self.apply)(ptr, id, world)
     }
 
     pub fn from_component<T: Component>(inner: ComponentCommand<T>) -> Self {
