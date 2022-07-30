@@ -20,6 +20,10 @@ pub mod query_set;
 pub mod resources;
 pub mod systems;
 
+// FIXME: uncomment:
+// #[cfg(feature = "serde")]
+pub mod persister;
+
 mod archetype;
 
 #[cfg(feature = "parallel")]
@@ -95,7 +99,7 @@ const fn hash_ty<T: 'static>() -> u64 {
     // FIXME extreme curse
     //
     let ty: u64 = unsafe { std::mem::transmute(ty) };
-    if ty == unsafe { std::mem::transmute(TypeId::of::<()>()) } {
+    if ty == unsafe { std::mem::transmute::<_, u64>(TypeId::of::<()>()) } {
         // ensure that unit type has hash=0
         0
     } else {
@@ -183,14 +187,6 @@ impl World {
             write!(w, "{}: {}, ", id, ty)?;
         }
         Ok(())
-    }
-
-    /// Saved (only!) the entity ids.
-    ///
-    /// Components must be serialized and restored by the caller!
-    #[cfg(feature = "serde")]
-    pub fn save_entity_ids<S: serde::Serializer>(&self, s: S) -> Result<(), S::Error> {
-        self.entity_ids.save(s)
     }
 
     /// Load saved entity ids.

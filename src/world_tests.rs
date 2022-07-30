@@ -366,39 +366,6 @@ fn can_skip_stage_test() {
     assert_eq!(world.get_resource::<i32>().unwrap(), &0);
 }
 
-#[cfg(feature = "serde")]
-#[test]
-fn save_load_test() {
-    let mut world = World::new(100);
-
-    let mut ids = std::collections::HashSet::new();
-    for _ in 0..100 {
-        ids.insert(world.insert_entity().unwrap());
-    }
-
-    let mut payload = Vec::new();
-    world
-        .save_entity_ids(&mut bincode::Serializer::new(
-            &mut payload,
-            bincode::config::DefaultOptions::new(),
-        ))
-        .unwrap();
-
-    let mut deser =
-        bincode::de::Deserializer::from_slice(&payload, bincode::config::DefaultOptions::new());
-
-    let world2 = World::load_entity_ids(&mut deser).unwrap();
-
-    let mut seen = std::collections::HashSet::new();
-    for id in Query::<EntityId>::new(&world2).iter() {
-        assert!(ids.contains(&id));
-        assert!(world.is_id_valid(id));
-        seen.insert(id);
-    }
-
-    assert_eq!(ids, seen);
-}
-
 #[test]
 fn borrowing_same_type_const_twice_is_ok_test() {
     fn sys(_valid_query1: Query<(&i32, &i32)>, _valid_query2: Query<(&i32, &i32)>) {}
