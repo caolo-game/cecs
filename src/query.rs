@@ -136,6 +136,10 @@ where
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.count() == 0
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = <ArchQuery<T> as QueryFragment<'a>>::Item> {
         unsafe {
             self.world
