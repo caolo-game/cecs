@@ -75,9 +75,11 @@ impl ErasedSaver {
         Self {
             world: std::ptr::null(),
             for_each: |world, fun| {
+                let mut buffer = Vec::with_capacity(1024);
                 for (id, val) in Query::<(EntityId, &T)>::new(world).iter() {
-                    let value = ron::to_string(&(id, val)).unwrap();
-                    let value: ErasedValue = ron::from_str(&value).unwrap();
+                    buffer.clear();
+                    let value = ron::ser::to_writer(&mut buffer, &(id, val)).unwrap();
+                    let value: ErasedValue = ron::de::from_reader(buffer.as_slice()).unwrap();
                     fun(value);
                 }
             },
