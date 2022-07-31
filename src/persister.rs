@@ -21,8 +21,8 @@ type ErasedValue = ron::Value;
 type EntityMap = HashMap<EntityId, EntityId>;
 
 pub struct WorldPersister {
-    savers: RefCell<BTreeMap<&'static str, ErasedSaver>>,
-    loaders: RefCell<BTreeMap<&'static str, ErasedLoader>>,
+    savers: RefCell<BTreeMap<String, ErasedSaver>>,
+    loaders: RefCell<BTreeMap<String, ErasedLoader>>,
     world: *mut World,
 }
 
@@ -39,10 +39,20 @@ impl Default for WorldPersister {
 impl WorldPersister {
     pub fn register_component<T: Component + Serialize + DeserializeOwned>(&mut self) {
         let name = std::any::type_name::<T>();
+        let name = format!("Component_{}", name);
         let mut savers = self.savers.borrow_mut();
         let mut loaders = self.loaders.borrow_mut();
-        savers.insert(name, ErasedSaver::component::<T>());
+        savers.insert(name.clone(), ErasedSaver::component::<T>());
         loaders.insert(name, ErasedLoader::component::<T>());
+    }
+
+    pub fn register_resource<T: Component + Serialize + DeserializeOwned>(&mut self) {
+        let name = std::any::type_name::<T>();
+        let name = format!("Resource_{}", name);
+        let mut savers = self.savers.borrow_mut();
+        let mut loaders = self.loaders.borrow_mut();
+        savers.insert(name.clone(), ErasedSaver::resource::<T>());
+        loaders.insert(name, ErasedLoader::resource::<T>());
     }
 
     pub fn set_world<'a>(&'a mut self, world: &'a mut World) {
@@ -54,8 +64,9 @@ impl WorldPersister {
         let mut root = s.serialize_map(Some(savers.len()))?;
         for (name, saver) in savers.iter_mut() {
             saver.world = world as *const _;
-            root.serialize_entry(name, saver)?;
+            let result = root.serialize_entry(name, saver);
             saver.world = std::ptr::null();
+            result?;
         }
         root.end()
     }
@@ -91,11 +102,15 @@ impl WorldPersister {
                         let intermediate: ErasedValue = map.next_value()?;
                         loader.world = &mut self.world as *mut _;
                         loader.entity_map = &mut self.entity_map as *mut _;
-                        loader
+
+                        let result = loader
                             .load(intermediate)
-                            .map_err(|err| serde::de::Error::custom(err))?;
+                            .map_err(|err| serde::de::Error::custom(err));
+
                         loader.entity_map = std::ptr::null_mut();
                         loader.world = std::ptr::null_mut();
+
+                        result?;
                     }
                 }
 
@@ -120,6 +135,23 @@ struct ErasedLoader {
 }
 
 impl ErasedLoader {
+    /// Loads a resource
+    pub fn resource<T: Component + DeserializeOwned>() -> Self {
+        Self {
+            world: std::ptr::null_mut(),
+            entity_map: std::ptr::null_mut(),
+            insert: |world, _entity_map, values| {
+                let values: [T; 1] = values
+                    .into_rust()
+                    .with_context(|| "Failed to deserialize component list")?;
+                for res in values {
+                    world.insert_resource(res);
+                }
+                Ok(())
+            },
+        }
+    }
+
     /// Loads list of components
     pub fn component<T: Component + DeserializeOwned>() -> Self {
         Self {
@@ -178,6 +210,27 @@ impl ErasedSaver {
         }
     }
 
+    /// Saves a resource
+    ///
+    /// If resource isn't inserted into the `World` then this is a noop
+    pub fn resource<T: Component + Serialize>() -> Self {
+        Self {
+            world: std::ptr::null(),
+            for_each: |world, fun| {
+                if let Some(res) = world.get_resource::<T>() {
+                    let mut buffer = Vec::with_capacity(1024);
+                    ron::ser::to_writer(&mut buffer, res)
+                        .with_context(|| "Failed to serialize resource into ErasedValue")?;
+                    let value: ErasedValue = ron::de::from_reader(buffer.as_slice()).unwrap();
+                    fun(value)?;
+                }
+                Ok(())
+            },
+            count: |world| world.get_resource::<T>().is_some() as usize,
+        }
+    }
+
+    /// always waves slice of values, even for single items
     pub fn save<'a, S: serde::Serializer>(
         &'a self,
         s: S,
@@ -298,6 +351,47 @@ mod tests {
             Query::<&u32>::new(&world1).count(),
             0,
             "Assumes that non registered types are not (de)serialized"
+        );
+    }
+
+    #[test]
+    fn resource_saveload_json_test() {
+        let mut world0 = World::new(4);
+
+        for i in 0u32..4u32 {
+            let id = world0.insert_entity().unwrap();
+            world0.set_component(id, 42i32).unwrap();
+            world0.set_component(id, i).unwrap();
+            world0.set_component(id, Foo { value: i }).unwrap();
+        }
+
+        world0.insert_resource(Foo { value: 69 });
+
+        let mut p = WorldPersister::default();
+        p.register_component::<Foo>();
+        p.register_resource::<Foo>();
+        p.set_world(&mut world0);
+
+        let pl = serde_json::to_string_pretty(&p).unwrap();
+
+        let (world1, id_map) = p
+            .load(&mut serde_json::Deserializer::from_str(pl.as_str()))
+            .unwrap();
+
+        type QueryTuple<'a> = (EntityId, &'a Foo);
+
+        for ((id0, f0), (id1, f1)) in Query::<QueryTuple>::new(&world0)
+            .iter()
+            .zip(Query::<QueryTuple>::new(&world1).iter())
+        {
+            let id01 = id_map[&id0];
+            assert_eq!(id01, id1);
+            assert_eq!(f0.value, f1.value);
+        }
+
+        assert_eq!(
+            world1.get_resource::<Foo>().expect("foo not found").value,
+            69
         );
     }
 }
