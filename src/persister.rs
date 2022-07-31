@@ -162,9 +162,9 @@ impl ErasedLoader {
                     .into_rust()
                     .with_context(|| "Failed to deserialize component list")?;
                 for (id, component) in values {
-                    let new_id = *entity_map
-                        .entry(id)
-                        .or_insert_with(|| world.insert_entity().unwrap());
+                    let new_id = *entity_map.entry(id).or_insert_with(|| {
+                        world.insert_entity().expect("Failed to insert new entity")
+                    });
 
                     assert!(world.is_id_valid(new_id));
 
