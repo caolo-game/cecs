@@ -1,6 +1,3 @@
-#[cfg(feature = "serde")]
-mod serde_impl;
-
 use std::{
     alloc::{alloc, dealloc, Layout},
     mem::{align_of, size_of},
