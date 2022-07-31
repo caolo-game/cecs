@@ -88,11 +88,11 @@ impl WorldPersister {
                 while let Some(key) = map.next_key::<&str>()? {
                     // TODO ignore unknown fields for now, maybe return error in future?
                     if let Some(loader) = loaders.get_mut(key) {
-                        let intermediate: Vec<ErasedValue> = map.next_value()?;
+                        let intermediate: ErasedValue = map.next_value()?;
                         loader.world = &mut self.world as *mut _;
                         loader.entity_map = &mut self.entity_map as *mut _;
                         loader
-                            .load_slice(&intermediate)
+                            .load(intermediate)
                             .map_err(|err| serde::de::Error::custom(err))?;
                         loader.entity_map = std::ptr::null_mut();
                         loader.world = std::ptr::null_mut();
@@ -116,7 +116,7 @@ impl WorldPersister {
 struct ErasedLoader {
     world: *mut World,
     entity_map: *mut EntityMap,
-    insert_values: fn(&mut World, &mut EntityMap, &[ErasedValue]) -> anyhow::Result<()>,
+    insert: fn(&mut World, &mut EntityMap, ErasedValue) -> anyhow::Result<()>,
 }
 
 impl ErasedLoader {
@@ -125,12 +125,11 @@ impl ErasedLoader {
         Self {
             world: std::ptr::null_mut(),
             entity_map: std::ptr::null_mut(),
-            insert_values: |world, entity_map, values| {
-                for value in values.iter().cloned() {
-                    let (id, component): (EntityId, T) = value
-                        .into_rust()
-                        .with_context(|| "Failed to deserialize value")?;
-
+            insert: |world, entity_map, values| {
+                let values: Vec<(EntityId, T)> = values
+                    .into_rust()
+                    .with_context(|| "Failed to deserialize component list")?;
+                for (id, component) in values {
                     let new_id = *entity_map
                         .entry(id)
                         .or_insert_with(|| world.insert_entity().unwrap());
@@ -144,12 +143,12 @@ impl ErasedLoader {
         }
     }
 
-    pub fn load_slice(&mut self, values: &[ErasedValue]) -> anyhow::Result<()> {
+    pub fn load(&mut self, values: ErasedValue) -> anyhow::Result<()> {
         assert_ne!(self.world, std::ptr::null_mut());
         assert_ne!(self.entity_map, std::ptr::null_mut());
         let world = unsafe { &mut *self.world };
         let entity_map = unsafe { &mut *self.entity_map };
-        (self.insert_values)(world, entity_map, values)
+        (self.insert)(world, entity_map, values)
     }
 }
 
