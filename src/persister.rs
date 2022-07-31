@@ -275,6 +275,13 @@ mod tests {
         value: u32,
     }
 
+    #[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
+    enum Bar {
+        Foo,
+        Bar,
+        Baz,
+    }
+
     #[test]
     fn save_load_json_test() {
         let mut world0 = World::new(4);
@@ -284,11 +291,13 @@ mod tests {
             world0.set_component(id, 42i32).unwrap();
             world0.set_component(id, i).unwrap();
             world0.set_component(id, Foo { value: i }).unwrap();
+            world0.set_component(id, Bar::Baz).unwrap();
         }
 
         let mut p = WorldPersister::default();
         p.register_component::<i32>();
         p.register_component::<Foo>();
+        p.register_component::<Bar>();
         p.set_world(&mut world0);
         let result = serde_json::to_string_pretty(&p).unwrap();
 
