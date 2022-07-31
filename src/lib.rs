@@ -20,8 +20,7 @@ pub mod query_set;
 pub mod resources;
 pub mod systems;
 
-// FIXME: uncomment:
-// #[cfg(feature = "serde")]
+#[cfg(feature = "serde")]
 pub mod persister;
 
 mod archetype;
