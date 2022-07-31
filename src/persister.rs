@@ -1,89 +1,132 @@
-use anyhow::Context;
 use serde::{
     de::{DeserializeOwned, Visitor},
-    ser::{SerializeMap, SerializeSeq},
+    ser::SerializeMap,
     Serialize,
 };
-use std::{
-    cell::RefCell,
-    collections::{BTreeMap, HashMap},
-};
+use std::{collections::HashMap, marker::PhantomData};
 
 use crate::{entity_id::EntityId, prelude::Query, Component, World};
-
-// FIXME: serializing to Value so we can serialize to another format is yucky
-// this is here because we need a type erased intermediate value for serializing that itself
-// implements Serialize
-//
-type ErasedValue = ron::Value;
 
 /// Maps saved entity ids to their loaded entity ids
 pub type EntityMap = HashMap<EntityId, EntityId>;
 
-pub struct WorldPersister {
-    savers: RefCell<BTreeMap<String, ErasedSaver>>,
-    loaders: RefCell<BTreeMap<String, ErasedLoader>>,
-    world: *mut World,
+pub struct WorldPersister<T = (), P = ()> {
+    next: Option<P>,
+    ty: SerTy,
+    depth: usize,
+    _m: PhantomData<T>,
 }
 
-impl Default for WorldPersister {
-    fn default() -> Self {
-        Self {
-            world: std::ptr::null_mut(),
-            savers: RefCell::default(),
-            loaders: RefCell::default(),
+pub fn get_persister() -> WorldPersister {
+    WorldPersister {
+        next: None,
+        depth: 0,
+        ty: SerTy::Noop,
+        _m: PhantomData,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SerTy {
+    Component,
+    Resource,
+    Noop,
+}
+
+impl<T, P> WorldPersister<T, P> {
+    pub fn add_component<U: Component + Serialize + DeserializeOwned>(self) -> WorldPersister<U, Self> {
+        WorldPersister {
+            depth: self.depth + 1,
+            next: Some(self),
+            ty: SerTy::Component,
+            _m: PhantomData,
+        }
+    }
+
+    pub fn add_resource<U: Component + Serialize + DeserializeOwned>(self) -> WorldPersister<U, Self> {
+        WorldPersister {
+            depth: self.depth + 1,
+            next: Some(self),
+            ty: SerTy::Resource,
+            _m: PhantomData,
         }
     }
 }
 
-impl WorldPersister {
-    pub fn register_component<T: Component + Serialize + DeserializeOwned>(&mut self) {
-        let name = std::any::type_name::<T>();
-        let name = format!("Component_{}", name);
-        let mut savers = self.savers.borrow_mut();
-        let mut loaders = self.loaders.borrow_mut();
-        savers.insert(name.clone(), ErasedSaver::component::<T>());
-        loaders.insert(name, ErasedLoader::component::<T>());
+pub trait WorldSerializer {
+    fn save<S: serde::Serializer>(&self, s: S, world: &World) -> Result<S::Ok, S::Error>;
+    fn save_entry<S: serde::Serializer>(
+        &self,
+        s: &mut S::SerializeMap,
+        world: &World,
+    ) -> Result<(), S::Error>;
+
+    fn load<'a, D: serde::Deserializer<'a>>(&'a self, d: D)
+        -> Result<(World, EntityMap), D::Error>;
+
+    fn visit_map_value<'de, A>(
+        &self,
+        key: &str,
+        map: &mut A,
+        world: &mut World,
+        id_map: &mut EntityMap,
+    ) -> Result<(), A::Error>
+    where
+        A: serde::de::MapAccess<'de>;
+}
+
+fn entry_name<T: 'static>(ty: SerTy) -> String {
+    format!("{:?}_{}", ty, std::any::type_name::<T>())
+}
+
+impl<T: Component + Serialize + DeserializeOwned> WorldSerializer for WorldPersister<T, ()> {
+    fn save<S: serde::Serializer>(&self, s: S, world: &World) -> Result<S::Ok, S::Error> {
+        let mut s = s.serialize_map(Some(self.depth))?;
+        self.save_entry::<S>(&mut s, world)?;
+        s.end()
     }
 
-    pub fn register_resource<T: Component + Serialize + DeserializeOwned>(&mut self) {
-        let name = std::any::type_name::<T>();
-        let name = format!("Resource_{}", name);
-        let mut savers = self.savers.borrow_mut();
-        let mut loaders = self.loaders.borrow_mut();
-        savers.insert(name.clone(), ErasedSaver::resource::<T>());
-        loaders.insert(name, ErasedLoader::resource::<T>());
-    }
-
-    pub fn set_world<'a>(&'a mut self, world: &'a mut World) {
-        self.world = world as *mut _;
-    }
-
-    pub fn save<S: serde::Serializer>(&self, s: S, world: &World) -> Result<S::Ok, S::Error> {
-        let mut savers = self.savers.borrow_mut();
-        let mut root = s.serialize_map(Some(savers.len()))?;
-        for (name, saver) in savers.iter_mut() {
-            saver.world = world as *const _;
-            let result = root.serialize_entry(name, saver);
-            saver.world = std::ptr::null();
-            result?;
+    fn save_entry<S: serde::Serializer>(
+        &self,
+        s: &mut S::SerializeMap,
+        world: &World,
+    ) -> Result<(), S::Error> {
+        let name = entry_name::<T>(self.ty);
+        match self.ty {
+            SerTy::Component => {
+                // TODO: save iterator or adapter pls
+                let values: Vec<(EntityId, &T)> =
+                    Query::<(EntityId, &T)>::new(world).iter().collect();
+                s.serialize_entry(&name, &values)?;
+            }
+            SerTy::Resource => {
+                if let Some(value) = world.get_resource::<T>() {
+                    s.serialize_entry(&name, value)?;
+                }
+            }
+            SerTy::Noop => {}
         }
-        root.end()
+        Ok(())
     }
 
-    /// Ids of entities are not guaranteed to be the same as when they were saved
-    /// the returned EntityMap provides a mapping from the old ids to the new ids
-    pub fn load<'a, D: serde::Deserializer<'a>>(
+    // TODO dry up this code
+    fn load<'a, D: serde::Deserializer<'a>>(
         &'a self,
         d: D,
     ) -> Result<(World, EntityMap), D::Error> {
-        struct WorldVisitor<'a> {
-            persist: &'a WorldPersister,
+        struct WorldVisitor<'a, T>
+        where
+            T: Component + DeserializeOwned + Serialize,
+        {
+            persist: &'a WorldPersister<T, ()>,
             world: World,
             entity_map: EntityMap,
         }
 
-        impl<'a, 'de: 'a> Visitor<'de> for WorldVisitor<'a> {
+        impl<'a, 'de: 'a, T> Visitor<'de> for WorldVisitor<'a, T>
+        where
+            T: Component + DeserializeOwned + Serialize,
+        {
             type Value = (World, EntityMap);
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -94,24 +137,13 @@ impl WorldPersister {
             where
                 A: serde::de::MapAccess<'de>,
             {
-                let mut loaders = self.persist.loaders.borrow_mut();
-
-                while let Some(key) = map.next_key::<&str>()? {
-                    // TODO ignore unknown fields for now, maybe return error in future?
-                    if let Some(loader) = loaders.get_mut(key) {
-                        let intermediate: ErasedValue = map.next_value()?;
-                        loader.world = &mut self.world as *mut _;
-                        loader.entity_map = &mut self.entity_map as *mut _;
-
-                        let result = loader
-                            .load(intermediate)
-                            .map_err(|err| serde::de::Error::custom(err));
-
-                        loader.entity_map = std::ptr::null_mut();
-                        loader.world = std::ptr::null_mut();
-
-                        result?;
-                    }
+                while let Some(key) = map.next_key::<std::borrow::Cow<'de, str>>()? {
+                    self.persist.visit_map_value(
+                        key.as_ref(),
+                        &mut map,
+                        &mut self.world,
+                        &mut self.entity_map,
+                    )?;
                 }
 
                 Ok((self.world, self.entity_map))
@@ -126,143 +158,172 @@ impl WorldPersister {
 
         d.deserialize_map(visitor)
     }
-}
 
-struct ErasedLoader {
-    world: *mut World,
-    entity_map: *mut EntityMap,
-    insert: fn(&mut World, &mut EntityMap, ErasedValue) -> anyhow::Result<()>,
-}
-
-impl ErasedLoader {
-    /// Loads a resource
-    pub fn resource<T: Component + DeserializeOwned>() -> Self {
-        Self {
-            world: std::ptr::null_mut(),
-            entity_map: std::ptr::null_mut(),
-            insert: |world, _entity_map, values| {
-                let values: [T; 1] = values
-                    .into_rust()
-                    .context("Failed to deserialize resource")?;
-                for res in values {
-                    world.insert_resource(res);
-                }
-                Ok(())
-            },
+    fn visit_map_value<'de, A>(
+        &self,
+        key: &str,
+        map: &mut A,
+        world: &mut World,
+        id_map: &mut EntityMap,
+    ) -> Result<(), A::Error>
+    where
+        A: serde::de::MapAccess<'de>,
+    {
+        let tname = entry_name::<T>(self.ty);
+        if tname != key {
+            // TODO: return error if no loader was found?
+            return Ok(());
         }
-    }
 
-    /// Loads list of components
-    pub fn component<T: Component + DeserializeOwned>() -> Self {
-        Self {
-            world: std::ptr::null_mut(),
-            entity_map: std::ptr::null_mut(),
-            insert: |world, entity_map, values| {
-                let values: Vec<(EntityId, T)> = values
-                    .into_rust()
-                    .context("Failed to deserialize component list")?;
-                for (id, component) in values {
-                    let new_id = *entity_map.entry(id).or_insert_with(|| {
-                        world.insert_entity().expect("Failed to insert new entity")
+        match self.ty {
+            SerTy::Component => {
+                let values: Vec<(EntityId, T)> = map.next_value()?;
+                for (old_id, value) in values {
+                    let id = *id_map.entry(old_id).or_insert_with(|| {
+                        world
+                            .insert_entity()
+                            .expect("Failed to allocate new entity")
                     });
 
-                    assert!(world.is_id_valid(new_id));
-
-                    world.set_component(new_id, component).unwrap();
+                    world.set_component(id, value).unwrap();
                 }
-                Ok(())
-            },
+            }
+            SerTy::Resource => {
+                let value: T = map.next_value()?;
+                world.insert_resource(value);
+            }
+            SerTy::Noop => {}
         }
-    }
 
-    pub fn load(&mut self, values: ErasedValue) -> anyhow::Result<()> {
-        assert_ne!(self.world, std::ptr::null_mut());
-        assert_ne!(self.entity_map, std::ptr::null_mut());
-        let world = unsafe { &mut *self.world };
-        let entity_map = unsafe { &mut *self.entity_map };
-        (self.insert)(world, entity_map, values)
+        Ok(())
     }
 }
 
-struct ErasedSaver {
-    world: *const World,
-    for_each: fn(&World, &mut dyn FnMut(ErasedValue) -> anyhow::Result<()>) -> anyhow::Result<()>,
-    count: fn(&World) -> usize,
-}
-
-impl ErasedSaver {
-    /// Saves list of components
-    pub fn component<T: Component + Serialize>() -> Self {
-        Self {
-            world: std::ptr::null(),
-            for_each: |world, fun| {
-                let mut buffer = Vec::with_capacity(1024);
-                for (id, val) in Query::<(EntityId, &T)>::new(world).iter() {
-                    buffer.clear();
-                    ron::ser::to_writer(&mut buffer, &(id, val))
-                        .context("Failed to serialize into ErasedValue")?;
-                    let value: ErasedValue = ron::de::from_reader(buffer.as_slice()).unwrap();
-                    fun(value)?;
-                }
-                Ok(())
-            },
-            count: |world| Query::<(EntityId, &T)>::new(world).count(),
-        }
-    }
-
-    /// Saves a resource
-    ///
-    /// If resource isn't inserted into the `World` then this is a noop
-    pub fn resource<T: Component + Serialize>() -> Self {
-        Self {
-            world: std::ptr::null(),
-            for_each: |world, fun| {
-                if let Some(res) = world.get_resource::<T>() {
-                    let mut buffer = Vec::with_capacity(1024);
-                    ron::ser::to_writer(&mut buffer, res)
-                        .context("Failed to serialize resource into ErasedValue")?;
-                    let value: ErasedValue = ron::de::from_reader(buffer.as_slice()).unwrap();
-                    fun(value)?;
-                }
-                Ok(())
-            },
-            count: |world| world.get_resource::<T>().is_some() as usize,
-        }
-    }
-
-    /// always waves slice of values, even for single items
-    pub fn save<'a, S: serde::Serializer>(
-        &'a self,
-        s: S,
-        world: &World,
-    ) -> Result<S::Ok, S::Error> {
-        let mut s = s.serialize_seq(Some((self.count)(world)))?;
-        (self.for_each)(world, &mut |value: ErasedValue| {
-            s.serialize_element(&value)
-                .map_err(|err| anyhow::anyhow!("Failed to serialize ErasedValue: {:?}", err))?;
-            Ok(())
-        })
-        .unwrap(); // TODO: return this error
+impl<T: Component + Serialize + DeserializeOwned, P> WorldSerializer for WorldPersister<T, P>
+where
+    P: WorldSerializer,
+{
+    fn save<S: serde::Serializer>(&self, s: S, world: &World) -> Result<S::Ok, S::Error> {
+        let mut s = s.serialize_map(Some(self.depth))?;
+        self.save_entry::<S>(&mut s, world)?;
         s.end()
     }
-}
 
-impl Serialize for ErasedSaver {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        assert_ne!(self.world, std::ptr::null());
-        unsafe { self.save(s, &*self.world) }
+    fn save_entry<S: serde::Serializer>(
+        &self,
+        s: &mut S::SerializeMap,
+        world: &World,
+    ) -> Result<(), S::Error> {
+        let tname = entry_name::<T>(self.ty);
+        match self.ty {
+            SerTy::Component => {
+                // TODO: save iterator or adapter pls
+                let values: Vec<(EntityId, &T)> =
+                    Query::<(EntityId, &T)>::new(world).iter().collect();
+                s.serialize_entry(&tname, &values)?;
+            }
+            SerTy::Resource => {
+                if let Some(value) = world.get_resource::<T>() {
+                    s.serialize_entry(&tname, value)?;
+                }
+            }
+            SerTy::Noop => {}
+        }
+        if let Some(p) = self.next.as_ref() {
+            p.save_entry::<S>(s, world)?;
+        }
+        Ok(())
     }
-}
 
-impl Serialize for WorldPersister {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        assert_ne!(
-            self.world,
-            std::ptr::null_mut(),
-            "Call set_world before serializing!"
-        );
-        let world = self.world;
-        unsafe { self.save(s, &*world) }
+    fn load<'a, D: serde::Deserializer<'a>>(
+        &'a self,
+        d: D,
+    ) -> Result<(World, EntityMap), D::Error> {
+        struct WorldVisitor<'a, T, P>
+        where
+            P: WorldSerializer,
+            T: Component + DeserializeOwned + Serialize,
+        {
+            persist: &'a WorldPersister<T, P>,
+            world: World,
+            entity_map: EntityMap,
+        }
+
+        impl<'a, 'de: 'a, T, P> Visitor<'de> for WorldVisitor<'a, T, P>
+        where
+            P: WorldSerializer,
+            T: Component + DeserializeOwned + Serialize,
+        {
+            type Value = (World, EntityMap);
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("Serialized World")
+            }
+
+            fn visit_map<A>(mut self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                while let Some(key) = map.next_key::<std::borrow::Cow<'de, str>>()? {
+                    self.persist.visit_map_value(
+                        key.as_ref(),
+                        &mut map,
+                        &mut self.world,
+                        &mut self.entity_map,
+                    )?;
+                }
+
+                Ok((self.world, self.entity_map))
+            }
+        }
+
+        let visitor = WorldVisitor {
+            persist: self,
+            world: World::new(100),
+            entity_map: Default::default(),
+        };
+
+        d.deserialize_map(visitor)
+    }
+
+    fn visit_map_value<'de, A>(
+        &self,
+        key: &str,
+        map: &mut A,
+        world: &mut World,
+        id_map: &mut EntityMap,
+    ) -> Result<(), A::Error>
+    where
+        A: serde::de::MapAccess<'de>,
+    {
+        let tname = entry_name::<T>(self.ty);
+        if tname != key {
+            if let Some(next) = &self.next {
+                next.visit_map_value(key, map, world, id_map)?;
+            }
+            return Ok(());
+        }
+        match self.ty {
+            SerTy::Component => {
+                let values: Vec<(EntityId, T)> = map.next_value()?;
+                for (old_id, value) in values {
+                    let id = *id_map.entry(old_id).or_insert_with(|| {
+                        world
+                            .insert_entity()
+                            .expect("Failed to allocate new entity")
+                    });
+
+                    world.set_component(id, value).unwrap();
+                }
+            }
+            SerTy::Resource => {
+                let value: T = map.next_value()?;
+                world.insert_resource(value);
+            }
+            SerTy::Noop => {}
+        }
+
+        Ok(())
     }
 }
 
@@ -294,12 +355,16 @@ mod tests {
             world0.set_component(id, Bar::Baz).unwrap();
         }
 
-        let mut p = WorldPersister::default();
-        p.register_component::<i32>();
-        p.register_component::<Foo>();
-        p.register_component::<Bar>();
-        p.set_world(&mut world0);
-        let result = serde_json::to_string_pretty(&p).unwrap();
+        let p = get_persister()
+            .add_component::<i32>()
+            .add_component::<Foo>()
+            .add_component::<Bar>();
+        let mut result = Vec::<u8>::new();
+        let mut s = serde_json::Serializer::pretty(&mut result);
+
+        p.save(&mut s, &world0).unwrap();
+
+        let result = String::from_utf8(result).unwrap();
 
         let (world1, id_map) = p
             .load(&mut serde_json::Deserializer::from_str(result.as_str()))
@@ -335,11 +400,13 @@ mod tests {
             world0.set_component(id, Foo { value: i }).unwrap();
         }
 
-        let mut p = WorldPersister::default();
-        p.register_component::<i32>();
-        p.register_component::<Foo>();
-        p.set_world(&mut world0);
-        let result = bincode::serialize(&p).unwrap();
+        let p = get_persister()
+            .add_component::<i32>()
+            .add_component::<Foo>();
+
+        let mut result = Vec::<u8>::new();
+        let mut s = bincode::Serializer::new(&mut result, bincode::config::DefaultOptions::new());
+        p.save(&mut s, &world0).unwrap();
 
         let (world1, id_map) = p
             .load(&mut bincode::de::Deserializer::from_slice(
@@ -380,15 +447,18 @@ mod tests {
 
         world0.insert_resource(Foo { value: 69 });
 
-        let mut p = WorldPersister::default();
-        p.register_component::<Foo>();
-        p.register_resource::<Foo>();
-        p.set_world(&mut world0);
+        let p = get_persister().add_component::<Foo>().add_resource::<Foo>();
 
-        let pl = serde_json::to_string_pretty(&p).unwrap();
+        let mut pl = Vec::<u8>::new();
+        let mut s = serde_json::Serializer::pretty(&mut pl);
+
+        p.save(&mut s, &world0).unwrap();
+
+        let pretty = std::str::from_utf8(&pl).unwrap();
+        println!("{}", pretty);
 
         let (world1, id_map) = p
-            .load(&mut serde_json::Deserializer::from_str(pl.as_str()))
+            .load(&mut serde_json::Deserializer::from_reader(pl.as_slice()))
             .unwrap();
 
         type QueryTuple<'a> = (EntityId, &'a Foo);
