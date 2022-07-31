@@ -143,7 +143,7 @@ impl ErasedLoader {
             insert: |world, _entity_map, values| {
                 let values: [T; 1] = values
                     .into_rust()
-                    .with_context(|| "Failed to deserialize resource")?;
+                    .context("Failed to deserialize resource")?;
                 for res in values {
                     world.insert_resource(res);
                 }
@@ -160,7 +160,7 @@ impl ErasedLoader {
             insert: |world, entity_map, values| {
                 let values: Vec<(EntityId, T)> = values
                     .into_rust()
-                    .with_context(|| "Failed to deserialize component list")?;
+                    .context("Failed to deserialize component list")?;
                 for (id, component) in values {
                     let new_id = *entity_map.entry(id).or_insert_with(|| {
                         world.insert_entity().expect("Failed to insert new entity")
@@ -200,7 +200,7 @@ impl ErasedSaver {
                 for (id, val) in Query::<(EntityId, &T)>::new(world).iter() {
                     buffer.clear();
                     ron::ser::to_writer(&mut buffer, &(id, val))
-                        .with_context(|| "Failed to serialize into ErasedValue")?;
+                        .context("Failed to serialize into ErasedValue")?;
                     let value: ErasedValue = ron::de::from_reader(buffer.as_slice()).unwrap();
                     fun(value)?;
                 }
@@ -220,7 +220,7 @@ impl ErasedSaver {
                 if let Some(res) = world.get_resource::<T>() {
                     let mut buffer = Vec::with_capacity(1024);
                     ron::ser::to_writer(&mut buffer, res)
-                        .with_context(|| "Failed to serialize resource into ErasedValue")?;
+                        .context("Failed to serialize resource into ErasedValue")?;
                     let value: ErasedValue = ron::de::from_reader(buffer.as_slice()).unwrap();
                     fun(value)?;
                 }
