@@ -130,7 +130,7 @@ where
                 .as_ref()
                 .archetypes
                 .iter()
-                .filter(|(_, arch)| F::filter(arch))
+                .filter(|(_, arch)| F::filter(arch) && ArchQuery::<T>::contains(arch))
                 .map(|(_, arch)| arch.len())
                 .sum::<usize>()
         }
