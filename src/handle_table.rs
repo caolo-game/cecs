@@ -260,27 +260,6 @@ impl EntityIndex {
     }
 
     #[cfg(feature = "serde")]
-    pub fn save<S: serde::Serializer>(&self, s: S) -> Result<(), S::Error> {
-        use serde::ser::SerializeStruct;
-
-        let mut s = s.serialize_struct("EntityIndex", 2)?;
-        s.serialize_field("handles", &self.handles)?;
-        // serialize archetype type, row_index, entity_id tuples
-        s.serialize_field(
-            "rows",
-            &self
-                .metadata
-                .iter()
-                .map(|(ptr, row, id)| unsafe {
-                    (ptr.as_ref().map(|x| x.ty).unwrap_or(0), *row, *id)
-                })
-                .collect::<SerializedMetadata>(),
-        )?;
-
-        Ok(())
-    }
-
-    #[cfg(feature = "serde")]
     pub fn load<'a, D: serde::Deserializer<'a>>(
         d: D,
         world: &mut crate::World,
@@ -429,6 +408,29 @@ impl EntityIndex {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for EntityIndex {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+
+        let mut s = s.serialize_struct("EntityIndex", 2)?;
+        s.serialize_field("handles", &self.handles)?;
+        // serialize archetype type, row_index, entity_id tuples
+        s.serialize_field(
+            "rows",
+            &self
+                .metadata
+                .iter()
+                .map(|(ptr, row, id)| unsafe {
+                    (ptr.as_ref().map(|x| x.ty).unwrap_or(0), *row, *id)
+                })
+                .collect::<SerializedMetadata>(),
+        )?;
+
+        s.end()
     }
 }
 
