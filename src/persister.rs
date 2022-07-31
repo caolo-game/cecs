@@ -143,7 +143,7 @@ impl ErasedLoader {
             insert: |world, _entity_map, values| {
                 let values: [T; 1] = values
                     .into_rust()
-                    .with_context(|| "Failed to deserialize component list")?;
+                    .with_context(|| "Failed to deserialize resource")?;
                 for res in values {
                     world.insert_resource(res);
                 }
