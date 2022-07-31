@@ -17,8 +17,8 @@ use crate::{entity_id::EntityId, prelude::Query, Component, World};
 //
 type ErasedValue = ron::Value;
 
-/// Maps saved entity ids to their new entity ids
-type EntityMap = HashMap<EntityId, EntityId>;
+/// Maps saved entity ids to their loaded entity ids
+pub type EntityMap = HashMap<EntityId, EntityId>;
 
 pub struct WorldPersister {
     savers: RefCell<BTreeMap<String, ErasedSaver>>,
