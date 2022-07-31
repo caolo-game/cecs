@@ -256,7 +256,11 @@ impl Serialize for ErasedSaver {
 
 impl Serialize for WorldPersister {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        assert_ne!(self.world, std::ptr::null_mut());
+        assert_ne!(
+            self.world,
+            std::ptr::null_mut(),
+            "Call set_world before serializing!"
+        );
         let world = self.world;
         unsafe { self.save(s, &*world) }
     }
