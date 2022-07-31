@@ -1,3 +1,4 @@
+use anyhow::Context;
 use serde::{
     de::{DeserializeOwned, Visitor},
     ser::{SerializeMap, SerializeSeq},
@@ -90,7 +91,9 @@ impl WorldPersister {
                         let intermediate: Vec<ErasedValue> = map.next_value()?;
                         loader.world = &mut self.world as *mut _;
                         loader.entity_map = &mut self.entity_map as *mut _;
-                        loader.load_slice(&intermediate);
+                        loader
+                            .load_slice(&intermediate)
+                            .map_err(|err| serde::de::Error::custom(err))?;
                         loader.entity_map = std::ptr::null_mut();
                         loader.world = std::ptr::null_mut();
                     }
@@ -113,8 +116,7 @@ impl WorldPersister {
 struct ErasedLoader {
     world: *mut World,
     entity_map: *mut EntityMap,
-    // TODO: return result?
-    insert_values: fn(&mut World, &mut EntityMap, &[ErasedValue]),
+    insert_values: fn(&mut World, &mut EntityMap, &[ErasedValue]) -> anyhow::Result<()>,
 }
 
 impl ErasedLoader {
@@ -125,7 +127,9 @@ impl ErasedLoader {
             entity_map: std::ptr::null_mut(),
             insert_values: |world, entity_map, values| {
                 for value in values.iter().cloned() {
-                    let (id, component): (EntityId, T) = value.into_rust().unwrap();
+                    let (id, component): (EntityId, T) = value
+                        .into_rust()
+                        .with_context(|| "Failed to deserialize value")?;
 
                     let new_id = *entity_map
                         .entry(id)
@@ -135,12 +139,12 @@ impl ErasedLoader {
 
                     world.set_component(new_id, component).unwrap();
                 }
+                Ok(())
             },
         }
     }
 
-    // TODO: return result?
-    pub fn load_slice(&mut self, values: &[ErasedValue]) {
+    pub fn load_slice(&mut self, values: &[ErasedValue]) -> anyhow::Result<()> {
         assert_ne!(self.world, std::ptr::null_mut());
         assert_ne!(self.entity_map, std::ptr::null_mut());
         let world = unsafe { &mut *self.world };
@@ -151,8 +155,7 @@ impl ErasedLoader {
 
 struct ErasedSaver {
     world: *const World,
-    // TODO: return error?
-    for_each: fn(&World, &mut dyn FnMut(ErasedValue)),
+    for_each: fn(&World, &mut dyn FnMut(ErasedValue) -> anyhow::Result<()>) -> anyhow::Result<()>,
     count: fn(&World) -> usize,
 }
 
@@ -165,10 +168,12 @@ impl ErasedSaver {
                 let mut buffer = Vec::with_capacity(1024);
                 for (id, val) in Query::<(EntityId, &T)>::new(world).iter() {
                     buffer.clear();
-                    ron::ser::to_writer(&mut buffer, &(id, val)).unwrap();
+                    ron::ser::to_writer(&mut buffer, &(id, val))
+                        .with_context(|| "Failed to serialize into ErasedValue")?;
                     let value: ErasedValue = ron::de::from_reader(buffer.as_slice()).unwrap();
-                    fun(value);
+                    fun(value)?;
                 }
+                Ok(())
             },
             count: |world| Query::<(EntityId, &T)>::new(world).count(),
         }
@@ -181,8 +186,11 @@ impl ErasedSaver {
     ) -> Result<S::Ok, S::Error> {
         let mut s = s.serialize_seq(Some((self.count)(world)))?;
         (self.for_each)(world, &mut |value: ErasedValue| {
-            s.serialize_element(&value).unwrap();
-        });
+            s.serialize_element(&value)
+                .map_err(|err| anyhow::anyhow!("Failed to serialize ErasedValue: {:?}", err))?;
+            Ok(())
+        })
+        .unwrap(); // TODO: return this error
         s.end()
     }
 }
