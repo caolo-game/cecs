@@ -193,6 +193,10 @@ where
         world: &World,
     ) -> Result<(), S::Error> {
         let tname = entry_name::<T>(self.ty);
+
+        #[cfg(feature = "tracing")]
+        tracing::trace!(name = &tname, "• Serializing");
+
         match self.ty {
             SerTy::Component => {
                 // TODO: save iterator or adapter pls
@@ -207,6 +211,8 @@ where
             }
             SerTy::Noop => {}
         }
+        #[cfg(feature = "tracing")]
+        tracing::trace!(name = &tname, "✓ Serializing");
         if let Some(p) = self.next.as_ref() {
             p.save_entry::<S>(s, world)?;
         }
@@ -243,6 +249,8 @@ where
             }
             return Ok(());
         }
+        #[cfg(feature = "tracing")]
+        tracing::trace!(name = &tname, "• Deserializing");
         match self.ty {
             SerTy::Component => {
                 let values: Vec<(EntityId, T)> = map.next_value()?;
@@ -262,6 +270,9 @@ where
             }
             SerTy::Noop => {}
         }
+
+        #[cfg(feature = "tracing")]
+        tracing::trace!(name = &tname, "✓ Deserializing");
 
         Ok(())
     }
