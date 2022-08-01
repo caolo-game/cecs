@@ -34,7 +34,9 @@ enum SerTy {
 }
 
 impl<T, P> WorldPersister<T, P> {
-    pub fn add_component<U: Component + Serialize + DeserializeOwned>(self) -> WorldPersister<U, Self> {
+    pub fn add_component<U: Component + Serialize + DeserializeOwned>(
+        self,
+    ) -> WorldPersister<U, Self> {
         WorldPersister {
             depth: self.depth + 1,
             next: Some(self),
@@ -43,7 +45,9 @@ impl<T, P> WorldPersister<T, P> {
         }
     }
 
-    pub fn add_resource<U: Component + Serialize + DeserializeOwned>(self) -> WorldPersister<U, Self> {
+    pub fn add_resource<U: Component + Serialize + DeserializeOwned>(
+        self,
+    ) -> WorldPersister<U, Self> {
         WorldPersister {
             depth: self.depth + 1,
             next: Some(self),
@@ -53,7 +57,10 @@ impl<T, P> WorldPersister<T, P> {
     }
 }
 
-pub trait WorldSerializer {
+pub trait WorldSerializer: Sized {
+    fn add_component<U: Component + Serialize + DeserializeOwned>(self) -> WorldPersister<U, Self>;
+    fn add_resource<U: Component + Serialize + DeserializeOwned>(self) -> WorldPersister<U, Self>;
+
     fn save<S: serde::Serializer>(&self, s: S, world: &World) -> Result<S::Ok, S::Error>;
     fn save_entry<S: serde::Serializer>(
         &self,
@@ -80,6 +87,14 @@ fn entry_name<T: 'static>(ty: SerTy) -> String {
 }
 
 impl<T: Component + Serialize + DeserializeOwned> WorldSerializer for WorldPersister<T, ()> {
+    fn add_component<U: Component + Serialize + DeserializeOwned>(self) -> WorldPersister<U, Self> {
+        self.add_component::<U>()
+    }
+
+    fn add_resource<U: Component + Serialize + DeserializeOwned>(self) -> WorldPersister<U, Self> {
+        self.add_resource::<U>()
+    }
+
     fn save<S: serde::Serializer>(&self, s: S, world: &World) -> Result<S::Ok, S::Error> {
         let mut s = s.serialize_map(Some(self.depth))?;
         self.save_entry::<S>(&mut s, world)?;
@@ -203,6 +218,14 @@ impl<T: Component + Serialize + DeserializeOwned, P> WorldSerializer for WorldPe
 where
     P: WorldSerializer,
 {
+    fn add_component<U: Component + Serialize + DeserializeOwned>(self) -> WorldPersister<U, Self> {
+        self.add_component::<U>()
+    }
+
+    fn add_resource<U: Component + Serialize + DeserializeOwned>(self) -> WorldPersister<U, Self> {
+        self.add_resource::<U>()
+    }
+
     fn save<S: serde::Serializer>(&self, s: S, world: &World) -> Result<S::Ok, S::Error> {
         let mut s = s.serialize_map(Some(self.depth))?;
         self.save_entry::<S>(&mut s, world)?;
