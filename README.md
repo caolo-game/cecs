@@ -6,3 +6,9 @@ There are many like it, but this one is mine.
 
 Heavily inspired by [Bevy](https://bevyengine.org/) and [Hexops](https://devlog.hexops.com/2022/lets-build-ecs-part-2-databases/)
 
+## Features
+
+- Functions as systems
+- Query interface
+- Cloning of the entire database (optional)
+- Serialization/Deserialization of select components (optional)
