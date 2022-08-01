@@ -17,12 +17,14 @@ pub struct WorldPersister<T = (), P = ()> {
     _m: PhantomData<T>,
 }
 
-pub fn get_persister() -> WorldPersister {
-    WorldPersister {
-        next: None,
-        depth: 0,
-        ty: SerTy::Noop,
-        _m: PhantomData,
+impl WorldPersister<(), ()> {
+    pub fn new() -> Self {
+        WorldPersister {
+            next: None,
+            depth: 0,
+            ty: SerTy::Noop,
+            _m: PhantomData,
+        }
     }
 }
 
@@ -378,7 +380,7 @@ mod tests {
             world0.set_component(id, Bar::Baz).unwrap();
         }
 
-        let p = get_persister()
+        let p = WorldPersister::new()
             .add_component::<i32>()
             .add_component::<Foo>()
             .add_component::<Bar>();
@@ -423,7 +425,7 @@ mod tests {
             world0.set_component(id, Foo { value: i }).unwrap();
         }
 
-        let p = get_persister()
+        let p = WorldPersister::new()
             .add_component::<i32>()
             .add_component::<Foo>();
 
@@ -470,7 +472,9 @@ mod tests {
 
         world0.insert_resource(Foo { value: 69 });
 
-        let p = get_persister().add_component::<Foo>().add_resource::<Foo>();
+        let p = WorldPersister::new()
+            .add_component::<Foo>()
+            .add_resource::<Foo>();
 
         let mut pl = Vec::<u8>::new();
         let mut s = serde_json::Serializer::pretty(&mut pl);
