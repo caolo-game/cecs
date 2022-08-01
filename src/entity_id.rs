@@ -8,6 +8,7 @@ pub const ENTITY_GEN_MASK: u32 = (1 << GEN_BITS) - 1;
 // store the index in the more significant bits for ordering
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Copy, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct EntityId(u32);
 
 impl EntityId {
