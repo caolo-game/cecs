@@ -13,3 +13,4 @@ Heavily inspired by [Bevy](https://bevyengine.org/) and [Hexops](https://devlog.
 - Resources
 - Cloning of the entire database (optional)
 - Serialization/Deserialization of select components (optional)
+- (Very basic) parallel scheduler (optional)
