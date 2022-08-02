@@ -3,7 +3,7 @@
 use std::{any::TypeId, collections::BTreeMap, pin::Pin, ptr::NonNull};
 
 use archetype::ArchetypeStorage;
-use commands::{EntityCommands, ErasedResourceCommand};
+use commands::CommandPayload;
 use entity_id::EntityId;
 use handle_table::EntityIndex;
 use prelude::Bundle;
@@ -40,8 +40,7 @@ pub struct World {
     pub(crate) entity_ids: EntityIndex,
     pub(crate) archetypes: BTreeMap<TypeHash, Pin<Box<ArchetypeStorage>>>,
     pub(crate) resources: ResourceStorage,
-    pub(crate) commands: Vec<CommandBuffer<EntityCommands>>,
-    pub(crate) resource_commands: Vec<CommandBuffer<ErasedResourceCommand>>,
+    pub(crate) commands: Vec<CommandBuffer<CommandPayload>>,
     pub(crate) system_stages: Vec<SystemStage<'static>>,
     // for each system: a group of parallel systems
     //
@@ -57,7 +56,6 @@ impl Clone for World {
     fn clone(&self) -> Self {
         let archetypes = self.archetypes.clone();
         let commands = Vec::default();
-        let resource_commands = Vec::default();
 
         let mut entity_ids = self.entity_ids.clone();
         for (ptr, row_index, id) in self.entity_ids.metadata.iter() {
@@ -83,7 +81,6 @@ impl Clone for World {
             archetypes,
             commands,
             resources,
-            resource_commands,
             system_stages: systems,
             #[cfg(feature = "parallel")]
             schedule,
@@ -155,7 +152,6 @@ impl World {
             archetypes: BTreeMap::new(),
             resources: ResourceStorage::new(),
             commands: Vec::default(),
-            resource_commands: Vec::default(),
             system_stages: Default::default(),
             #[cfg(feature = "parallel")]
             schedule: Default::default(),
@@ -210,17 +206,6 @@ impl World {
             tracing::trace!("✓ Running command list {}", _i);
         }
         self.commands = commands;
-        let mut commands = std::mem::take(&mut self.resource_commands);
-        for (_i, commands) in commands.iter_mut().enumerate() {
-            #[cfg(feature = "tracing")]
-            tracing::trace!("• Running resource command list {}", _i);
-            for cmd in commands.get_mut().drain(0..) {
-                cmd.apply(self)?;
-            }
-            #[cfg(feature = "tracing")]
-            tracing::trace!("✓ Running resource command list {}", _i);
-        }
-        self.resource_commands = commands;
 
         #[cfg(feature = "tracing")]
         tracing::trace!("✓ Running commands done");
@@ -492,8 +477,6 @@ impl World {
 
     fn resize_commands(&mut self, len: usize) {
         self.commands
-            .resize_with(len, std::cell::UnsafeCell::default);
-        self.resource_commands
             .resize_with(len, std::cell::UnsafeCell::default);
     }
 

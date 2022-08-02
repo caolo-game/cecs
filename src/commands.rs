@@ -6,8 +6,7 @@ use crate::{
 };
 
 pub struct Commands<'a> {
-    entity_cmd: &'a CommandBuffer<EntityCommands>,
-    resource_cmd: &'a CommandBuffer<ErasedResourceCommand>,
+    cmd: &'a CommandBuffer<CommandPayload>,
 }
 
 unsafe impl<'a> Send for Commands<'a> {}
@@ -42,56 +41,78 @@ impl<'a> WorldQuery<'a> for Commands<'a> {
 impl<'a> Commands<'a> {
     pub(crate) fn new(w: &'a World, commands_index: usize) -> Self {
         Self {
-            entity_cmd: &w.commands[commands_index],
-            resource_cmd: &w.resource_commands[commands_index],
+            cmd: &w.commands[commands_index],
         }
     }
 
     pub fn entity(&mut self, id: EntityId) -> &mut EntityCommands {
         unsafe {
-            let cmd = &mut *self.entity_cmd.get();
-            cmd.push(EntityCommands {
+            let cmd = &mut *self.cmd.get();
+            cmd.push(CommandPayload::Entity(EntityCommands {
                 action: EntityAction::Fetch(id),
                 payload: Vec::default(),
-            });
-            cmd.last_mut().unwrap()
+            }));
+            cmd.last_mut().unwrap().entity_mut()
         }
     }
 
     pub fn spawn(&mut self) -> &mut EntityCommands {
         unsafe {
-            let cmd = &mut *self.entity_cmd.get();
-            cmd.push(EntityCommands {
+            let cmd = &mut *self.cmd.get();
+            cmd.push(CommandPayload::Entity(EntityCommands {
                 action: EntityAction::Insert,
                 payload: Vec::default(),
-            });
-            cmd.last_mut().unwrap()
+            }));
+            cmd.last_mut().unwrap().entity_mut()
         }
     }
 
     pub fn delete(&mut self, id: EntityId) {
         unsafe {
-            let cmd = &mut *self.entity_cmd.get();
-            cmd.push(EntityCommands {
+            let cmd = &mut *self.cmd.get();
+            cmd.push(CommandPayload::Entity(EntityCommands {
                 action: EntityAction::Delete(id),
                 payload: Vec::default(),
-            });
+            }));
         }
     }
 
     pub fn insert_resource<T: Component>(&mut self, resource: T) {
         unsafe {
-            let cmd = &mut *self.resource_cmd.get();
-            cmd.push(ErasedResourceCommand::new(ResourceCommand::Insert(
-                resource,
+            let cmd = &mut *self.cmd.get();
+            cmd.push(CommandPayload::Resource(ErasedResourceCommand::new(
+                ResourceCommand::Insert(resource),
             )));
         }
     }
 
     pub fn remove_resource<T: Component>(&mut self) {
         unsafe {
-            let cmd = &mut *self.resource_cmd.get();
-            cmd.push(ErasedResourceCommand::new(ResourceCommand::<T>::Delete));
+            let cmd = &mut *self.cmd.get();
+            cmd.push(CommandPayload::Resource(ErasedResourceCommand::new(
+                ResourceCommand::<T>::Delete,
+            )));
+        }
+    }
+}
+
+pub(crate) enum CommandPayload {
+    Entity(EntityCommands),
+    Resource(ErasedResourceCommand),
+}
+
+impl CommandPayload {
+    pub(crate) fn apply(self, world: &mut World) -> Result<(), WorldError> {
+        match self {
+            CommandPayload::Entity(c) => c.apply(world),
+            CommandPayload::Resource(c) => c.apply(world),
+        }
+    }
+
+    fn entity_mut(&mut self) -> &mut EntityCommands {
+        match self {
+            CommandPayload::Entity(cmd) => cmd,
+            _ => panic!("Command is not entity command"),
         }
     }
 }
