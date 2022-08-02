@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use crate::query::WorldQuery;
 
 /// Gives unique access to the world
@@ -11,7 +13,7 @@ use crate::query::WorldQuery;
 ///
 /// fn sys(mut access: WorldAccess) {
 ///     let w = access.world_mut();
-///     // you can use the world as you would normally 
+///     // you can use the world as you would normally
 ///     w.run_system(||{});
 /// }
 ///
@@ -19,14 +21,51 @@ use crate::query::WorldQuery;
 /// ```
 ///
 /// ## Limitation
-/// 
+///
 /// You must not stack WorldAccess queries! Do not run a system that needs WorldAccess inside
 /// another system with WorldAccess as they might violate Rust's borrow rules.
-pub struct WorldAccess {
+pub struct WorldAccess<'a> {
     world: std::ptr::NonNull<crate::World>,
+    _guard: WorldLockGuard<'a>,
 }
 
-impl WorldAccess {
+// this has nothing World specific in it, I just suck at naming
+//
+// this lock's job is to panic if user's try to stack WorldAccesses
+pub struct WorldLock {
+    locked: AtomicBool,
+}
+
+pub struct WorldLockGuard<'a> {
+    lock: &'a WorldLock,
+}
+
+impl<'a> Drop for WorldLockGuard<'a> {
+    fn drop(&mut self) {
+        self.lock.unlock();
+    }
+}
+
+impl WorldLock {
+    pub fn new() -> Self {
+        Self {
+            locked: AtomicBool::new(false),
+        }
+    }
+
+    pub fn lock<'a>(&'a self) -> WorldLockGuard<'a> {
+        self.locked
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
+            .expect("Can not be locked twice");
+        WorldLockGuard { lock: self }
+    }
+
+    pub fn unlock(&self) {
+        self.locked.store(false, Ordering::Release);
+    }
+}
+
+impl WorldAccess<'_> {
     pub fn world(&self) -> &crate::World {
         unsafe { self.world.as_ref() }
     }
@@ -36,12 +75,16 @@ impl WorldAccess {
     }
 }
 
-unsafe impl Send for WorldAccess {}
-unsafe impl Sync for WorldAccess {}
+unsafe impl Send for WorldAccess<'_> {}
+unsafe impl Sync for WorldAccess<'_> {}
 
-impl<'a> WorldQuery<'a> for WorldAccess {
+impl<'a> WorldQuery<'a> for WorldAccess<'a> {
     fn new(db: &'a crate::World, _commands_index: usize) -> Self {
-        WorldAccess { world: db.into() }
+        let _guard = db.this_lock.lock();
+        WorldAccess {
+            world: db.into(),
+            _guard,
+        }
     }
 
     fn components_mut(_set: &mut std::collections::HashSet<std::any::TypeId>) {

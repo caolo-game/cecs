@@ -524,3 +524,16 @@ fn world_access_is_unique_test() {
     let mut world = World::new(0);
     world.run_system(bad_sys);
 }
+
+#[test]
+#[should_panic]
+fn stacked_world_access_should_panic_test() {
+    fn sys(mut access: WorldAccess) {
+        let w = access.world_mut();
+        // this should panic
+        w.run_system(sys);
+    }
+
+    let mut world = World::new(0);
+    world.run_system(sys);
+}

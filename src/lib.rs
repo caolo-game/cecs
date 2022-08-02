@@ -31,6 +31,7 @@ mod scheduler;
 
 #[cfg(feature = "parallel")]
 pub use rayon;
+use world_access::WorldLock;
 
 #[cfg(test)]
 mod world_tests;
@@ -38,6 +39,7 @@ mod world_tests;
 type CommandBuffer<T> = std::cell::UnsafeCell<Vec<T>>;
 
 pub struct World {
+    pub(crate) this_lock: WorldLock,
     pub(crate) entity_ids: EntityIndex,
     pub(crate) archetypes: BTreeMap<TypeHash, Pin<Box<ArchetypeStorage>>>,
     pub(crate) resources: ResourceStorage,
@@ -78,6 +80,7 @@ impl Clone for World {
         let schedule = self.schedule.clone();
 
         Self {
+            this_lock: WorldLock::new(),
             entity_ids,
             archetypes,
             commands,
@@ -149,6 +152,7 @@ impl World {
         let entity_ids = EntityIndex::new(initial_capacity);
 
         let mut result = Self {
+            this_lock: WorldLock::new(),
             entity_ids,
             archetypes: BTreeMap::new(),
             resources: ResourceStorage::new(),
