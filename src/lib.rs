@@ -379,7 +379,6 @@ impl World {
     }
 
     /// System stages are executed in the order they were added to the World
-    /// TODO: nicer scheduling API for stages
     pub fn add_stage(&mut self, stage: SystemStage<'_>) {
         // # SAFETY
         // lifetimes are managed by the World instance from now
