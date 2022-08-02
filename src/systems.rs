@@ -12,6 +12,16 @@ pub struct SystemStage<'a> {
     pub systems: StageSystems<'a>,
 }
 
+impl Default for SystemStage<'_> {
+    fn default() -> Self {
+        Self {
+            name: "<default-empty-stage>".into(),
+            should_run: vec![],
+            systems: StageSystems::Serial(vec![]),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub enum StageSystems<'a> {
     Serial(Vec<ErasedSystem<'a, ()>>),
