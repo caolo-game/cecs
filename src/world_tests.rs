@@ -469,6 +469,7 @@ fn can_insert_bundle_via_command_test() {
 
 #[test]
 #[should_panic]
+#[cfg(debug_assertions)]
 fn fetching_same_resource_twice_mutable_is_panic_test() {
     let mut world = World::new(0);
     world.insert_resource(0i32);
@@ -480,6 +481,7 @@ fn fetching_same_resource_twice_mutable_is_panic_test() {
 
 #[test]
 #[should_panic]
+#[cfg(debug_assertions)]
 fn fetching_same_resource_twice_is_panic_test() {
     let mut world = World::new(0);
     world.insert_resource(0i32);
