@@ -465,3 +465,25 @@ fn can_insert_bundle_via_command_test() {
         assert_eq!(b, &42);
     }
 }
+
+#[test]
+#[should_panic]
+fn fetching_same_resource_twice_mutable_is_panic_test() {
+    let mut world = World::new(0);
+    world.insert_resource(0i32);
+
+    fn bad_sys(_r0: ResMut<i32>, _r1: ResMut<i32>) {}
+
+    world.run_system(bad_sys);
+}
+
+#[test]
+#[should_panic]
+fn fetching_same_resource_twice_is_panic_test() {
+    let mut world = World::new(0);
+    world.insert_resource(0i32);
+
+    fn bad_sys(_r0: ResMut<i32>, _r1: Res<i32>) {}
+
+    world.run_system(bad_sys);
+}
