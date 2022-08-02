@@ -19,10 +19,13 @@ pub(crate) trait WorldQuery<'a> {
     fn resources_mut(set: &mut HashSet<TypeId>);
     /// List of resource types this query needs
     fn resources_const(set: &mut HashSet<TypeId>);
+    /// Return wether this system should run in isolation
+    fn exclusive() -> bool;
 }
 
 #[derive(Default)]
 pub struct QueryProperties {
+    pub exclusive: bool,
     pub comp_mut: HashSet<TypeId>,
     pub comp_const: HashSet<TypeId>,
     pub res_mut: HashSet<TypeId>,
@@ -31,7 +34,9 @@ pub struct QueryProperties {
 
 impl QueryProperties {
     pub fn is_disjoint(&self, other: &QueryProperties) -> bool {
-        self.comp_mut.is_disjoint(&other.comp_const)
+        !self.exclusive
+            && !other.exclusive
+            && self.comp_mut.is_disjoint(&other.comp_const)
             && self.res_mut.is_disjoint(&other.res_const)
             && self.comp_mut.is_disjoint(&other.comp_mut)
             && self.res_mut.is_disjoint(&other.res_mut)
@@ -74,6 +79,7 @@ pub(crate) fn ensure_query_valid<'a, T: WorldQuery<'a>>() -> QueryProperties {
         comp_const,
         res_mut,
         res_const,
+        exclusive: T::exclusive(),
     }
 }
 
@@ -92,6 +98,10 @@ where
 {
     fn new(db: &'a World, _commands_index: usize) -> Self {
         Self::new(db)
+    }
+
+    fn exclusive() -> bool {
+        false
     }
 
     fn components_mut(set: &mut HashSet<TypeId>) {

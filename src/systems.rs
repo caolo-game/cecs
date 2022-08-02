@@ -128,6 +128,7 @@ pub struct ErasedSystem<'a, R> {
     pub(crate) resources_mut: fn() -> HashSet<TypeId>,
     pub(crate) components_const: fn() -> HashSet<TypeId>,
     pub(crate) resources_const: fn() -> HashSet<TypeId>,
+    pub(crate) exclusive: fn() -> bool,
     factory: Rc<dyn Fn() -> Box<InnerSystem<'a, R>>>,
 }
 
@@ -144,6 +145,7 @@ impl<'a, R> Clone for ErasedSystem<'a, R> {
             resources_mut: self.resources_mut,
             components_const: self.components_const,
             resources_const: self.resources_const,
+            exclusive: self.exclusive,
             factory: self.factory.clone(),
         }
     }
@@ -204,6 +206,9 @@ macro_rules! impl_intosys_fn {
                         let mut res = HashSet::new();
                         $(<$t>::resources_const(&mut res);)*
                         res
+                    },
+                    exclusive: || {
+                        false $(|| <$t>::exclusive())*
                     },
                     factory,
                 }

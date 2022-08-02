@@ -19,6 +19,7 @@ pub fn schedule(stage: &SystemStage) -> Schedule {
 
     let mut result = vec![vec![0]];
     let mut history = vec![QueryProperties {
+        exclusive: (systems[0].exclusive)(),
         comp_mut: (systems[0].components_mut)(),
         comp_const: (systems[0].components_const)(),
         res_mut: (systems[0].resources_mut)(),
@@ -27,6 +28,7 @@ pub fn schedule(stage: &SystemStage) -> Schedule {
 
     'systems: for (sys_index, sys) in systems.iter().enumerate().skip(1) {
         let props = QueryProperties {
+            exclusive: (sys.exclusive)(),
             comp_mut: (sys.components_mut)(),
             res_mut: (sys.resources_mut)(),
             comp_const: (sys.components_const)(),

@@ -31,6 +31,10 @@ impl<'a, T: 'static> WorldQuery<'a> for Res<'a, T> {
     fn resources_const(set: &mut std::collections::HashSet<TypeId>) {
         set.insert(TypeId::of::<T>());
     }
+
+    fn exclusive() -> bool {
+        false
+    }
 }
 
 impl<'a, T: 'static> Res<'a, T> {
@@ -117,5 +121,9 @@ impl<'a, T: 'static> WorldQuery<'a> for ResMut<'a, T> {
 
     fn components_const(_set: &mut std::collections::HashSet<TypeId>) {
         // noop
+    }
+
+    fn exclusive() -> bool {
+        false
     }
 }

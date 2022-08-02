@@ -33,6 +33,10 @@ impl<'a> WorldQuery<'a> for Commands<'a> {
     fn resources_const(_set: &mut std::collections::HashSet<std::any::TypeId>) {
         // noop
     }
+
+    fn exclusive() -> bool {
+        false
+    }
 }
 
 impl<'a> Commands<'a> {
