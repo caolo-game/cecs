@@ -53,7 +53,7 @@ impl WorldLock {
         }
     }
 
-    pub fn lock<'a>(&'a self) -> WorldLockGuard<'a> {
+    pub fn lock(& self) -> WorldLockGuard<'_> {
         self.locked
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
             .expect("Can not be locked twice");
