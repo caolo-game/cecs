@@ -529,8 +529,10 @@ unsafe fn run_system<'a, R>(world: &'a World, sys: &'a systems::ErasedSystem<'_,
     let index = sys.commands_index;
     let execute: &systems::InnerSystem<'_, R> = { std::mem::transmute(sys.execute.as_ref()) };
 
+    let res = (execute)(world, index);
+
     #[cfg(feature = "tracing")]
     tracing::trace!(system_name = sys.name.as_ref(), "✓ Running system done");
 
-    (execute)(world, index)
+    res
 }
