@@ -476,8 +476,11 @@ impl World {
     }
 
     fn resize_commands(&mut self, len: usize) {
-        self.commands
-            .resize_with(len, std::cell::UnsafeCell::default);
+        // do not shrink
+        if self.commands.len() < len {
+            self.commands
+                .resize_with(len, std::cell::UnsafeCell::default);
+        }
     }
 
     #[cfg(feature = "parallel")]

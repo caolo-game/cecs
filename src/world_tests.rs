@@ -498,6 +498,15 @@ fn mutating_world_inside_system_test() {
         for _ in 0..100 {
             w.add_stage(SystemStage::serial("kekw").with_system(|| {}));
         }
+        for _ in 0..5 {
+            let id = w.insert_entity().unwrap();
+            w.set_component(id, 30i32).unwrap();
+            w.set_component(id, 42u32).unwrap();
+        }
+
+        w.run_system(|mut cmd: Commands| {
+            cmd.spawn().insert(69u64);
+        });
     }
 
     let mut world = World::new(0);
