@@ -32,11 +32,11 @@ pub struct WorldAccess<'a> {
 // this has nothing World specific in it, I just suck at naming
 //
 // this lock's job is to panic if user's try to stack WorldAccesses
-pub struct WorldLock {
+pub(crate) struct WorldLock {
     locked: AtomicBool,
 }
 
-pub struct WorldLockGuard<'a> {
+pub(crate) struct WorldLockGuard<'a> {
     lock: &'a WorldLock,
 }
 
