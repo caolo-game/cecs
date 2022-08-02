@@ -6,4 +6,5 @@ pub use crate::query::resource_query::*;
 pub use crate::query::Query;
 pub use crate::query_set::*;
 pub use crate::systems::SystemStage;
+pub use crate::world_access::WorldAccess;
 pub use crate::World;

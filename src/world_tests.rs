@@ -1,4 +1,5 @@
 use commands::Commands;
+use world_access::WorldAccess;
 
 use crate::entity_id::EntityId;
 use crate::prelude::ResMut;
@@ -468,6 +469,7 @@ fn can_insert_bundle_via_command_test() {
 
 #[test]
 #[should_panic]
+#[cfg(debug_assertions)]
 fn fetching_same_resource_twice_mutable_is_panic_test() {
     let mut world = World::new(0);
     world.insert_resource(0i32);
@@ -479,6 +481,7 @@ fn fetching_same_resource_twice_mutable_is_panic_test() {
 
 #[test]
 #[should_panic]
+#[cfg(debug_assertions)]
 fn fetching_same_resource_twice_is_panic_test() {
     let mut world = World::new(0);
     world.insert_resource(0i32);
@@ -486,4 +489,51 @@ fn fetching_same_resource_twice_is_panic_test() {
     fn bad_sys(_r0: ResMut<i32>, _r1: Res<i32>) {}
 
     world.run_system(bad_sys);
+}
+
+#[test]
+fn mutating_world_inside_system_test() {
+    fn mutation(mut access: WorldAccess) {
+        let w = access.world_mut();
+        for _ in 0..100 {
+            w.add_stage(SystemStage::serial("kekw").with_system(|| {}));
+        }
+        for _ in 0..5 {
+            let id = w.insert_entity().unwrap();
+            w.set_component(id, 30i32).unwrap();
+            w.set_component(id, 42u32).unwrap();
+        }
+
+        w.run_system(|mut cmd: Commands| {
+            cmd.spawn().insert(69u64);
+        });
+    }
+
+    let mut world = World::new(0);
+    world.add_stage(SystemStage::parallel("monka").with_system(mutation));
+
+    world.tick();
+    world.tick();
+}
+
+#[test]
+#[should_panic]
+fn world_access_is_unique_test() {
+    fn bad_sys(_access: WorldAccess, _cmd: Commands) {}
+
+    let mut world = World::new(0);
+    world.run_system(bad_sys);
+}
+
+#[test]
+#[should_panic]
+fn stacked_world_access_should_panic_test() {
+    fn sys(mut access: WorldAccess) {
+        let w = access.world_mut();
+        // this should panic
+        w.run_system(sys);
+    }
+
+    let mut world = World::new(0);
+    world.run_system(sys);
 }

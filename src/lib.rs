@@ -19,6 +19,7 @@ pub mod query;
 pub mod query_set;
 pub mod resources;
 pub mod systems;
+pub mod world_access;
 
 #[cfg(feature = "serde")]
 pub mod persister;
@@ -30,6 +31,7 @@ mod scheduler;
 
 #[cfg(feature = "parallel")]
 pub use rayon;
+use world_access::WorldLock;
 
 #[cfg(test)]
 mod world_tests;
@@ -37,6 +39,7 @@ mod world_tests;
 type CommandBuffer<T> = std::cell::UnsafeCell<Vec<T>>;
 
 pub struct World {
+    pub(crate) this_lock: WorldLock,
     pub(crate) entity_ids: EntityIndex,
     pub(crate) archetypes: BTreeMap<TypeHash, Pin<Box<ArchetypeStorage>>>,
     pub(crate) resources: ResourceStorage,
@@ -77,6 +80,7 @@ impl Clone for World {
         let schedule = self.schedule.clone();
 
         Self {
+            this_lock: WorldLock::new(),
             entity_ids,
             archetypes,
             commands,
@@ -148,6 +152,7 @@ impl World {
         let entity_ids = EntityIndex::new(initial_capacity);
 
         let mut result = Self {
+            this_lock: WorldLock::new(),
             entity_ids,
             archetypes: BTreeMap::new(),
             resources: ResourceStorage::new(),
@@ -378,7 +383,6 @@ impl World {
     }
 
     /// System stages are executed in the order they were added to the World
-    /// TODO: nicer scheduling API for stages
     pub fn add_stage(&mut self, stage: SystemStage<'_>) {
         // # SAFETY
         // lifetimes are managed by the World instance from now
@@ -476,8 +480,11 @@ impl World {
     }
 
     fn resize_commands(&mut self, len: usize) {
-        self.commands
-            .resize_with(len, std::cell::UnsafeCell::default);
+        // do not shrink
+        if self.commands.len() < len {
+            self.commands
+                .resize_with(len, std::cell::UnsafeCell::default);
+        }
     }
 
     #[cfg(feature = "parallel")]
