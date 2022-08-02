@@ -1,4 +1,5 @@
 use commands::Commands;
+use world_access::WorldAccess;
 
 use crate::entity_id::EntityId;
 use crate::prelude::ResMut;
@@ -486,4 +487,20 @@ fn fetching_same_resource_twice_is_panic_test() {
     fn bad_sys(_r0: ResMut<i32>, _r1: Res<i32>) {}
 
     world.run_system(bad_sys);
+}
+
+#[test]
+fn mutating_world_inside_system_test() {
+    fn mutation(mut access: WorldAccess) {
+        let w = access.world_mut();
+        for _ in 0..100 {
+            w.add_stage(SystemStage::serial("kekw").with_system(|| {}));
+        }
+    }
+
+    let mut world = World::new(0);
+    world.add_stage(SystemStage::parallel("monka").with_system(mutation));
+
+    world.tick();
+    world.tick();
 }
