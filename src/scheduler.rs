@@ -54,7 +54,7 @@ pub fn schedule(stage: &SystemStage) -> Schedule {
 #[cfg(test)]
 mod tests {
 
-    use crate::{commands::Commands, prelude::Query};
+    use crate::{commands::Commands, prelude::Query, world_access::WorldAccess};
 
     use super::*;
 
@@ -79,5 +79,27 @@ mod tests {
 
         // TODO: this is a bit flaky
         assert_eq!(schedule, vec![vec![0, 1, 4], vec![2], vec![3]]);
+    }
+
+    #[test]
+    fn exclusive_systems_get_their_own_group_test() {
+        fn system_0(_cmd: Commands, _q: Query<&i32>) {}
+        fn system_1(_q: Query<&i32>, _: Query<&u32>) {}
+        fn system_2(_q: Query<(&mut i32, &u32)>, _: Query<&u32>, _: Query<&String>) {}
+        fn system_3(_q: Query<&mut i32>) {}
+        fn system_4(_q: Query<&String>) {}
+        fn system_5(_w: WorldAccess) {}
+
+        let stage = SystemStage::parallel("many_systems")
+            .with_system(system_0)
+            .with_system(system_5)
+            .with_system(system_1)
+            .with_system(system_2)
+            .with_system(system_3)
+            .with_system(system_4);
+
+        let schedule = schedule(&stage);
+
+        assert_eq!(schedule, [vec![0, 2, 5], vec![1], vec![3], vec![4]]);
     }
 }

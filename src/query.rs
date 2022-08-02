@@ -45,10 +45,19 @@ impl QueryProperties {
     }
 
     pub fn extend(&mut self, props: QueryProperties) {
+        self.exclusive = self.exclusive || props.exclusive;
         self.comp_mut.extend(props.comp_mut.into_iter());
         self.res_mut.extend(props.res_mut.into_iter());
         self.comp_const.extend(props.comp_const.into_iter());
         self.res_const.extend(props.res_const.into_iter());
+    }
+
+    pub fn is_empty(&self) -> bool {
+        !self.exclusive
+            && self.comp_mut.is_empty()
+            && self.res_mut.is_empty()
+            && self.res_const.is_empty()
+            && self.comp_const.is_empty()
     }
 }
 

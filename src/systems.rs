@@ -171,7 +171,8 @@ macro_rules! impl_intosys_fn {
                     // assert queries
                     $(
                         let p = crate::query::ensure_query_valid::<$t>();
-                        assert!(p.is_disjoint(&_props), "system {} has incompatible queries!", std::any::type_name::<F>());
+                        assert!(p.is_disjoint(&_props) || (p.exclusive && _props.is_empty())
+                                , "system {} has incompatible queries!", std::any::type_name::<F>());
                         _props.extend(p);
                     )*
                 }
@@ -208,6 +209,7 @@ macro_rules! impl_intosys_fn {
                         res
                     },
                     exclusive: || {
+                        // empty system is not exclusive
                         false $(|| <$t>::exclusive())*
                     },
                     factory,

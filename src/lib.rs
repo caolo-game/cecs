@@ -19,6 +19,7 @@ pub mod query;
 pub mod query_set;
 pub mod resources;
 pub mod systems;
+pub mod world_access;
 
 #[cfg(feature = "serde")]
 pub mod persister;
