@@ -515,3 +515,12 @@ fn mutating_world_inside_system_test() {
     world.tick();
     world.tick();
 }
+
+#[test]
+#[should_panic]
+fn world_access_is_unique_test() {
+    fn bad_sys(_access: WorldAccess, _cmd: Commands) {}
+
+    let mut world = World::new(0);
+    world.run_system(bad_sys);
+}

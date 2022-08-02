@@ -1,5 +1,27 @@
 use crate::query::WorldQuery;
 
+/// Gives unique access to the world
+///
+/// Systems that take `WorldAccess` can not have other queries and will run in their own schedule
+/// group.
+///
+///
+/// ```
+/// use cecs::prelude::*;
+///
+/// fn sys(mut access: WorldAccess) {
+///     let w = access.world_mut();
+///     // you can use the world as you would normally 
+///     w.run_system(||{});
+/// }
+///
+/// let mut world = World::new(0);
+/// ```
+///
+/// ## Limitation
+/// 
+/// You must not stack WorldAccess queries! Do not run a system that needs WorldAccess inside
+/// another system with WorldAccess as they might violate Rust's borrow rules.
 pub struct WorldAccess {
     world: std::ptr::NonNull<crate::World>,
 }
