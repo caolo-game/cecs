@@ -182,8 +182,9 @@ impl World {
 
     /// Writes entity ids and their archetype hash
     pub fn write_entities(&self, mut w: impl std::io::Write) -> std::io::Result<()> {
-        for (arch, _, id) in self.entity_ids.metadata.iter() {
-            let ty = unsafe { (**arch).ty() };
+        for id in prelude::Query::<EntityId>::new(self).iter() {
+            let (arch, _row_index) = self.entity_ids.read(id).unwrap();
+            let ty = unsafe { arch.as_ref().ty() };
             write!(w, "{}: {}, ", id, ty)?;
         }
         Ok(())
