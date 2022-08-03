@@ -223,7 +223,6 @@ impl Drop for HandleTable {
 }
 
 #[derive(Clone, Copy)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 struct Entry {
     /// If this entry is allocated, then data is the index of the entity
     /// if not, then data is the next link in the free_list
