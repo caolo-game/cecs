@@ -61,14 +61,12 @@ impl Clone for World {
         let commands = Vec::default();
 
         let mut entity_ids = self.entity_ids.clone();
-        for (ptr, row_index, id) in self.entity_ids.metadata.iter() {
-            let ty = unsafe { &**ptr }.ty();
+        for id in prelude::Query::<EntityId>::new(self).iter() {
+            let (ptr, row_index) = self.entity_ids.read(id).unwrap();
+            let ty = unsafe { ptr.as_ref() }.ty();
             let new_arch = &archetypes[&ty];
             entity_ids
-                .update(
-                    *id,
-                    (NonNull::from(new_arch.as_ref().get_ref()), *row_index),
-                )
+                .update(id, (NonNull::from(new_arch.as_ref().get_ref()), row_index))
                 .unwrap();
         }
 
