@@ -58,7 +58,7 @@ impl HandleTable {
                 ptr::write(
                     entries.add(i as usize),
                     Entry {
-                        data: i + 1,
+                        data: EntryData { next: i + 1 },
                         gen: 1, // 0 IDs can cause problems for clients so start at gen 1
                     },
                 );
@@ -66,7 +66,7 @@ impl HandleTable {
             ptr::write(
                 entries.add(cap as usize - 1),
                 Entry {
-                    data: SENTINEL,
+                    data: EntryData { next: SENTINEL },
                     gen: 1,
                 },
             );
@@ -95,7 +95,7 @@ impl HandleTable {
                 ptr::write(
                     new_entries.add(i as usize),
                     Entry {
-                        data: i + 1,
+                        data: EntryData { next: i + 1 },
                         gen: 1, // 0 IDs can cause problems for clients so start at gen 1
                     },
                 );
@@ -103,7 +103,7 @@ impl HandleTable {
             ptr::write(
                 new_entries.add(new_cap as usize - 1),
                 Entry {
-                    data: SENTINEL,
+                    data: EntryData { next: SENTINEL },
                     gen: 1,
                 },
             );
@@ -142,29 +142,30 @@ impl HandleTable {
         let index = self.free_list;
         let entry;
         unsafe {
-            self.free_list = (*entries.add(self.free_list as usize)).data;
+            self.free_list = (*entries.add(self.free_list as usize)).data.next;
             // create handle
             entry = &mut *entries.add(index as usize);
-            entry.data = SENTINEL;
+            entry.data.next = SENTINEL;
         }
         let id = EntityId::new(index, entry.gen);
         Ok(id)
     }
 
-    pub(crate) fn update(&mut self, id: EntityId, data: u32) {
+    pub(crate) fn update(&mut self, id: EntityId, arch: *mut ArchetypeStorage, row: RowIndex) {
         debug_assert!(self.is_valid(id));
         let index = id.index();
         unsafe {
             let entry = &mut *self.entries.add(index as usize);
-            entry.data = data;
+            entry.data.meta.arch = arch;
+            entry.data.meta.row_index = row;
         }
     }
 
-    pub(crate) fn get(&self, id: EntityId) -> Option<u32> {
+    pub(crate) fn get(&self, id: EntityId) -> Option<&Metadata> {
         let index = id.index();
         self.is_valid(id).then(|| unsafe {
             let entry = &*self.entries.add(index as usize);
-            entry.data
+            &entry.data.meta
         })
     }
 
@@ -177,7 +178,7 @@ impl HandleTable {
             let entries = self.entries;
             entry = &mut *entries.add(index as usize);
         }
-        entry.data = self.free_list;
+        entry.data.next = self.free_list;
         // 0 IDs can cause problems for clients so start at gen 1
         entry.gen = ((entry.gen + 1) & ENTITY_GEN_MASK).max(1);
         self.free_list = index;
@@ -224,16 +225,27 @@ impl Drop for HandleTable {
 
 #[derive(Clone, Copy)]
 struct Entry {
+    gen: u32,
     /// If this entry is allocated, then data is the index of the entity
     /// if not, then data is the next link in the free_list
-    data: u32,
-    gen: u32,
+    data: EntryData,
+}
+
+#[derive(Clone, Copy)]
+union EntryData {
+    next: u32,
+    meta: Metadata,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct Metadata {
+    arch: *mut ArchetypeStorage,
+    row_index: RowIndex,
 }
 
 #[cfg_attr(feature = "clone", derive(Clone))]
 pub struct EntityIndex {
     pub(crate) handles: HandleTable,
-    pub(crate) metadata: Vec<(*mut ArchetypeStorage, RowIndex, EntityId)>,
 }
 
 unsafe impl Send for EntityIndex {}
@@ -242,10 +254,7 @@ unsafe impl Sync for EntityIndex {}
 impl EntityIndex {
     pub fn new(capacity: u32) -> Self {
         let handles = HandleTable::new(capacity);
-        Self {
-            handles,
-            metadata: Vec::new(),
-        }
+        Self { handles }
     }
 
     pub fn is_valid(&self, id: EntityId) -> bool {
@@ -254,9 +263,7 @@ impl EntityIndex {
 
     pub fn allocate(&mut self) -> Result<EntityId, HandleTableError> {
         let id = self.handles.alloc()?;
-        let index = self.metadata.len() as u32;
-        self.metadata.push((std::ptr::null_mut(), 0, id));
-        self.handles.update(id, index);
+        self.handles.update(id, std::ptr::null_mut(), 0);
         #[cfg(feature = "tracing")]
         tracing::trace!(id = tracing::field::display(id), "Allocated entity");
         Ok(id)
@@ -267,34 +274,13 @@ impl EntityIndex {
         id: EntityId,
         payload: (NonNull<ArchetypeStorage>, RowIndex),
     ) -> Result<(), HandleTableError> {
-        let index = self.handles.get(id).ok_or(HandleTableError::NotFound)? as usize;
-        debug_assert_eq!(
-            self.metadata[index].2, id,
-            "Metadata corruption! Found: {} Expected: {}",
-            self.metadata[index].2, id
-        );
-        self.metadata[index] = (payload.0.as_ptr(), payload.1, id);
+        self.handles.update(id, payload.0.as_ptr(), payload.1);
         Ok(())
     }
 
     pub fn delete(&mut self, id: EntityId) -> Result<(), HandleTableError> {
         #[cfg(feature = "tracing")]
         tracing::trace!(id = tracing::field::display(id), "Deleting entity");
-
-        if !self.handles.is_valid(id) {
-            return Err(HandleTableError::NotFound);
-        }
-        if self.metadata.len() > 1 {
-            let last_index = self.metadata.len() as u32 - 1;
-            let last_id = self.metadata[last_index as usize].2;
-
-            let index = self.handles.get(id).unwrap();
-            self.metadata.swap_remove(index as usize);
-            self.handles.update(last_id, index);
-        } else {
-            // last item
-            self.metadata.clear();
-        }
         self.handles.free(id);
         Ok(())
     }
@@ -303,17 +289,16 @@ impl EntityIndex {
         &self,
         id: EntityId,
     ) -> Result<(NonNull<ArchetypeStorage>, RowIndex), HandleTableError> {
-        let index = self.handles.get(id).ok_or(HandleTableError::NotFound)? as usize;
-        let res = self.metadata[index];
-        if res.0.is_null() {
+        let res = self.handles.get(id).ok_or(HandleTableError::NotFound)?;
+        if res.arch.is_null() {
             return Err(HandleTableError::Uninitialized);
         }
 
-        Ok((unsafe { NonNull::new_unchecked(res.0) }, res.1))
+        Ok((unsafe { NonNull::new_unchecked(res.arch) }, res.row_index))
     }
 
     pub fn len(&self) -> usize {
-        self.metadata.len()
+        self.handles.len()
     }
 
     pub fn is_empty(&self) -> bool {
