@@ -5,7 +5,7 @@ use std::{any::TypeId, collections::BTreeMap, pin::Pin, ptr::NonNull};
 use archetype::ArchetypeStorage;
 use commands::CommandPayload;
 use entity_id::EntityId;
-use handle_table::EntityIndex;
+use entity_index::EntityIndex;
 use prelude::Bundle;
 use resources::ResourceStorage;
 use systems::SystemStage;
@@ -13,7 +13,7 @@ use systems::SystemStage;
 pub mod bundle;
 pub mod commands;
 pub mod entity_id;
-pub mod handle_table;
+pub mod entity_index;
 pub mod prelude;
 pub mod query;
 pub mod query_set;
@@ -57,17 +57,17 @@ unsafe impl Sync for World {}
 #[cfg(feature = "clone")]
 impl Clone for World {
     fn clone(&self) -> Self {
-        let archetypes = self.archetypes.clone();
+        // we don't actually mutate archetypes here, we just need mutable references to cast to
+        // pointers
+        let mut archetypes = self.archetypes.clone();
         let commands = Vec::default();
 
         let mut entity_ids = self.entity_ids.clone();
         for id in prelude::Query::<EntityId>::new(self).iter() {
             let (ptr, row_index) = self.entity_ids.read(id).unwrap();
             let ty = unsafe { ptr.as_ref() }.ty();
-            let new_arch = &archetypes[&ty];
-            entity_ids
-                .update(id, (NonNull::from(new_arch.as_ref().get_ref()), row_index))
-                .unwrap();
+            let new_arch = archetypes.get_mut(&ty).unwrap();
+            entity_ids.update(id, new_arch.as_mut().get_mut() as *mut _, row_index);
         }
 
         let resources = self.resources.clone();
@@ -226,17 +226,29 @@ impl World {
         let index = void_store.as_mut().insert_entity(id);
         void_store.as_mut().set_component(index, ());
         self.entity_ids
-            .update(
-                id,
-                (
-                    NonNull::new(void_store.as_mut().get_mut() as *mut _).unwrap(),
-                    index,
-                ),
-            )
-            .unwrap();
+            .update(id, void_store.as_mut().get_mut() as *mut _, index);
         #[cfg(feature = "tracing")]
         tracing::trace!(id = tracing::field::display(id), "Inserted entity");
         Ok(id)
+    }
+
+    /// # Safety
+    ///
+    /// Id must not have been allocated
+    ///
+    /// You must call [[HandleTable::rebuild_free_list]] on the entity_ids
+    #[allow(unused)]
+    pub(crate) unsafe fn force_insert_id(&mut self, id: EntityId) {
+        self.entity_ids.force_insert(id);
+
+        let void_store = self.archetypes.get_mut(&VOID_TY).unwrap();
+
+        let index = void_store.as_mut().insert_entity(id);
+        void_store.as_mut().set_component(index, ());
+        self.entity_ids
+            .update(id, void_store.as_mut().get_mut() as *mut _, index);
+        #[cfg(feature = "tracing")]
+        tracing::trace!(id = tracing::field::display(id), "Inserted entity");
     }
 
     pub fn delete_entity(&mut self, id: EntityId) -> WorldResult<()> {
@@ -249,9 +261,9 @@ impl World {
             .map_err(|_| WorldError::EntityNotFound)?;
         unsafe {
             if let Some(id) = archetype.as_mut().remove(index) {
-                self.entity_ids.update(id, (archetype, index)).unwrap();
+                self.entity_ids.update(id, archetype.as_ptr(), index);
             }
-            self.entity_ids.delete(id).unwrap();
+            self.entity_ids.free(id);
         }
         Ok(())
     }
@@ -269,9 +281,7 @@ impl World {
                 let new_arch = T::extend(archetype);
                 let (mut res, updated_entity) = self.insert_archetype(archetype, index, new_arch);
                 if let Some(updated_entity) = updated_entity {
-                    self.entity_ids
-                        .update(updated_entity, (NonNull::from(archetype), index))
-                        .unwrap();
+                    self.entity_ids.update(updated_entity, archetype, index);
                 }
                 archetype = unsafe { res.as_mut() };
                 index = 0;
@@ -279,18 +289,14 @@ impl World {
                 let new_arch = self.archetypes.get_mut(&new_hash).unwrap();
                 let (i, updated_entity) = archetype.move_entity(new_arch, index);
                 if let Some(updated_entity) = updated_entity {
-                    self.entity_ids
-                        .update(updated_entity, (NonNull::from(archetype), index))
-                        .unwrap();
+                    self.entity_ids.update(updated_entity, archetype, index);
                 }
                 index = i;
                 archetype = new_arch.as_mut().get_mut();
             }
         }
         bundle.insert(archetype, index)?;
-        self.entity_ids
-            .update(entity_id, (NonNull::from(archetype), index))
-            .unwrap();
+        self.entity_ids.update(entity_id, archetype, index);
         Ok(())
     }
 
@@ -321,9 +327,7 @@ impl World {
             let (mut res, updated_entity) =
                 self.insert_archetype(archetype, index, archetype.reduce_with_column::<T>());
             if let Some(updated_entity) = updated_entity {
-                self.entity_ids
-                    .update(updated_entity, (NonNull::from(archetype), index))
-                    .unwrap();
+                self.entity_ids.update(updated_entity, archetype, index);
             }
             archetype = unsafe { res.as_mut() };
             index = 0;
@@ -331,21 +335,13 @@ impl World {
             let new_arch = self.archetypes.get_mut(&new_ty).unwrap();
             let (i, updated_entity) = archetype.move_entity(new_arch, index);
             if let Some(updated_entity) = updated_entity {
-                self.entity_ids
-                    .update(updated_entity, (NonNull::from(archetype), index))
-                    .unwrap();
+                self.entity_ids.update(updated_entity, archetype, index);
             }
             index = i;
             archetype = new_arch.as_mut().get_mut();
         }
-        unsafe {
-            self.entity_ids
-                .update(
-                    entity_id,
-                    (NonNull::new_unchecked(archetype as *mut _), index),
-                )
-                .unwrap();
-        }
+        self.entity_ids
+            .update(entity_id, archetype as *mut _, index);
         Ok(())
     }
 

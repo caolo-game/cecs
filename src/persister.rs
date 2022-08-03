@@ -3,12 +3,9 @@ use serde::{
     ser::SerializeMap,
     Serialize,
 };
-use std::{collections::HashMap, marker::PhantomData};
+use std::marker::PhantomData;
 
-use crate::{entity_id::EntityId, prelude::Query, Component, World};
-
-/// Maps saved entity ids to their loaded entity ids
-pub type EntityMap = HashMap<EntityId, EntityId>;
+use crate::{entity_id::EntityId, entity_index::EntityIndex, prelude::Query, Component, World};
 
 pub struct WorldPersister<T = (), P = ()> {
     next: Option<P>,
@@ -70,15 +67,13 @@ pub trait WorldSerializer: Sized {
         world: &World,
     ) -> Result<(), S::Error>;
 
-    fn load<'a, D: serde::Deserializer<'a>>(&'a self, d: D)
-        -> Result<(World, EntityMap), D::Error>;
+    fn load<'a, D: serde::Deserializer<'a>>(&'a self, d: D) -> Result<World, D::Error>;
 
     fn visit_map_value<'de, A>(
         &self,
         key: &str,
         map: &mut A,
         world: &mut World,
-        id_map: &mut EntityMap,
     ) -> Result<(), A::Error>
     where
         A: serde::de::MapAccess<'de>;
@@ -110,10 +105,7 @@ impl WorldSerializer for () {
         unreachable!()
     }
 
-    fn load<'a, D: serde::Deserializer<'a>>(
-        &'a self,
-        _d: D,
-    ) -> Result<(World, EntityMap), D::Error> {
+    fn load<'a, D: serde::Deserializer<'a>>(&'a self, _d: D) -> Result<World, D::Error> {
         unreachable!()
     }
 
@@ -122,7 +114,6 @@ impl WorldSerializer for () {
         _key: &str,
         _map: &mut A,
         _world: &mut World,
-        _id_map: &mut EntityMap,
     ) -> Result<(), A::Error>
     where
         A: serde::de::MapAccess<'de>,
@@ -138,7 +129,6 @@ where
 {
     persist: &'a WorldPersister<T, P>,
     world: World,
-    entity_map: EntityMap,
 }
 
 impl<'a, 'de: 'a, T, P> Visitor<'de> for WorldVisitor<'a, T, P>
@@ -146,7 +136,7 @@ where
     P: WorldSerializer,
     T: Component + DeserializeOwned + Serialize,
 {
-    type Value = (World, EntityMap);
+    type Value = World;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         formatter.write_str("Serialized World")
@@ -157,15 +147,20 @@ where
         A: serde::de::MapAccess<'de>,
     {
         while let Some(key) = map.next_key::<std::borrow::Cow<'de, str>>()? {
-            self.persist.visit_map_value(
-                key.as_ref(),
-                &mut map,
-                &mut self.world,
-                &mut self.entity_map,
-            )?;
+            if key == "free_list" {
+                let free_list: Vec<(u32, u32)> = map.next_value()?;
+                unsafe {
+                    self.world
+                        .entity_ids
+                        .restore_free_list(free_list.into_iter());
+                }
+            } else {
+                self.persist
+                    .visit_map_value(key.as_ref(), &mut map, &mut self.world)?;
+            }
         }
 
-        Ok((self.world, self.entity_map))
+        Ok(self.world)
     }
 }
 
@@ -183,6 +178,9 @@ where
 
     fn save<S: serde::Serializer>(&self, s: S, world: &World) -> Result<S::Ok, S::Error> {
         let mut s = s.serialize_map(Some(self.depth))?;
+        let free_list: Vec<(u32, u32)> = world.entity_ids.walk_free_list().collect();
+        s.serialize_entry("free_list", &free_list)?;
+
         self.save_entry::<S>(&mut s, world)?;
         s.end()
     }
@@ -219,14 +217,12 @@ where
         Ok(())
     }
 
-    fn load<'a, D: serde::Deserializer<'a>>(
-        &'a self,
-        d: D,
-    ) -> Result<(World, EntityMap), D::Error> {
+    fn load<'a, D: serde::Deserializer<'a>>(&'a self, d: D) -> Result<World, D::Error> {
+        let mut world = World::new(0);
+        world.entity_ids = unsafe { EntityIndex::new_uninit(100) };
         let visitor = WorldVisitor {
             persist: self,
-            world: World::new(100),
-            entity_map: Default::default(),
+            world,
         };
 
         d.deserialize_map(visitor)
@@ -237,7 +233,6 @@ where
         key: &str,
         map: &mut A,
         world: &mut World,
-        id_map: &mut EntityMap,
     ) -> Result<(), A::Error>
     where
         A: serde::de::MapAccess<'de>,
@@ -245,7 +240,7 @@ where
         let tname = entry_name::<T>(self.ty);
         if tname != key {
             if let Some(next) = &self.next {
-                next.visit_map_value(key, map, world, id_map)?;
+                next.visit_map_value(key, map, world)?;
             }
             return Ok(());
         }
@@ -254,12 +249,12 @@ where
         match self.ty {
             SerTy::Component => {
                 let values: Vec<(EntityId, T)> = map.next_value()?;
-                for (old_id, value) in values {
-                    let id = *id_map.entry(old_id).or_insert_with(|| {
-                        world
-                            .insert_entity()
-                            .expect("Failed to allocate new entity")
-                    });
+                for (id, value) in values {
+                    if !world.is_id_valid(id) {
+                        unsafe {
+                            world.force_insert_id(id);
+                        }
+                    }
 
                     world.set_component(id, value).unwrap();
                 }
@@ -317,7 +312,7 @@ mod tests {
 
         let result = String::from_utf8(result).unwrap();
 
-        let (world1, id_map) = p
+        let world1 = p
             .load(&mut serde_json::Deserializer::from_str(result.as_str()))
             .unwrap();
 
@@ -327,8 +322,7 @@ mod tests {
             .iter()
             .zip(Query::<QueryTuple>::new(&world1).iter())
         {
-            let id01 = id_map[&id0];
-            assert_eq!(id01, id1);
+            assert_eq!(id0, id1);
             assert_eq!(i0, i1);
             assert_eq!(f0.value, f1.value);
         }
@@ -359,7 +353,7 @@ mod tests {
         let mut s = bincode::Serializer::new(&mut result, bincode::config::DefaultOptions::new());
         p.save(&mut s, &world0).unwrap();
 
-        let (world1, id_map) = p
+        let world1 = p
             .load(&mut bincode::de::Deserializer::from_slice(
                 result.as_slice(),
                 bincode::config::DefaultOptions::new(),
@@ -372,8 +366,7 @@ mod tests {
             .iter()
             .zip(Query::<QueryTuple>::new(&world1).iter())
         {
-            let id01 = id_map[&id0];
-            assert_eq!(id01, id1);
+            assert_eq!(id0, id1);
             assert_eq!(i0, i1);
             assert_eq!(f0.value, f1.value);
         }
@@ -410,7 +403,7 @@ mod tests {
         let pretty = std::str::from_utf8(&pl).unwrap();
         println!("{}", pretty);
 
-        let (world1, id_map) = p
+        let world1 = p
             .load(&mut serde_json::Deserializer::from_reader(pl.as_slice()))
             .unwrap();
 
@@ -420,8 +413,7 @@ mod tests {
             .iter()
             .zip(Query::<QueryTuple>::new(&world1).iter())
         {
-            let id01 = id_map[&id0];
-            assert_eq!(id01, id1);
+            assert_eq!(id0, id1);
             assert_eq!(f0.value, f1.value);
         }
 
@@ -429,5 +421,47 @@ mod tests {
             world1.get_resource::<Foo>().expect("foo not found").value,
             69
         );
+    }
+
+    #[test]
+    fn entity_ids_inserted_are_the_same_after_serde_test() {
+        let mut world0 = World::new(4);
+
+        let mut ids = Vec::with_capacity(100);
+        for i in 0u32..100u32 {
+            let id = world0.insert_entity().unwrap();
+            world0.set_component(id, 42i32).unwrap();
+            world0.set_component(id, i).unwrap();
+            world0.set_component(id, Foo { value: i }).unwrap();
+            ids.push(id);
+        }
+        for id in ids {
+            if id.index() % 3 == 0 {
+                world0.delete_entity(id).unwrap();
+            }
+        }
+
+        let p = WorldPersister::new()
+            .add_component::<Foo>()
+            .add_component::<i32>();
+
+        let mut pl = Vec::<u8>::new();
+        let mut s = serde_json::Serializer::pretty(&mut pl);
+
+        p.save(&mut s, &world0).unwrap();
+
+        // let pretty = std::str::from_utf8(&pl).unwrap();
+        // println!("{}", pretty);
+
+        let mut world1 = p
+            .load(&mut serde_json::Deserializer::from_reader(pl.as_slice()))
+            .unwrap();
+
+        for i in 0..20 {
+            let id0 = world0.insert_entity().unwrap();
+            let id1 = world1.insert_entity().unwrap();
+
+            assert_eq!(id0, id1, "#{}: expected: {} actual: {}", i, id0, id1,);
+        }
     }
 }

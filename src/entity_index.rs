@@ -11,7 +11,7 @@ use crate::{
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum HandleTableError {
-    #[error("HandleTable has no free capacity")]
+    #[error("EntityIndex has no free capacity")]
     OutOfCapacity,
     #[error("Entity not found")]
     NotFound,
@@ -19,7 +19,7 @@ pub enum HandleTableError {
     Uninitialized,
 }
 
-pub struct HandleTable {
+pub struct EntityIndex {
     entries: *mut Entry,
     cap: u32,
     free_list: u32,
@@ -28,7 +28,7 @@ pub struct HandleTable {
 }
 
 #[cfg(feature = "clone")]
-impl Clone for HandleTable {
+impl Clone for EntityIndex {
     fn clone(&self) -> Self {
         let mut result = Self::new(self.cap);
         result.entries_mut().copy_from_slice(self.entries());
@@ -38,12 +38,104 @@ impl Clone for HandleTable {
     }
 }
 
-unsafe impl Send for HandleTable {}
-unsafe impl Sync for HandleTable {}
+unsafe impl Send for EntityIndex {}
+unsafe impl Sync for EntityIndex {}
 
 const SENTINEL: u32 = !0;
 
-impl HandleTable {
+#[allow(unused)]
+struct FreeListWalker<'a> {
+    entries: &'a [Entry],
+    i: u32,
+}
+
+impl<'a> Iterator for FreeListWalker<'a> {
+    type Item = (u32, u32);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.i == SENTINEL {
+            return None;
+        }
+        let i = self.i;
+        let gen;
+        unsafe {
+            gen = self.entries[self.i as usize].gen;
+            self.i = self.entries[self.i as usize].data.free_list.next;
+        }
+        Some((gen, i))
+    }
+}
+
+impl EntityIndex {
+    // return (gen, index) tuples
+    #[allow(unused)]
+    pub(crate) fn walk_free_list(&self) -> impl Iterator<Item = (u32, u32)> + '_ {
+        FreeListWalker {
+            entries: self.entries(),
+            i: self.free_list,
+        }
+    }
+
+    /// Takes (gen, index) tuples
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure that no index in the free list has been allocated
+    #[allow(unused)]
+    pub(crate) unsafe fn restore_free_list(&mut self, mut list: impl Iterator<Item = (u32, u32)>) {
+        let mut last = 0;
+        if let Some((gen, i)) = list.next() {
+            self.free_list = i;
+            self.entries_mut()[i as usize].gen = gen;
+            self.entries_mut()[i as usize].data.free_list.prev = SENTINEL;
+            last = i;
+        }
+        for (gen, i) in list {
+            if self.cap <= i {
+                self.grow(i + 100);
+            }
+            self.entries_mut()[i as usize].gen = gen;
+            self.entries_mut()[i as usize].data.free_list.prev = last;
+            self.entries_mut()[last as usize].data.free_list.next = i;
+            last = i;
+        }
+        self.entries_mut()[last as usize].data.free_list.next = SENTINEL;
+    }
+
+    /// # Safety
+    /// Creates a new uninitialized table, clients must call `initialize_free_list` after their
+    /// manual initialization
+    #[allow(unused)]
+    pub(crate) unsafe fn new_uninit(initial_capacity: u32) -> Self {
+        let mut result = Self::new(initial_capacity);
+        for entry in result.entries_mut() {
+            entry.data.free_list.prev = SENTINEL;
+            entry.data.free_list.next = SENTINEL;
+            entry.gen = 0;
+        }
+        result.free_list = SENTINEL;
+        result.cap = initial_capacity;
+        result
+    }
+
+    /// # Safety
+    /// Inserts the ID into this table
+    ///
+    /// Clients must ensure that this ID have not been allocated and that the free list is rebuilt
+    /// before calling `allocate`
+    pub(crate) unsafe fn force_insert(&mut self, id: EntityId) {
+        debug_assert!(!self.is_valid(id));
+
+        let index = id.index();
+        if index >= self.cap {
+            self.grow(index + 2);
+        }
+
+        let entry = &mut self.entries_mut()[id.index() as usize];
+        entry.gen = id.gen();
+        self.update(id, std::ptr::null_mut(), 0);
+    }
+
     pub fn new(initial_capacity: u32) -> Self {
         assert!(initial_capacity < ENTITY_INDEX_MASK);
         let entries;
@@ -54,22 +146,33 @@ impl HandleTable {
                 align_of::<Entry>(),
             )) as *mut Entry;
             assert!(!entries.is_null());
-            for i in 0..cap {
+            for i in 1..cap {
                 ptr::write(
                     entries.add(i as usize),
                     Entry {
-                        data: EntryData { next: i + 1 },
+                        data: EntryData {
+                            free_list: FreeList {
+                                prev: i - 1,
+                                next: i + 1,
+                            },
+                        },
                         gen: 1, // 0 IDs can cause problems for clients so start at gen 1
                     },
                 );
             }
             ptr::write(
-                entries.add(cap as usize - 1),
+                entries,
                 Entry {
-                    data: EntryData { next: SENTINEL },
+                    data: EntryData {
+                        free_list: FreeList {
+                            prev: SENTINEL,
+                            next: 1,
+                        },
+                    },
                     gen: 1,
                 },
             );
+            (&mut *entries.add(cap as usize - 1)).data.free_list.next = SENTINEL;
         };
         Self {
             entries,
@@ -82,6 +185,7 @@ impl HandleTable {
     fn grow(&mut self, new_cap: u32) {
         let cap = self.cap;
         assert!(new_cap > cap);
+        assert!(new_cap >= 2);
         let new_entries: *mut Entry;
         unsafe {
             new_entries = alloc(Layout::from_size_align_unchecked(
@@ -95,18 +199,25 @@ impl HandleTable {
                 ptr::write(
                     new_entries.add(i as usize),
                     Entry {
-                        data: EntryData { next: i + 1 },
+                        data: EntryData {
+                            free_list: FreeList {
+                                prev: i - 1,
+                                next: i + 1,
+                            },
+                        },
                         gen: 1, // 0 IDs can cause problems for clients so start at gen 1
                     },
                 );
             }
-            ptr::write(
-                new_entries.add(new_cap as usize - 1),
-                Entry {
-                    data: EntryData { next: SENTINEL },
-                    gen: 1,
-                },
-            );
+            // free list is empty
+            if self.count == self.cap {
+                (&mut *new_entries.add(cap as usize)).data.free_list.prev = SENTINEL;
+            }
+            (&mut *new_entries.add(new_cap as usize - 1))
+                .data
+                .free_list
+                .next = SENTINEL;
+
             // update the free_list if empty
             dealloc(
                 self.entries.cast(),
@@ -131,7 +242,7 @@ impl HandleTable {
         self.len() == 0
     }
 
-    pub fn alloc(&mut self) -> Result<EntityId, HandleTableError> {
+    pub fn allocate(&mut self) -> Result<EntityId, HandleTableError> {
         // pop element off the free list
         //
         if self.count == self.cap {
@@ -142,12 +253,18 @@ impl HandleTable {
         let index = self.free_list;
         let entry;
         unsafe {
-            self.free_list = (*entries.add(self.free_list as usize)).data.next;
-            // create handle
+            // unlink this node from the free list
+            // and create handle
+            self.free_list = (*entries.add(index as usize)).data.free_list.next;
             entry = &mut *entries.add(index as usize);
-            entry.data.next = SENTINEL;
+            let prev = entry.data.free_list.prev;
+            entry.data.meta.arch = std::ptr::null_mut();
+            entry.data.meta.row_index = 0;
+            if self.free_list != SENTINEL {
+                (*entries.add(self.free_list as usize)).data.free_list.prev = prev;
+            }
         }
-        let id = EntityId::new(index, entry.gen);
+        let id = EntityId::new(index as u32, entry.gen);
         Ok(id)
     }
 
@@ -169,6 +286,18 @@ impl HandleTable {
         })
     }
 
+    pub fn read(
+        &self,
+        id: EntityId,
+    ) -> Result<(NonNull<ArchetypeStorage>, RowIndex), HandleTableError> {
+        let res = self.get(id).ok_or(HandleTableError::NotFound)?;
+        if res.arch.is_null() {
+            return Err(HandleTableError::Uninitialized);
+        }
+
+        Ok((unsafe { NonNull::new_unchecked(res.arch) }, res.row_index))
+    }
+
     pub fn free(&mut self, id: EntityId) {
         debug_assert!(self.is_valid(id));
         self.count -= 1;
@@ -178,7 +307,8 @@ impl HandleTable {
             let entries = self.entries;
             entry = &mut *entries.add(index as usize);
         }
-        entry.data.next = self.free_list;
+        entry.data.free_list.prev = SENTINEL;
+        entry.data.free_list.next = self.free_list;
         // 0 IDs can cause problems for clients so start at gen 1
         entry.gen = ((entry.gen + 1) & ENTITY_GEN_MASK).max(1);
         self.free_list = index;
@@ -209,7 +339,7 @@ impl HandleTable {
     }
 }
 
-impl Drop for HandleTable {
+impl Drop for EntityIndex {
     fn drop(&mut self) {
         unsafe {
             dealloc(
@@ -233,8 +363,14 @@ struct Entry {
 
 #[derive(Clone, Copy)]
 union EntryData {
-    next: u32,
+    free_list: FreeList,
     meta: Metadata,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct FreeList {
+    pub prev: u32,
+    pub next: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -243,79 +379,16 @@ pub(crate) struct Metadata {
     row_index: RowIndex,
 }
 
-#[cfg_attr(feature = "clone", derive(Clone))]
-pub struct EntityIndex {
-    pub(crate) handles: HandleTable,
-}
-
-unsafe impl Send for EntityIndex {}
-unsafe impl Sync for EntityIndex {}
-
-impl EntityIndex {
-    pub fn new(capacity: u32) -> Self {
-        let handles = HandleTable::new(capacity);
-        Self { handles }
-    }
-
-    pub fn is_valid(&self, id: EntityId) -> bool {
-        self.handles.is_valid(id)
-    }
-
-    pub fn allocate(&mut self) -> Result<EntityId, HandleTableError> {
-        let id = self.handles.alloc()?;
-        self.handles.update(id, std::ptr::null_mut(), 0);
-        #[cfg(feature = "tracing")]
-        tracing::trace!(id = tracing::field::display(id), "Allocated entity");
-        Ok(id)
-    }
-
-    pub fn update(
-        &mut self,
-        id: EntityId,
-        payload: (NonNull<ArchetypeStorage>, RowIndex),
-    ) -> Result<(), HandleTableError> {
-        self.handles.update(id, payload.0.as_ptr(), payload.1);
-        Ok(())
-    }
-
-    pub fn delete(&mut self, id: EntityId) -> Result<(), HandleTableError> {
-        #[cfg(feature = "tracing")]
-        tracing::trace!(id = tracing::field::display(id), "Deleting entity");
-        self.handles.free(id);
-        Ok(())
-    }
-
-    pub fn read(
-        &self,
-        id: EntityId,
-    ) -> Result<(NonNull<ArchetypeStorage>, RowIndex), HandleTableError> {
-        let res = self.handles.get(id).ok_or(HandleTableError::NotFound)?;
-        if res.arch.is_null() {
-            return Err(HandleTableError::Uninitialized);
-        }
-
-        Ok((unsafe { NonNull::new_unchecked(res.arch) }, res.row_index))
-    }
-
-    pub fn len(&self) -> usize {
-        self.handles.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_alloc() {
-        let mut table = HandleTable::new(512);
+        let mut table = EntityIndex::new(512);
 
         for _ in 0..4 {
-            let e = table.alloc().unwrap();
+            let e = table.allocate().unwrap();
             assert!(table.is_valid(e));
             assert_eq!(e.gen(), 1); // assert for the next step in the test
         }
@@ -325,15 +398,15 @@ mod tests {
             assert!(!table.is_valid(e));
         }
         for _ in 0..512 {
-            let _e = table.alloc();
+            let _e = table.allocate();
         }
     }
 
     #[test]
     fn handle_table_remove_tick_generation_test() {
-        let mut table = HandleTable::new(512);
+        let mut table = EntityIndex::new(512);
 
-        let a = table.alloc().unwrap();
+        let a = table.allocate().unwrap();
 
         table.free(a);
 
@@ -345,10 +418,10 @@ mod tests {
 
     #[test]
     fn can_grow_handles_test() {
-        let mut table = HandleTable::new(4);
+        let mut table = EntityIndex::new(4);
 
         for _ in 0..128 {
-            table.alloc().unwrap();
+            table.allocate().unwrap();
         }
     }
 }
