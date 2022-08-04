@@ -335,7 +335,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tracing_test::traced_test;
 
     #[derive(serde::Serialize, serde::Deserialize, Clone)]
     struct Foo {
@@ -551,7 +550,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(feature = "tracing", traced_test)]
+    #[cfg_attr(feature = "tracing", tracing_test::traced_test)]
     fn can_serde_multiple_resources_test() {
         // regression test: had a bug where the first resource would not be deserialized
 
