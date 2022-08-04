@@ -194,14 +194,19 @@ impl EntityIndex {
         Ok(id)
     }
 
-    pub(crate) fn update(&mut self, id: EntityId, arch: *mut ArchetypeStorage, row: RowIndex) {
-        debug_assert!(self.is_valid(id));
+    /// # Safety
+    ///
+    /// Caller must ensure that the id is valid
+    pub(crate) unsafe fn update(
+        &mut self,
+        id: EntityId,
+        arch: *mut ArchetypeStorage,
+        row: RowIndex,
+    ) {
         let index = id.index();
-        unsafe {
-            let entry = &mut *self.entries.add(index as usize);
-            entry.data.meta.arch = arch;
-            entry.data.meta.row_index = row;
-        }
+        let entry = &mut *self.entries.add(index as usize);
+        entry.data.meta.arch = arch;
+        entry.data.meta.row_index = row;
     }
 
     pub(crate) fn get(&self, id: EntityId) -> Option<&Metadata> {

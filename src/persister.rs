@@ -303,9 +303,11 @@ where
                         let void_store = world.archetypes.get_mut(&VOID_TY).unwrap();
                         let index = void_store.as_mut().insert_entity(id);
                         void_store.as_mut().set_component(index, ());
-                        world
-                            .entity_ids
-                            .update(id, void_store.as_mut().get_mut(), index);
+                        unsafe {
+                            world
+                                .entity_ids
+                                .update(id, void_store.as_mut().get_mut(), index);
+                        }
                         initialized_entities.insert(id);
                     }
                     debug_assert!(world.is_id_valid(id));

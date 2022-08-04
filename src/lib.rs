@@ -67,7 +67,9 @@ impl Clone for World {
             let (ptr, row_index) = self.entity_ids.read(id).unwrap();
             let ty = unsafe { ptr.as_ref() }.ty();
             let new_arch = archetypes.get_mut(&ty).unwrap();
-            entity_ids.update(id, new_arch.as_mut().get_mut() as *mut _, row_index);
+            unsafe {
+                entity_ids.update(id, new_arch.as_mut().get_mut() as *mut _, row_index);
+            }
         }
 
         let resources = self.resources.clone();
@@ -273,7 +275,9 @@ impl World {
                 let new_arch = T::extend(archetype);
                 let (mut res, updated_entity) = self.insert_archetype(archetype, index, new_arch);
                 if let Some(updated_entity) = updated_entity {
-                    self.entity_ids.update(updated_entity, archetype, index);
+                    unsafe {
+                        self.entity_ids.update(updated_entity, archetype, index);
+                    }
                 }
                 archetype = unsafe { res.as_mut() };
                 index = 0;
@@ -281,14 +285,18 @@ impl World {
                 let new_arch = self.archetypes.get_mut(&new_hash).unwrap();
                 let (i, updated_entity) = archetype.move_entity(new_arch, index);
                 if let Some(updated_entity) = updated_entity {
-                    self.entity_ids.update(updated_entity, archetype, index);
+                    unsafe {
+                        self.entity_ids.update(updated_entity, archetype, index);
+                    }
                 }
                 index = i;
                 archetype = new_arch.as_mut().get_mut();
             }
         }
         bundle.insert(archetype, index)?;
-        self.entity_ids.update(entity_id, archetype, index);
+        unsafe {
+            self.entity_ids.update(entity_id, archetype, index);
+        }
         Ok(())
     }
 
@@ -319,7 +327,9 @@ impl World {
             let (mut res, updated_entity) =
                 self.insert_archetype(archetype, index, archetype.reduce_with_column::<T>());
             if let Some(updated_entity) = updated_entity {
-                self.entity_ids.update(updated_entity, archetype, index);
+                unsafe {
+                    self.entity_ids.update(updated_entity, archetype, index);
+                }
             }
             archetype = unsafe { res.as_mut() };
             index = 0;
@@ -327,13 +337,17 @@ impl World {
             let new_arch = self.archetypes.get_mut(&new_ty).unwrap();
             let (i, updated_entity) = archetype.move_entity(new_arch, index);
             if let Some(updated_entity) = updated_entity {
-                self.entity_ids.update(updated_entity, archetype, index);
+                unsafe {
+                    self.entity_ids.update(updated_entity, archetype, index);
+                }
             }
             index = i;
             archetype = new_arch.as_mut().get_mut();
         }
-        self.entity_ids
-            .update(entity_id, archetype as *mut _, index);
+        unsafe {
+            self.entity_ids
+                .update(entity_id, archetype as *mut _, index);
+        }
         Ok(())
     }
 
