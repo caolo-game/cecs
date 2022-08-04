@@ -298,6 +298,7 @@ pub(crate) union EntryData {
 }
 
 #[derive(Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct FreeList {
     pub next: u32,
 }

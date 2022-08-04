@@ -16,14 +16,10 @@ impl Serialize for Entry {
             size_of::<EntryData>() >= size_of::<FreeList>(),
             "code assumes that the data union member is the larger"
         );
-        let mut state = serializer.serialize_struct("Entry", 3)?;
-
-        let arch = unsafe { self.data.meta.arch as usize };
-        let row = unsafe { self.data.meta.row_index };
+        let mut state = serializer.serialize_struct("Entry", 2)?;
 
         state.serialize_field("gen", &self.gen)?;
-        state.serialize_field("arch", &arch)?;
-        state.serialize_field("row", &row)?;
+        state.serialize_field("free_list", &unsafe { self.data.free_list })?;
         state.end()
     }
 }
@@ -48,21 +44,13 @@ impl<'de> Deserialize<'de> for Entry {
                 let gen = seq
                     .next_element()?
                     .ok_or_else(|| de::Error::missing_field("gen"))?;
-                let arch: usize = seq
+                let free_list = seq
                     .next_element()?
-                    .ok_or_else(|| de::Error::missing_field("gen"))?;
-                let row = seq
-                    .next_element()?
-                    .ok_or_else(|| de::Error::missing_field("gen"))?;
+                    .ok_or_else(|| de::Error::missing_field("free_list"))?;
 
                 Ok(Entry {
                     gen,
-                    data: EntryData {
-                        meta: Metadata {
-                            arch: arch as *mut _,
-                            row_index: row,
-                        },
-                    },
+                    data: EntryData { free_list },
                 })
             }
             fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
@@ -70,34 +58,26 @@ impl<'de> Deserialize<'de> for Entry {
                 A: de::MapAccess<'de>,
             {
                 let mut gen = None;
-                let mut arch = None::<usize>;
-                let mut row = None;
+                let mut free_list = None;
 
                 while let Some(key) = map.next_key::<Cow<str>>()? {
                     match key.as_ref() {
                         "gen" => gen = Some(map.next_value()?),
-                        "arch" => arch = Some(map.next_value()?),
-                        "row" => row = Some(map.next_value()?),
+                        "free_list" => free_list = Some(map.next_value()?),
                         _ => {}
                     }
                 }
 
                 let gen = gen.ok_or_else(|| de::Error::missing_field("gen"))?;
-                let arch = arch.ok_or_else(|| de::Error::missing_field("arch"))?;
-                let row = row.ok_or_else(|| de::Error::missing_field("row"))?;
+                let free_list = free_list.ok_or_else(|| de::Error::missing_field("free_list"))?;
 
                 Ok(Entry {
                     gen,
-                    data: EntryData {
-                        meta: Metadata {
-                            arch: arch as *mut _,
-                            row_index: row,
-                        },
-                    },
+                    data: EntryData { free_list },
                 })
             }
         }
-        const FIELDS: &[&str] = &["gen", "arch", "row"];
+        const FIELDS: &[&str] = &["gen", "free_list"];
         deserializer.deserialize_struct("Entry", FIELDS, EntryVisitor)
     }
 }
