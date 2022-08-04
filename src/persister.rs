@@ -3,9 +3,10 @@ use serde::{
     ser::SerializeMap,
     Serialize,
 };
+use std::collections::HashSet;
 use std::marker::PhantomData;
 
-use crate::{entity_id::EntityId, entity_index::EntityIndex, prelude::Query, Component, World};
+use crate::{entity_id::EntityId, prelude::Query, Component, World, VOID_TY};
 
 pub struct WorldPersister<T = (), P = ()> {
     next: Option<P>,
@@ -74,6 +75,7 @@ pub trait WorldSerializer: Sized {
         key: &str,
         map: &mut A,
         world: &mut World,
+        initialized_entities: &mut HashSet<EntityId>,
     ) -> Result<(), A::Error>
     where
         A: serde::de::MapAccess<'de>;
@@ -114,6 +116,7 @@ impl WorldSerializer for () {
         _key: &str,
         _map: &mut A,
         _world: &mut World,
+        _initialized_entities: &mut HashSet<EntityId>,
     ) -> Result<(), A::Error>
     where
         A: serde::de::MapAccess<'de>,
@@ -129,6 +132,7 @@ where
 {
     persist: &'a WorldPersister<T, P>,
     world: World,
+    initialized_entities: HashSet<EntityId>,
 }
 
 impl<'a, 'de: 'a, T, P> Visitor<'de> for WorldVisitor<'a, T, P>
@@ -136,7 +140,8 @@ where
     P: WorldSerializer,
     T: Component + DeserializeOwned + Serialize,
 {
-    type Value = World;
+    // return the world and set of entities that were initialized
+    type Value = (World, HashSet<EntityId>);
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         formatter.write_str("Serialized World")
@@ -147,20 +152,20 @@ where
         A: serde::de::MapAccess<'de>,
     {
         while let Some(key) = map.next_key::<std::borrow::Cow<'de, str>>()? {
-            if key == "free_list" {
-                let free_list: Vec<(u32, u32)> = map.next_value()?;
-                unsafe {
-                    self.world
-                        .entity_ids
-                        .restore_free_list(free_list.into_iter());
-                }
+            if key == "entity_ids" {
+                let entity_ids = map.next_value()?;
+                self.world.entity_ids = entity_ids;
             } else {
-                self.persist
-                    .visit_map_value(key.as_ref(), &mut map, &mut self.world)?;
+                self.persist.visit_map_value(
+                    key.as_ref(),
+                    &mut map,
+                    &mut self.world,
+                    &mut self.initialized_entities,
+                )?;
             }
         }
 
-        Ok(self.world)
+        Ok((self.world, self.initialized_entities))
     }
 }
 
@@ -178,8 +183,7 @@ where
 
     fn save<S: serde::Serializer>(&self, s: S, world: &World) -> Result<S::Ok, S::Error> {
         let mut s = s.serialize_map(Some(self.depth))?;
-        let free_list: Vec<(u32, u32)> = world.entity_ids.walk_free_list().collect();
-        s.serialize_entry("free_list", &free_list)?;
+        s.serialize_entry("entity_ids", &world.entity_ids)?;
 
         self.save_entry::<S>(&mut s, world)?;
         s.end()
@@ -218,14 +222,36 @@ where
     }
 
     fn load<'a, D: serde::Deserializer<'a>>(&'a self, d: D) -> Result<World, D::Error> {
-        let mut world = World::new(0);
-        world.entity_ids = unsafe { EntityIndex::new_uninit(100) };
+        let world = World::new(0);
         let visitor = WorldVisitor {
             persist: self,
             world,
+            initialized_entities: Default::default(),
         };
+        let (mut world, initialized_entities) = d.deserialize_map(visitor)?;
 
-        d.deserialize_map(visitor)
+        let free_set = world
+            .entity_ids
+            .walk_free_list()
+            .map(|(gen, index)| EntityId::new(index, gen))
+            .collect::<HashSet<EntityId>>();
+
+        let mut uninitialized_entities = Vec::new();
+        for (i, entry) in world.entity_ids.entries_mut().iter_mut().enumerate() {
+            let id = EntityId::new(i as u32, entry.gen);
+
+            if !free_set.contains(&id) && !initialized_entities.contains(&id) {
+                // entity was allocated, but not serialized
+                uninitialized_entities.push(id);
+            }
+        }
+        for id in uninitialized_entities {
+            unsafe {
+                world.init_id(id);
+            }
+        }
+
+        Ok(world)
     }
 
     fn visit_map_value<'de, A>(
@@ -233,6 +259,7 @@ where
         key: &str,
         map: &mut A,
         world: &mut World,
+        initialized_entities: &mut HashSet<EntityId>,
     ) -> Result<(), A::Error>
     where
         A: serde::de::MapAccess<'de>,
@@ -240,7 +267,7 @@ where
         let tname = entry_name::<T>(self.ty);
         if tname != key {
             if let Some(next) = &self.next {
-                next.visit_map_value(key, map, world)?;
+                next.visit_map_value(key, map, world, initialized_entities)?;
             }
             return Ok(());
         }
@@ -250,12 +277,16 @@ where
             SerTy::Component => {
                 let values: Vec<(EntityId, T)> = map.next_value()?;
                 for (id, value) in values {
-                    if !world.is_id_valid(id) {
-                        unsafe {
-                            world.force_insert_id(id);
-                        }
+                    if !initialized_entities.contains(&id) {
+                        let void_store = world.archetypes.get_mut(&VOID_TY).unwrap();
+                        let index = void_store.as_mut().insert_entity(id);
+                        void_store.as_mut().set_component(index, ());
+                        world
+                            .entity_ids
+                            .update(id, void_store.as_mut().get_mut(), index);
+                        initialized_entities.insert(id);
                     }
-
+                    debug_assert!(world.is_id_valid(id));
                     world.set_component(id, value).unwrap();
                 }
             }
@@ -435,7 +466,14 @@ mod tests {
             world0.set_component(id, Foo { value: i }).unwrap();
             ids.push(id);
         }
-        for id in ids {
+        // add some entities that are not saved
+        for i in 0u32..100u32 {
+            let id = world0.insert_entity().unwrap();
+            world0.set_component(id, i).unwrap();
+            ids.push(id);
+        }
+        // delete some entities
+        for id in ids.iter().copied() {
             if id.index() % 3 == 0 {
                 world0.delete_entity(id).unwrap();
             }
@@ -457,8 +495,21 @@ mod tests {
             .load(&mut serde_json::Deserializer::from_reader(pl.as_slice()))
             .unwrap();
 
-        assert_eq!(world0.entity_ids.len(), world1.entity_ids.len());
+        for i in 0..20 {
+            let id0 = world0.insert_entity().unwrap();
+            let id1 = world1.insert_entity().unwrap();
+            ids.push(id0);
 
+            assert_eq!(id0, id1, "#{}: expected: {} actual: {}", i, id0, id1,);
+        }
+
+        // free all ids and then try allocating
+        for id in ids {
+            if id.index() % 3 != 0 {
+                world0.delete_entity(id).unwrap_or_default();
+                world1.delete_entity(id).unwrap_or_default();
+            }
+        }
         for i in 0..20 {
             let id0 = world0.insert_entity().unwrap();
             let id1 = world1.insert_entity().unwrap();

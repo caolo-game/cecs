@@ -221,39 +221,31 @@ impl World {
             .entity_ids
             .allocate()
             .map_err(|_| WorldError::OutOfCapacity)?;
-        let void_store = self.archetypes.get_mut(&VOID_TY).unwrap();
-
-        let index = void_store.as_mut().insert_entity(id);
-        void_store.as_mut().set_component(index, ());
-        self.entity_ids
-            .update(id, void_store.as_mut().get_mut() as *mut _, index);
+        unsafe {
+            self.init_id(id);
+        }
         #[cfg(feature = "tracing")]
         tracing::trace!(id = tracing::field::display(id), "Inserted entity");
         Ok(id)
     }
 
     /// # Safety
-    ///
-    /// Id must not have been allocated
-    ///
-    /// You must call [[HandleTable::rebuild_free_list]] on the entity_ids
-    #[allow(unused)]
-    pub(crate) unsafe fn force_insert_id(&mut self, id: EntityId) {
-        self.entity_ids.force_insert(id);
-
+    /// Id must be an allocated but uninitialized entity
+    pub(crate) unsafe fn init_id(&mut self, id: EntityId) {
         let void_store = self.archetypes.get_mut(&VOID_TY).unwrap();
 
         let index = void_store.as_mut().insert_entity(id);
         void_store.as_mut().set_component(index, ());
         self.entity_ids
             .update(id, void_store.as_mut().get_mut() as *mut _, index);
-        #[cfg(feature = "tracing")]
-        tracing::trace!(id = tracing::field::display(id), "Inserted entity");
     }
 
     pub fn delete_entity(&mut self, id: EntityId) -> WorldResult<()> {
         #[cfg(feature = "tracing")]
         tracing::trace!(id = tracing::field::display(id), "Delete entity");
+        if !self.entity_ids.is_valid(id) {
+            return Err(WorldError::EntityNotFound);
+        }
 
         let (mut archetype, index) = self
             .entity_ids

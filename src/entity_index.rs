@@ -1,3 +1,6 @@
+#[cfg(feature = "serde")]
+mod serde_impl;
+
 use std::{
     alloc::{alloc, dealloc, Layout},
     mem::{align_of, size_of},
@@ -74,68 +77,6 @@ impl EntityIndex {
             entries: self.entries(),
             i: self.free_list,
         }
-    }
-
-    /// Takes (gen, index) tuples
-    ///
-    /// # Safety
-    ///
-    /// Caller must ensure that no index in the free list has been allocated
-    #[allow(unused)]
-    pub(crate) unsafe fn restore_free_list(&mut self, mut list: impl Iterator<Item = (u32, u32)>) {
-        let mut last = 0;
-        if let Some((gen, i)) = list.next() {
-            if self.cap <= i {
-                self.grow(i + 100);
-            }
-            self.free_list = i;
-            self.entries_mut()[i as usize].gen = gen;
-            last = i;
-        }
-        for (gen, i) in list {
-            if self.cap <= i {
-                self.grow(i + 100);
-            }
-            self.entries_mut()[i as usize].gen = gen;
-            self.entries_mut()[last as usize].data.free_list.next = i;
-            last = i;
-        }
-        self.entries_mut()[last as usize].data.free_list.next = SENTINEL;
-    }
-
-    /// # Safety
-    /// Creates a new uninitialized table, clients must call `initialize_free_list` after their
-    /// manual initialization
-    #[allow(unused)]
-    pub(crate) unsafe fn new_uninit(initial_capacity: u32) -> Self {
-        let mut result = Self::new(initial_capacity);
-        for entry in result.entries_mut() {
-            entry.data.free_list.next = SENTINEL;
-            entry.gen = 0;
-        }
-        result.free_list = SENTINEL;
-        result.cap = initial_capacity;
-        result
-    }
-
-    /// # Safety
-    /// Inserts the ID into this table
-    ///
-    /// Clients must ensure that this ID have not been allocated and that the free list is rebuilt
-    /// before calling `allocate`
-    pub(crate) unsafe fn force_insert(&mut self, id: EntityId) {
-        debug_assert!(!self.is_valid(id));
-
-        let index = id.index();
-        if index >= self.cap {
-            self.grow(index + 2);
-        }
-
-        let entry = &mut self.entries_mut()[id.index() as usize];
-        entry.gen = id.gen();
-        self.count += 1;
-        debug_assert!(self.count <= self.cap);
-        self.update(id, std::ptr::null_mut(), 0);
     }
 
     pub fn new(initial_capacity: u32) -> Self {
@@ -313,12 +254,11 @@ impl EntityIndex {
         entry.gen == gen
     }
 
-    fn entries(&self) -> &[Entry] {
+    pub(crate) fn entries(&self) -> &[Entry] {
         unsafe { std::slice::from_raw_parts(self.entries, self.cap as usize) }
     }
 
-    #[allow(unused)]
-    fn entries_mut(&mut self) -> &mut [Entry] {
+    pub(crate) fn entries_mut(&mut self) -> &mut [Entry] {
         unsafe { std::slice::from_raw_parts_mut(self.entries, self.cap as usize) }
     }
 }
@@ -338,17 +278,17 @@ impl Drop for EntityIndex {
 }
 
 #[derive(Clone, Copy)]
-struct Entry {
-    gen: u32,
+pub(crate) struct Entry {
+    pub gen: u32,
     /// If this entry is allocated, then data is the index of the entity
     /// if not, then data is the next link in the free_list
-    data: EntryData,
+    pub data: EntryData,
 }
 
 #[derive(Clone, Copy)]
-union EntryData {
-    free_list: FreeList,
-    meta: Metadata,
+pub(crate) union EntryData {
+    pub free_list: FreeList,
+    pub meta: Metadata,
 }
 
 #[derive(Clone, Copy)]
