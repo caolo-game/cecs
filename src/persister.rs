@@ -255,6 +255,12 @@ where
             .entity_ids
             .walk_free_list()
             .map(|(gen, index)| EntityId::new(index, gen))
+            .inspect(|id| {
+                debug_assert!(
+                    !initialized_entities.contains(id),
+                    "Deserializer initialized an entry in the free list"
+                )
+            })
             .collect::<HashSet<EntityId>>();
 
         let mut uninitialized_entities = Vec::new();
@@ -310,7 +316,6 @@ where
                         }
                         initialized_entities.insert(id);
                     }
-                    debug_assert!(world.is_id_valid(id));
                     world.set_component(id, value).unwrap();
                 }
             }
