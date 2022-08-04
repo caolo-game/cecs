@@ -292,7 +292,6 @@ where
         A: serde::de::MapAccess<'de>,
     {
         let tname = entry_name::<T>(self.ty);
-        #[cfg(feature = "tracing")]
         if tname != key {
             if let Some(next) = &self.next {
                 next.visit_map_value(key, map, world, initialized_entities)?;
