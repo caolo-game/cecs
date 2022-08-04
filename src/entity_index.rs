@@ -87,7 +87,6 @@ impl EntityIndex {
         if let Some((gen, i)) = list.next() {
             self.free_list = i;
             self.entries_mut()[i as usize].gen = gen;
-            self.entries_mut()[i as usize].data.free_list.prev = SENTINEL;
             last = i;
         }
         for (gen, i) in list {
@@ -95,7 +94,6 @@ impl EntityIndex {
                 self.grow(i + 100);
             }
             self.entries_mut()[i as usize].gen = gen;
-            self.entries_mut()[i as usize].data.free_list.prev = last;
             self.entries_mut()[last as usize].data.free_list.next = i;
             last = i;
         }
@@ -109,7 +107,6 @@ impl EntityIndex {
     pub(crate) unsafe fn new_uninit(initial_capacity: u32) -> Self {
         let mut result = Self::new(initial_capacity);
         for entry in result.entries_mut() {
-            entry.data.free_list.prev = SENTINEL;
             entry.data.free_list.next = SENTINEL;
             entry.gen = 0;
         }
@@ -152,7 +149,6 @@ impl EntityIndex {
                     Entry {
                         data: EntryData {
                             free_list: FreeList {
-                                prev: i - 1,
                                 next: i + 1,
                             },
                         },
@@ -165,7 +161,6 @@ impl EntityIndex {
                 Entry {
                     data: EntryData {
                         free_list: FreeList {
-                            prev: SENTINEL,
                             next: 1,
                         },
                     },
@@ -201,17 +196,12 @@ impl EntityIndex {
                     Entry {
                         data: EntryData {
                             free_list: FreeList {
-                                prev: i - 1,
                                 next: i + 1,
                             },
                         },
                         gen: 1, // 0 IDs can cause problems for clients so start at gen 1
                     },
                 );
-            }
-            // free list is empty
-            if self.count == self.cap {
-                (&mut *new_entries.add(cap as usize)).data.free_list.prev = SENTINEL;
             }
             (&mut *new_entries.add(new_cap as usize - 1))
                 .data
@@ -257,12 +247,8 @@ impl EntityIndex {
             // and create handle
             self.free_list = (*entries.add(index as usize)).data.free_list.next;
             entry = &mut *entries.add(index as usize);
-            let prev = entry.data.free_list.prev;
             entry.data.meta.arch = std::ptr::null_mut();
             entry.data.meta.row_index = 0;
-            if self.free_list != SENTINEL {
-                (*entries.add(self.free_list as usize)).data.free_list.prev = prev;
-            }
         }
         let id = EntityId::new(index as u32, entry.gen);
         Ok(id)
@@ -307,7 +293,6 @@ impl EntityIndex {
             let entries = self.entries;
             entry = &mut *entries.add(index as usize);
         }
-        entry.data.free_list.prev = SENTINEL;
         entry.data.free_list.next = self.free_list;
         // 0 IDs can cause problems for clients so start at gen 1
         entry.gen = ((entry.gen + 1) & ENTITY_GEN_MASK).max(1);
@@ -369,7 +354,6 @@ union EntryData {
 
 #[derive(Clone, Copy)]
 pub(crate) struct FreeList {
-    pub prev: u32,
     pub next: u32,
 }
 
