@@ -39,7 +39,15 @@ impl<'a, T: 'static> WorldQuery<'a> for Res<'a, T> {
 
 impl<'a, T: 'static> Res<'a, T> {
     pub fn new(world: &'a crate::World) -> Self {
-        let inner = world.resources.fetch().unwrap();
+        let inner = match world.resources.fetch_mut() {
+            Some(inner) => inner,
+            None => {
+                panic!(
+                    "Res query on initialized type: {}",
+                    std::any::type_name::<T>()
+                );
+            }
+        };
         Self {
             inner,
             _m: PhantomData,
@@ -68,7 +76,15 @@ pub struct ResMut<'a, T> {
 
 impl<'a, T: 'static> ResMut<'a, T> {
     pub fn new(world: &'a crate::World) -> Self {
-        let inner = world.resources.fetch_mut().unwrap();
+        let inner = match world.resources.fetch_mut() {
+            Some(inner) => inner,
+            None => {
+                panic!(
+                    "ResMut query on initialized type: {}",
+                    std::any::type_name::<T>()
+                );
+            }
+        };
         Self {
             inner,
             _m: PhantomData,
