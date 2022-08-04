@@ -198,7 +198,7 @@ where
     }
 
     fn save<S: serde::Serializer>(&self, s: S, world: &World) -> Result<S::Ok, S::Error> {
-        let mut s = s.serialize_map(Some(self.depth))?;
+        let mut s = s.serialize_map(Some(self.depth + 1))?;
         #[cfg(feature = "tracing")]
         tracing::trace!("• Serializing entity_ids");
         s.serialize_entry("entity_ids", &world.entity_ids)?;
@@ -286,6 +286,7 @@ where
         A: serde::de::MapAccess<'de>,
     {
         let tname = entry_name::<T>(self.ty);
+        #[cfg(feature = "tracing")]
         if tname != key {
             if let Some(next) = &self.next {
                 next.visit_map_value(key, map, world, initialized_entities)?;
@@ -328,6 +329,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tracing_test::traced_test;
 
     #[derive(serde::Serialize, serde::Deserialize, Clone)]
     struct Foo {
@@ -540,5 +542,35 @@ mod tests {
 
             assert_eq!(id0, id1, "#{}: expected: {} actual: {}", i, id0, id1,);
         }
+    }
+
+    #[test]
+    #[traced_test]
+    fn can_serde_multiple_resources_test() {
+        // regression test: had a bug where the first resource would not be deserialized
+
+        let mut world0 = World::new(4);
+        world0.insert_resource(42i64);
+        world0.insert_resource(69u32);
+
+        let p = WorldPersister::new()
+            .add_resource::<u32>()
+            .add_resource::<i64>();
+
+        let mut result = Vec::<u8>::new();
+        let mut s = bincode::Serializer::new(&mut result, bincode::config::DefaultOptions::new());
+        p.save(&mut s, &world0).unwrap();
+
+        let world1 = p
+            .load(&mut bincode::de::Deserializer::from_slice(
+                result.as_slice(),
+                bincode::config::DefaultOptions::new(),
+            ))
+            .unwrap();
+
+        let i = world1.get_resource::<i64>().unwrap();
+        assert_eq!(i, &42);
+        let u = world1.get_resource::<u32>().unwrap();
+        assert_eq!(u, &69);
     }
 }
