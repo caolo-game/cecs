@@ -552,7 +552,7 @@ mod tests {
     }
 
     #[test]
-    #[traced_test]
+    #[cfg_attr(feature = "tracing", traced_test)]
     fn can_serde_multiple_resources_test() {
         // regression test: had a bug where the first resource would not be deserialized
 
