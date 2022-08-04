@@ -34,6 +34,12 @@ enum SerTy {
 }
 
 impl<T, P> WorldPersister<T, P> {
+    /// Component will be serialized
+    ///
+    /// Entities with no component in WorldPersister will not be serialized
+    ///
+    /// You can GC unserialized entities after deserialization by deleting entities with
+    /// [[World::gc_empty_entities]]
     pub fn add_component<U: Component + Serialize + DeserializeOwned>(
         self,
     ) -> WorldPersister<U, Self> {
