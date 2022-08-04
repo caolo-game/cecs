@@ -139,6 +139,7 @@ where
     persist: &'a WorldPersister<T, P>,
     world: World,
     initialized_entities: HashSet<EntityId>,
+    ids_initialized: bool,
 }
 
 impl<'a, 'de: 'a, T, P> Visitor<'de> for WorldVisitor<'a, T, P>
@@ -163,9 +164,14 @@ where
                 tracing::trace!("• Deserializing entity_ids");
                 let entity_ids = map.next_value()?;
                 self.world.entity_ids = entity_ids;
+                self.ids_initialized = true;
                 #[cfg(feature = "tracing")]
                 tracing::trace!("✓ Deserializing entity_ids");
             } else {
+                assert!(
+                    self.ids_initialized,
+                    "Entity IDs must be initialized before deserializing other fields"
+                );
                 self.persist.visit_map_value(
                     key.as_ref(),
                     &mut map,
@@ -241,6 +247,7 @@ where
             persist: self,
             world,
             initialized_entities: Default::default(),
+            ids_initialized: false,
         };
         let (mut world, initialized_entities) = d.deserialize_map(visitor)?;
 
