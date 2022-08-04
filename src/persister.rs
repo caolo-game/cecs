@@ -457,6 +457,8 @@ mod tests {
             .load(&mut serde_json::Deserializer::from_reader(pl.as_slice()))
             .unwrap();
 
+        assert_eq!(world0.entity_ids.len(), world1.entity_ids.len());
+
         for i in 0..20 {
             let id0 = world0.insert_entity().unwrap();
             let id1 = world1.insert_entity().unwrap();

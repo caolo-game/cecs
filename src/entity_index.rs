@@ -130,6 +130,8 @@ impl EntityIndex {
 
         let entry = &mut self.entries_mut()[id.index() as usize];
         entry.gen = id.gen();
+        self.count += 1;
+        debug_assert!(self.count <= self.cap);
         self.update(id, std::ptr::null_mut(), 0);
     }
 
@@ -148,9 +150,7 @@ impl EntityIndex {
                     entries.add(i as usize),
                     Entry {
                         data: EntryData {
-                            free_list: FreeList {
-                                next: i + 1,
-                            },
+                            free_list: FreeList { next: i + 1 },
                         },
                         gen: 1, // 0 IDs can cause problems for clients so start at gen 1
                     },
@@ -160,9 +160,7 @@ impl EntityIndex {
                 entries,
                 Entry {
                     data: EntryData {
-                        free_list: FreeList {
-                            next: 1,
-                        },
+                        free_list: FreeList { next: 1 },
                     },
                     gen: 1,
                 },
@@ -195,9 +193,7 @@ impl EntityIndex {
                     new_entries.add(i as usize),
                     Entry {
                         data: EntryData {
-                            free_list: FreeList {
-                                next: i + 1,
-                            },
+                            free_list: FreeList { next: i + 1 },
                         },
                         gen: 1, // 0 IDs can cause problems for clients so start at gen 1
                     },
