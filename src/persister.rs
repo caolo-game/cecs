@@ -159,8 +159,12 @@ where
     {
         while let Some(key) = map.next_key::<std::borrow::Cow<'de, str>>()? {
             if key == "entity_ids" {
+                #[cfg(feature = "tracing")]
+                tracing::trace!("• Deserializing entity_ids");
                 let entity_ids = map.next_value()?;
                 self.world.entity_ids = entity_ids;
+                #[cfg(feature = "tracing")]
+                tracing::trace!("✓ Deserializing entity_ids");
             } else {
                 self.persist.visit_map_value(
                     key.as_ref(),
@@ -189,7 +193,11 @@ where
 
     fn save<S: serde::Serializer>(&self, s: S, world: &World) -> Result<S::Ok, S::Error> {
         let mut s = s.serialize_map(Some(self.depth))?;
+        #[cfg(feature = "tracing")]
+        tracing::trace!("• Serializing entity_ids");
         s.serialize_entry("entity_ids", &world.entity_ids)?;
+        #[cfg(feature = "tracing")]
+        tracing::trace!("✓ Serializing entity_ids");
 
         self.save_entry::<S>(&mut s, world)?;
         s.end()
@@ -446,13 +454,16 @@ mod tests {
 
         type QueryTuple<'a> = (EntityId, &'a Foo);
 
+        let mut count = 0;
         for ((id0, f0), (id1, f1)) in Query::<QueryTuple>::new(&world0)
             .iter()
             .zip(Query::<QueryTuple>::new(&world1).iter())
         {
             assert_eq!(id0, id1);
             assert_eq!(f0.value, f1.value);
+            count += 1;
         }
+        assert_eq!(count, 4);
 
         assert_eq!(
             world1.get_resource::<Foo>().expect("foo not found").value,
