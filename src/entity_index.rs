@@ -85,6 +85,9 @@ impl EntityIndex {
     pub(crate) unsafe fn restore_free_list(&mut self, mut list: impl Iterator<Item = (u32, u32)>) {
         let mut last = 0;
         if let Some((gen, i)) = list.next() {
+            if self.cap <= i {
+                self.grow(i + 100);
+            }
             self.free_list = i;
             self.entries_mut()[i as usize].gen = gen;
             last = i;
