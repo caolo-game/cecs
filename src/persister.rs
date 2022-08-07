@@ -76,7 +76,7 @@ pub trait WorldSerializer: Sized {
         world: &World,
     ) -> Result<(), S::Error>;
 
-    fn load<'a, D: serde::Deserializer<'a>>(&'a self, d: D) -> Result<World, D::Error>;
+    fn load<'a, D: serde::Deserializer<'a>>(&self, d: D) -> Result<World, D::Error>;
 
     fn visit_map_value<'de, A>(
         &self,
@@ -114,7 +114,7 @@ impl WorldSerializer for () {
         unreachable!()
     }
 
-    fn load<'a, D: serde::Deserializer<'a>>(&'a self, _d: D) -> Result<World, D::Error> {
+    fn load<'a, D: serde::Deserializer<'a>>(&self, _d: D) -> Result<World, D::Error> {
         unreachable!()
     }
 
@@ -264,7 +264,7 @@ where
         Ok(())
     }
 
-    fn load<'a, D: serde::Deserializer<'a>>(&'a self, d: D) -> Result<World, D::Error> {
+    fn load<'a, D: serde::Deserializer<'a>>(&self, d: D) -> Result<World, D::Error> {
         let world = World::new(0);
         let visitor = WorldVisitor {
             persist: self,
