@@ -565,6 +565,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(feature = "tracing", tracing_test::traced_test)]
+    #[cfg(feature="clone")]
     fn can_clone_deserialized_world_test() {
         let mut world0 = World::new(100);
 
