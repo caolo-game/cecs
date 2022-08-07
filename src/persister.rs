@@ -3,10 +3,9 @@ use serde::{
     ser::SerializeMap,
     Serialize,
 };
-use std::collections::HashSet;
 use std::marker::PhantomData;
 
-use crate::{entity_id::EntityId, prelude::Query, Component, World, VOID_TY};
+use crate::{entity_id::EntityId, prelude::Query, Component, World};
 
 const ENTITY_INDEX_KEY: &str = "entity_index";
 const ENTITY_IDS_KEY: &str = "entity_ids";
@@ -84,7 +83,6 @@ pub trait WorldSerializer: Sized {
         key: &str,
         map: &mut A,
         world: &mut World,
-        initialized_entities: &mut HashSet<EntityId>,
     ) -> Result<(), A::Error>
     where
         A: serde::de::MapAccess<'de>;
@@ -125,7 +123,6 @@ impl WorldSerializer for () {
         _key: &str,
         _map: &mut A,
         _world: &mut World,
-        _initialized_entities: &mut HashSet<EntityId>,
     ) -> Result<(), A::Error>
     where
         A: serde::de::MapAccess<'de>,
@@ -141,7 +138,6 @@ where
 {
     persist: &'a WorldPersister<T, P>,
     world: World,
-    initialized_entities: HashSet<EntityId>,
     ids_initialized: bool,
     index_initialized: bool,
 }
@@ -151,8 +147,7 @@ where
     P: WorldSerializer,
     T: Component + DeserializeOwned + Serialize,
 {
-    // return the world and set of entities that were initialized
-    type Value = (World, HashSet<EntityId>);
+    type Value = World;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         formatter.write_str("Serialized World")
@@ -195,17 +190,13 @@ where
                         self.ids_initialized,
                         "Entity IDs must be initialized before deserializing other fields"
                     );
-                    self.persist.visit_map_value(
-                        key.as_ref(),
-                        &mut map,
-                        &mut self.world,
-                        &mut self.initialized_entities,
-                    )?;
+                    self.persist
+                        .visit_map_value(key.as_ref(), &mut map, &mut self.world)?;
                 }
             }
         }
 
-        Ok((self.world, self.initialized_entities))
+        Ok(self.world)
     }
 }
 
@@ -276,38 +267,10 @@ where
         let visitor = WorldVisitor {
             persist: self,
             world,
-            initialized_entities: Default::default(),
             ids_initialized: false,
             index_initialized: false,
         };
-        let (mut world, initialized_entities) = d.deserialize_map(visitor)?;
-
-        let free_set = world
-            .entity_ids
-            .walk_free_list()
-            .map(|(gen, index)| EntityId::new(index, gen))
-            .inspect(|id| {
-                debug_assert!(
-                    !initialized_entities.contains(id),
-                    "Deserializer initialized an entry in the free list"
-                )
-            })
-            .collect::<HashSet<EntityId>>();
-
-        let mut uninitialized_entities = Vec::new();
-        for (i, entry) in world.entity_ids.entries_mut().iter_mut().enumerate() {
-            let id = EntityId::new(i as u32, entry.gen);
-
-            if !free_set.contains(&id) && !initialized_entities.contains(&id) {
-                // entity was allocated, but not serialized
-                uninitialized_entities.push(id);
-            }
-        }
-        for id in uninitialized_entities {
-            unsafe {
-                world.init_id(id);
-            }
-        }
+        let world = d.deserialize_map(visitor)?;
 
         Ok(world)
     }
@@ -317,7 +280,6 @@ where
         key: &str,
         map: &mut A,
         world: &mut World,
-        initialized_entities: &mut HashSet<EntityId>,
     ) -> Result<(), A::Error>
     where
         A: serde::de::MapAccess<'de>,
@@ -325,7 +287,7 @@ where
         let tname = entry_name::<T>(self.ty);
         if tname != key {
             if let Some(next) = &self.next {
-                next.visit_map_value(key, map, world, initialized_entities)?;
+                next.visit_map_value(key, map, world)?;
             }
             return Ok(());
         }
@@ -335,17 +297,6 @@ where
             SerTy::Component => {
                 let values: Vec<(EntityId, T)> = map.next_value()?;
                 for (id, value) in values {
-                    if !initialized_entities.contains(&id) {
-                        let void_store = world.archetypes.get_mut(&VOID_TY).unwrap();
-                        let index = void_store.as_mut().insert_entity(id);
-                        void_store.as_mut().set_component(index, ());
-                        unsafe {
-                            world
-                                .entity_ids
-                                .update(id, void_store.as_mut().get_mut(), index);
-                        }
-                        initialized_entities.insert(id);
-                    }
                     world.set_component(id, value).unwrap();
                 }
             }
@@ -608,5 +559,35 @@ mod tests {
         assert_eq!(i, &42);
         let u = world1.get_resource::<u32>().unwrap();
         assert_eq!(u, &69);
+    }
+
+    #[test]
+    #[cfg_attr(feature = "tracing", tracing_test::traced_test)]
+    fn can_clone_deserialized_world_test() {
+        let mut world0 = World::new(100);
+
+        for i in 0u32..100u32 {
+            let id = world0.insert_entity().unwrap();
+            world0.set_component(id, 42i32).unwrap();
+            world0.set_component(id, i).unwrap();
+            world0.set_component(id, Foo { value: i }).unwrap();
+        }
+
+        let p = WorldPersister::new()
+            .add_component::<Foo>()
+            .add_component::<i32>();
+
+        let mut result = Vec::<u8>::new();
+        let mut s = bincode::Serializer::new(&mut result, bincode::config::DefaultOptions::new());
+        p.save(&mut s, &world0).unwrap();
+
+        let world1 = p
+            .load(&mut bincode::de::Deserializer::from_slice(
+                result.as_slice(),
+                bincode::config::DefaultOptions::new(),
+            ))
+            .unwrap();
+
+        let _world2 = world1.clone();
     }
 }
