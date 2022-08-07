@@ -8,6 +8,9 @@ use std::marker::PhantomData;
 
 use crate::{entity_id::EntityId, prelude::Query, Component, World, VOID_TY};
 
+const ENTITY_INDEX_KEY: &str = "entity_index";
+const ENTITY_IDS_KEY: &str = "entity_ids";
+
 pub struct WorldPersister<T = (), P = ()> {
     next: Option<P>,
     ty: SerTy,
@@ -140,6 +143,7 @@ where
     world: World,
     initialized_entities: HashSet<EntityId>,
     ids_initialized: bool,
+    index_initialized: bool,
 }
 
 impl<'a, 'de: 'a, T, P> Visitor<'de> for WorldVisitor<'a, T, P>
@@ -159,25 +163,45 @@ where
         A: serde::de::MapAccess<'de>,
     {
         while let Some(key) = map.next_key::<std::borrow::Cow<'de, str>>()? {
-            if key == "entity_ids" {
-                #[cfg(feature = "tracing")]
-                tracing::trace!("• Deserializing entity_ids");
-                let entity_ids = map.next_value()?;
-                self.world.entity_ids = entity_ids;
-                self.ids_initialized = true;
-                #[cfg(feature = "tracing")]
-                tracing::trace!("✓ Deserializing entity_ids");
-            } else {
-                assert!(
-                    self.ids_initialized,
-                    "Entity IDs must be initialized before deserializing other fields"
-                );
-                self.persist.visit_map_value(
-                    key.as_ref(),
-                    &mut map,
-                    &mut self.world,
-                    &mut self.initialized_entities,
-                )?;
+            match key.as_ref() {
+                ENTITY_INDEX_KEY => {
+                    #[cfg(feature = "tracing")]
+                    tracing::trace!("• Deserializing entity_index");
+                    let entity_ids = map.next_value()?;
+                    self.world.entity_ids = entity_ids;
+                    self.index_initialized = true;
+                    #[cfg(feature = "tracing")]
+                    tracing::trace!("✓ Deserializing entity_index");
+                }
+                ENTITY_IDS_KEY => {
+                    assert!(
+                        self.index_initialized,
+                        "Entity index must be initialized before deserializing entity_ids"
+                    );
+                    #[cfg(feature = "tracing")]
+                    tracing::trace!("• Deserializing entity_ids");
+                    let entity_ids: Vec<EntityId> = map.next_value()?;
+                    for id in entity_ids {
+                        unsafe {
+                            self.world.init_id(id);
+                        }
+                    }
+                    self.ids_initialized = true;
+                    #[cfg(feature = "tracing")]
+                    tracing::trace!("✓ Deserializing entity_ids");
+                }
+                _ => {
+                    assert!(
+                        self.ids_initialized,
+                        "Entity IDs must be initialized before deserializing other fields"
+                    );
+                    self.persist.visit_map_value(
+                        key.as_ref(),
+                        &mut map,
+                        &mut self.world,
+                        &mut self.initialized_entities,
+                    )?;
+                }
             }
         }
 
@@ -198,10 +222,16 @@ where
     }
 
     fn save<S: serde::Serializer>(&self, s: S, world: &World) -> Result<S::Ok, S::Error> {
-        let mut s = s.serialize_map(Some(self.depth + 1))?;
+        let mut s = s.serialize_map(Some(self.depth + 2))?;
+        #[cfg(feature = "tracing")]
+        tracing::trace!("• Serializing entity index");
+        s.serialize_entry(ENTITY_INDEX_KEY, &world.entity_ids)?;
+        #[cfg(feature = "tracing")]
+        tracing::trace!("✓ Serializing entity index");
         #[cfg(feature = "tracing")]
         tracing::trace!("• Serializing entity_ids");
-        s.serialize_entry("entity_ids", &world.entity_ids)?;
+        let ids = Query::<EntityId>::new(world).iter().collect::<Vec<_>>();
+        s.serialize_entry(ENTITY_IDS_KEY, &ids)?;
         #[cfg(feature = "tracing")]
         tracing::trace!("✓ Serializing entity_ids");
 
@@ -248,6 +278,7 @@ where
             world,
             initialized_entities: Default::default(),
             ids_initialized: false,
+            index_initialized: false,
         };
         let (mut world, initialized_entities) = d.deserialize_map(visitor)?;
 
