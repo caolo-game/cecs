@@ -209,6 +209,14 @@ impl EntityIndex {
         entry.data.meta.row_index = row;
     }
 
+    /// # Safety
+    ///
+    /// Caller must ensure that the id is allocated, but unused
+    pub(crate) unsafe fn set_gen(&mut self, index: usize, gen: u32) {
+        let entry = &mut *self.entries.add(index);
+        entry.gen = gen;
+    }
+
     pub(crate) fn get(&self, id: EntityId) -> Option<&Metadata> {
         let index = id.index();
         self.is_valid(id).then(|| unsafe {
