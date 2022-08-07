@@ -384,6 +384,10 @@ impl World {
         self.resources.fetch_mut::<T>()
     }
 
+    pub fn get_resource_or_default<T: 'static + Default + Component>(&mut self) -> &mut T {
+        self.resources.fetch_or_default()
+    }
+
     /// System stages are executed in the order they were added to the World
     pub fn add_stage(&mut self, stage: SystemStage<'_>) {
         // # SAFETY

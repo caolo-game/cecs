@@ -55,6 +55,14 @@ impl ResourceStorage {
             .map(|table| unsafe { (*table.get()).as_inner_mut::<T>() })
     }
 
+    pub fn fetch_or_default<T: Default + Component>(&mut self) -> &mut T {
+        let res = self
+            .resources
+            .entry(TypeId::of::<T>())
+            .or_insert_with(|| UnsafeCell::new(ErasedResource::new(T::default())));
+        unsafe { res.get_mut().as_inner_mut::<T>() }
+    }
+
     pub fn remove<T: 'static>(&mut self) -> Option<Box<T>> {
         self.resources
             .remove(&TypeId::of::<T>())
