@@ -216,6 +216,8 @@ where
         let mut s = s.serialize_map(Some(self.depth + 2))?;
         #[cfg(feature = "tracing")]
         tracing::trace!("• Serializing entity index");
+        // TODO: this is pretty wasteful, since we need to serialize all entity ids for consistency
+        // just serialize and deserialize the free list
         s.serialize_entry(ENTITY_INDEX_KEY, &world.entity_ids)?;
         #[cfg(feature = "tracing")]
         tracing::trace!("✓ Serializing entity index");
