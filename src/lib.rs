@@ -202,14 +202,10 @@ impl World {
         #[cfg(feature = "tracing")]
         tracing::trace!("• Running commands");
         let mut commands = std::mem::take(&mut self.commands);
-        for (_i, commands) in commands.iter_mut().enumerate() {
-            #[cfg(feature = "tracing")]
-            tracing::trace!("• Running command list {}", _i);
+        for commands in commands.iter_mut() {
             for cmd in commands.get_mut().drain(0..) {
                 cmd.apply(self)?;
             }
-            #[cfg(feature = "tracing")]
-            tracing::trace!("✓ Running command list {}", _i);
         }
         self.commands = commands;
 
