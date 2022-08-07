@@ -515,6 +515,15 @@ impl World {
             self.delete_entity(id).unwrap();
         }
     }
+
+    /// Return the "type" of the Entity.
+    /// Type itself is an opaque hash.
+    ///
+    /// This function is meant to be used to test successful saving/loading of entities
+    pub fn get_entity_ty(&self, id: EntityId) -> Option<TypeHash> {
+        let (arch, _) = self.entity_ids.read(id).ok()?;
+        Some(unsafe { arch.as_ref().ty() })
+    }
 }
 
 // # SAFETY
