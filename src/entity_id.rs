@@ -6,7 +6,7 @@ pub const ENTITY_INDEX_MASK: u32 = (1 << INDEX_BITS) - 1;
 pub const ENTITY_GEN_MASK: u32 = (1 << GEN_BITS) - 1;
 
 // store the index in the more significant bits for ordering
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Copy, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Copy, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
 pub struct EntityId(u32);
@@ -50,6 +50,12 @@ impl From<EntityId> for u32 {
 impl Default for EntityId {
     fn default() -> Self {
         Self(!0)
+    }
+}
+
+impl std::fmt::Debug for EntityId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "EntityId({})={}", self.0, self)
     }
 }
 
