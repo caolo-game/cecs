@@ -1,8 +1,6 @@
-#[cfg(feature = "serde")]
-mod serde_impl;
-
 use std::{
     alloc::{alloc, dealloc, Layout},
+    collections::VecDeque,
     mem::{align_of, size_of},
     ptr::{self, NonNull},
 };
@@ -25,9 +23,11 @@ pub enum HandleTableError {
 pub struct EntityIndex {
     entries: *mut Entry,
     cap: u32,
-    free_list: u32,
     /// Currently allocated entries
     count: u32,
+    /// deallocated entities
+    /// if empty allocate the next entity in the list
+    free_list: VecDeque<u32>,
 }
 
 #[cfg(feature = "clone")]
@@ -35,7 +35,7 @@ impl Clone for EntityIndex {
     fn clone(&self) -> Self {
         let mut result = Self::new(self.cap);
         result.entries_mut().copy_from_slice(self.entries());
-        result.free_list = self.free_list;
+        result.free_list = self.free_list.clone();
         result.count = self.count;
         result
     }
@@ -47,35 +47,36 @@ unsafe impl Sync for EntityIndex {}
 const SENTINEL: u32 = !0;
 
 #[allow(unused)]
-struct FreeListWalker<'a> {
+struct FreeListWalker<'a, It> {
     entries: &'a [Entry],
-    i: u32,
+    inner: It,
 }
 
-impl<'a> Iterator for FreeListWalker<'a> {
+impl<'a, It: Iterator<Item = u32>> Iterator for FreeListWalker<'a, It> {
     type Item = (u32, u32);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.i == SENTINEL {
-            return None;
-        }
-        let i = self.i;
-        let gen;
-        unsafe {
-            gen = self.entries[self.i as usize].gen;
-            self.i = self.entries[self.i as usize].data.free_list.next;
-        }
+        let i = self.inner.next()?;
+        let gen = self.entries[i as usize].gen;
         Some((gen, i))
     }
 }
 
 impl EntityIndex {
+    /// # Safety
+    ///
+    /// Overrides the internal free_list, caller must ensure that the free list is valid
+    #[allow(unused)]
+    pub(crate) unsafe fn set_free_list(&mut self, free_list: VecDeque<u32>) {
+        self.free_list = free_list;
+    }
+
     // return (gen, index) tuples
     #[allow(unused)]
     pub(crate) fn walk_free_list(&self) -> impl Iterator<Item = (u32, u32)> + '_ {
         FreeListWalker {
             entries: self.entries(),
-            i: self.free_list,
+            inner: self.free_list.iter().copied(),
         }
     }
 
@@ -89,32 +90,21 @@ impl EntityIndex {
                 align_of::<Entry>(),
             )) as *mut Entry;
             assert!(!entries.is_null());
-            for i in 1..cap {
+            for i in 0..cap {
                 ptr::write(
                     entries.add(i as usize),
                     Entry {
-                        data: EntryData {
-                            free_list: FreeList { next: i + 1 },
-                        },
                         gen: 1, // 0 IDs can cause problems for clients so start at gen 1
+                        arch: std::ptr::null_mut(),
+                        row_index: SENTINEL,
                     },
                 );
             }
-            ptr::write(
-                entries,
-                Entry {
-                    data: EntryData {
-                        free_list: FreeList { next: 1 },
-                    },
-                    gen: 1,
-                },
-            );
-            (&mut *entries.add(cap as usize - 1)).data.free_list.next = SENTINEL;
         };
         Self {
             entries,
             cap,
-            free_list: 0,
+            free_list: VecDeque::with_capacity(cap as usize),
             count: 0,
         }
     }
@@ -136,19 +126,13 @@ impl EntityIndex {
                 ptr::write(
                     new_entries.add(i as usize),
                     Entry {
-                        data: EntryData {
-                            free_list: FreeList { next: i + 1 },
-                        },
                         gen: 1, // 0 IDs can cause problems for clients so start at gen 1
+                        arch: std::ptr::null_mut(),
+                        row_index: SENTINEL,
                     },
                 );
             }
-            (&mut *new_entries.add(new_cap as usize - 1))
-                .data
-                .free_list
-                .next = SENTINEL;
 
-            // update the free_list if empty
             dealloc(
                 self.entries.cast(),
                 Layout::from_size_align_unchecked(
@@ -156,9 +140,6 @@ impl EntityIndex {
                     align_of::<Entry>(),
                 ),
             );
-        }
-        if self.free_list == SENTINEL {
-            self.free_list = cap;
         }
         self.entries = new_entries;
         self.cap = new_cap;
@@ -175,20 +156,22 @@ impl EntityIndex {
     pub fn allocate(&mut self) -> Result<EntityId, HandleTableError> {
         // pop element off the free list
         //
-        if self.count == self.cap {
-            self.grow((self.cap as f32 * 3.0 / 2.0).ceil() as u32);
-        }
+        let index = match self.free_list.pop_front() {
+            Some(i) => i,
+            None => {
+                if self.count == self.cap {
+                    self.grow((self.cap as f32 * 3.0 / 2.0).ceil() as u32);
+                }
+                self.count
+            }
+        };
         let entries = self.entries;
         self.count += 1;
-        let index = self.free_list;
         let entry;
         unsafe {
-            // unlink this node from the free list
-            // and create handle
-            self.free_list = (*entries.add(index as usize)).data.free_list.next;
             entry = &mut *entries.add(index as usize);
-            entry.data.meta.arch = std::ptr::null_mut();
-            entry.data.meta.row_index = 0;
+            entry.arch = std::ptr::null_mut();
+            entry.row_index = 0;
         }
         let id = EntityId::new(index as u32, entry.gen);
         Ok(id)
@@ -204,25 +187,47 @@ impl EntityIndex {
         row: RowIndex,
     ) {
         let index = id.index();
+        debug_assert!(index < self.cap);
         let entry = &mut *self.entries.add(index as usize);
-        entry.data.meta.arch = arch;
-        entry.data.meta.row_index = row;
+        debug_assert_eq!(id.gen(), entry.gen);
+        entry.arch = arch;
+        entry.row_index = row;
     }
 
     /// # Safety
     ///
-    /// Caller must ensure that the id is allocated, but unused
+    /// Caller must ensure that the id is unused
     pub(crate) unsafe fn set_gen(&mut self, index: usize, gen: u32) {
-        let entry = &mut *self.entries.add(index);
+        while index >= self.cap as usize {
+            self.grow((self.cap as f32 * 3.0 / 2.0).ceil() as u32);
+        }
+        let entry = &mut self.entries_mut()[index];
         entry.gen = gen;
     }
 
-    pub(crate) fn get(&self, id: EntityId) -> Option<&Metadata> {
+    /// # Safety
+    ///
+    /// Caller must ensure that the entity is not in the free list, nor is is allocated.
+    pub(crate) unsafe fn force_insert_entity(&mut self, id: EntityId) {
+        debug_assert!(!self.is_valid(id));
+
         let index = id.index();
-        self.is_valid(id).then(|| unsafe {
-            let entry = &*self.entries.add(index as usize);
-            &entry.data.meta
-        })
+        while index >= self.cap {
+            self.grow((self.cap as f32 * 3.0 / 2.0).ceil() as u32);
+        }
+        let entry = &mut *self.entries.add(index as usize);
+
+        entry.gen = id.gen();
+        self.update(id, std::ptr::null_mut(), SENTINEL);
+        self.count += 1;
+        debug_assert!(self.count <= self.cap);
+        debug_assert!(self.count != self.cap || self.free_list.is_empty());
+    }
+
+    pub(crate) fn get(&self, id: EntityId) -> Option<&Entry> {
+        let index = id.index();
+        self.is_valid(id)
+            .then(|| unsafe { &*self.entries.add(index as usize) })
     }
 
     pub fn read(
@@ -238,7 +243,6 @@ impl EntityIndex {
     }
 
     pub fn free(&mut self, id: EntityId) {
-        debug_assert!(self.is_valid(id));
         self.count -= 1;
         let index = id.index();
         let entry: &mut Entry;
@@ -246,10 +250,13 @@ impl EntityIndex {
             let entries = self.entries;
             entry = &mut *entries.add(index as usize);
         }
-        entry.data.free_list.next = self.free_list;
+        debug_assert_eq!(id.gen(), entry.gen);
+        entry.arch = std::ptr::null_mut();
+        entry.row_index = SENTINEL;
+        // increment gen
         // 0 IDs can cause problems for clients so start at gen 1
         entry.gen = ((entry.gen + 1) & ENTITY_GEN_MASK).max(1);
-        self.free_list = index;
+        self.free_list.push_back(index);
     }
 
     pub fn get_at_index(&self, ind: u32) -> EntityId {
@@ -264,7 +271,7 @@ impl EntityIndex {
             return false;
         }
         let entry = &self.entries()[index];
-        entry.gen == gen
+        entry.gen == gen && entry.arch != std::ptr::null_mut()
     }
 
     pub(crate) fn entries(&self) -> &[Entry] {
@@ -294,27 +301,8 @@ impl Drop for EntityIndex {
 #[derive(Clone, Copy)]
 pub(crate) struct Entry {
     pub gen: u32,
-    /// If this entry is allocated, then data is the index of the entity
-    /// if not, then data is the next link in the free_list
-    pub data: EntryData,
-}
-
-#[derive(Clone, Copy)]
-pub(crate) union EntryData {
-    pub free_list: FreeList,
-    pub meta: Metadata,
-}
-
-#[derive(Clone, Copy)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub(crate) struct FreeList {
-    pub next: u32,
-}
-
-#[derive(Clone, Copy)]
-pub(crate) struct Metadata {
-    arch: *mut ArchetypeStorage,
-    row_index: RowIndex,
+    pub arch: *mut ArchetypeStorage,
+    pub row_index: RowIndex,
 }
 
 #[cfg(test)]
@@ -327,7 +315,6 @@ mod tests {
 
         for _ in 0..4 {
             let e = table.allocate().unwrap();
-            assert!(table.is_valid(e));
             assert_eq!(e.gen(), 1); // assert for the next step in the test
         }
         for i in 0..4 {

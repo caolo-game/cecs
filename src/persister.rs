@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 
 use crate::{entity_id::EntityId, prelude::Query, Component, World};
 
-const ENTITY_INDEX_KEY: &str = "entity_index";
+const ENTITY_FREE_LIST_KEY: &str = "entity_index_freelist";
 const ENTITY_IDS_KEY: &str = "entity_ids";
 
 pub struct WorldPersister<T = (), P = ()> {
@@ -159,14 +159,22 @@ where
     {
         while let Some(key) = map.next_key::<std::borrow::Cow<'de, str>>()? {
             match key.as_ref() {
-                ENTITY_INDEX_KEY => {
+                ENTITY_FREE_LIST_KEY => {
                     #[cfg(feature = "tracing")]
-                    tracing::trace!("• Deserializing entity_index");
-                    let entity_ids = map.next_value()?;
-                    self.world.entity_ids = entity_ids;
+                    tracing::trace!("• Deserializing entity_free_list");
+                    let free_list: Vec<(u32, u32)> = map.next_value()?;
+                    unsafe {
+                        let free_list = free_list.iter().map(|(_, i)| *i).collect();
+                        self.world.entity_ids.set_free_list(free_list);
+                    }
+                    for (gen, i) in free_list {
+                        unsafe {
+                            self.world.entity_ids.set_gen(i as usize, gen);
+                        }
+                    }
                     self.index_initialized = true;
                     #[cfg(feature = "tracing")]
-                    tracing::trace!("✓ Deserializing entity_index");
+                    tracing::trace!("✓ Deserializing entity_free_list");
                 }
                 ENTITY_IDS_KEY => {
                     assert!(
@@ -178,6 +186,7 @@ where
                     let entity_ids: Vec<EntityId> = map.next_value()?;
                     for id in entity_ids {
                         unsafe {
+                            self.world.entity_ids.force_insert_entity(id);
                             self.world.init_id(id);
                         }
                     }
@@ -215,12 +224,11 @@ where
     fn save<S: serde::Serializer>(&self, s: S, world: &World) -> Result<S::Ok, S::Error> {
         let mut s = s.serialize_map(Some(self.depth + 2))?;
         #[cfg(feature = "tracing")]
-        tracing::trace!("• Serializing entity index");
-        // TODO: this is pretty wasteful, since we need to serialize all entity ids for consistency
-        // just serialize and deserialize the free list
-        s.serialize_entry(ENTITY_INDEX_KEY, &world.entity_ids)?;
+        tracing::trace!("• Serializing entity free_list");
+        let free_list = world.entity_ids.walk_free_list().collect::<Vec<_>>();
+        s.serialize_entry(ENTITY_FREE_LIST_KEY, &free_list)?;
         #[cfg(feature = "tracing")]
-        tracing::trace!("✓ Serializing entity index");
+        tracing::trace!("✓ Serializing entity free_list");
         #[cfg(feature = "tracing")]
         tracing::trace!("• Serializing entity_ids");
         let ids = Query::<EntityId>::new(world).iter().collect::<Vec<_>>();
@@ -565,7 +573,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(feature = "tracing", tracing_test::traced_test)]
-    #[cfg(feature="clone")]
+    #[cfg(feature = "clone")]
     fn can_clone_deserialized_world_test() {
         let mut world0 = World::new(100);
 

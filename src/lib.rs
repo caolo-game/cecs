@@ -234,7 +234,6 @@ impl World {
 
         let index = void_store.as_mut().insert_entity(id);
         void_store.as_mut().set_component(index, ());
-        self.entity_ids.set_gen(id.index() as usize, id.gen());
         self.entity_ids
             .update(id, void_store.as_mut().get_mut() as *mut _, index);
     }
