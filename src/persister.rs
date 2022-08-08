@@ -177,10 +177,11 @@ where
                     tracing::trace!("✓ Deserializing entity_free_list");
                 }
                 ENTITY_IDS_KEY => {
-                    assert!(
-                        self.index_initialized,
-                        "Entity index must be initialized before deserializing entity_ids"
-                    );
+                    if !self.index_initialized {
+                        return Err(serde::de::Error::custom(
+                            "Entity index must be initialized before deserializing entity_ids",
+                        ));
+                    }
                     #[cfg(feature = "tracing")]
                     tracing::trace!("• Deserializing entity_ids");
                     let entity_ids: Vec<EntityId> = map.next_value()?;
@@ -195,10 +196,11 @@ where
                     tracing::trace!("✓ Deserializing entity_ids");
                 }
                 _ => {
-                    assert!(
-                        self.ids_initialized,
-                        "Entity IDs must be initialized before deserializing other fields"
-                    );
+                    if !self.ids_initialized {
+                        return Err(serde::de::Error::custom(
+                            "Entity IDs must be initialized before deserializing other fields",
+                        ));
+                    }
                     self.persist
                         .visit_map_value(key.as_ref(), &mut map, &mut self.world)?;
                 }
