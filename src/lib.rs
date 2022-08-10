@@ -538,6 +538,26 @@ impl World {
         let (arch, _) = self.entity_ids.read(id).ok()?;
         Some(unsafe { arch.as_ref().ty() })
     }
+
+    /// Compute a checksum of the World
+    ///
+    /// Note that only entities and their archetypes are considered, the contents of the components
+    /// themselves are ignored
+    pub fn checksum(&self) -> u64 {
+        use std::hash::Hasher;
+
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+
+        prelude::Query::<EntityId>::new(self).iter().for_each(|id| {
+            let (arch, row_index) = self.entity_ids.read(id).unwrap();
+            let ty = unsafe { arch.as_ref().ty() };
+            hasher.write_u32(id.into());
+            hasher.write_u64(ty);
+            hasher.write_u32(row_index);
+        });
+
+        hasher.finish()
+    }
 }
 
 // # SAFETY
