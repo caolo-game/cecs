@@ -42,7 +42,7 @@ impl<T, P> WorldPersister<T, P> {
     ///
     /// You can GC unserialized entities after deserialization by deleting entities with
     /// [[World::gc_empty_entities]]
-    pub fn add_component<U: Component + Serialize + DeserializeOwned>(
+    pub fn with_component<U: Component + Serialize + DeserializeOwned>(
         self,
     ) -> WorldPersister<U, Self> {
         WorldPersister {
@@ -53,7 +53,7 @@ impl<T, P> WorldPersister<T, P> {
         }
     }
 
-    pub fn add_resource<U: Component + Serialize + DeserializeOwned>(
+    pub fn with_resource<U: Component + Serialize + DeserializeOwned>(
         self,
     ) -> WorldPersister<U, Self> {
         WorldPersister {
@@ -66,8 +66,9 @@ impl<T, P> WorldPersister<T, P> {
 }
 
 pub trait WorldSerializer: Sized {
-    fn add_component<U: Component + Serialize + DeserializeOwned>(self) -> WorldPersister<U, Self>;
-    fn add_resource<U: Component + Serialize + DeserializeOwned>(self) -> WorldPersister<U, Self>;
+    fn with_component<U: Component + Serialize + DeserializeOwned>(self)
+        -> WorldPersister<U, Self>;
+    fn with_resource<U: Component + Serialize + DeserializeOwned>(self) -> WorldPersister<U, Self>;
 
     fn save<S: serde::Serializer>(&self, s: S, world: &World) -> Result<S::Ok, S::Error>;
     fn save_entry<S: serde::Serializer>(
@@ -94,11 +95,13 @@ fn entry_name<T: 'static>(ty: SerTy) -> String {
 
 // Never actually called, just stops the impl recursion
 impl WorldSerializer for () {
-    fn add_component<U: Component + Serialize + DeserializeOwned>(self) -> WorldPersister<U, Self> {
+    fn with_component<U: Component + Serialize + DeserializeOwned>(
+        self,
+    ) -> WorldPersister<U, Self> {
         unreachable!()
     }
 
-    fn add_resource<U: Component + Serialize + DeserializeOwned>(self) -> WorldPersister<U, Self> {
+    fn with_resource<U: Component + Serialize + DeserializeOwned>(self) -> WorldPersister<U, Self> {
         unreachable!()
     }
 
@@ -215,12 +218,14 @@ impl<T: Component + Serialize + DeserializeOwned, P> WorldSerializer for WorldPe
 where
     P: WorldSerializer,
 {
-    fn add_component<U: Component + Serialize + DeserializeOwned>(self) -> WorldPersister<U, Self> {
-        self.add_component::<U>()
+    fn with_component<U: Component + Serialize + DeserializeOwned>(
+        self,
+    ) -> WorldPersister<U, Self> {
+        self.with_component::<U>()
     }
 
-    fn add_resource<U: Component + Serialize + DeserializeOwned>(self) -> WorldPersister<U, Self> {
-        self.add_resource::<U>()
+    fn with_resource<U: Component + Serialize + DeserializeOwned>(self) -> WorldPersister<U, Self> {
+        self.with_resource::<U>()
     }
 
     fn save<S: serde::Serializer>(&self, s: S, world: &World) -> Result<S::Ok, S::Error> {
@@ -355,9 +360,9 @@ mod tests {
         }
 
         let p = WorldPersister::new()
-            .add_component::<i32>()
-            .add_component::<Foo>()
-            .add_component::<Bar>();
+            .with_component::<i32>()
+            .with_component::<Foo>()
+            .with_component::<Bar>();
         let mut result = Vec::<u8>::new();
         let mut s = serde_json::Serializer::pretty(&mut result);
 
@@ -399,8 +404,8 @@ mod tests {
         }
 
         let p = WorldPersister::new()
-            .add_component::<i32>()
-            .add_component::<Foo>();
+            .with_component::<i32>()
+            .with_component::<Foo>();
 
         let mut result = Vec::<u8>::new();
         let mut s = bincode::Serializer::new(&mut result, bincode::config::DefaultOptions::new());
@@ -445,8 +450,8 @@ mod tests {
         world0.insert_resource(Foo { value: 69 });
 
         let p = WorldPersister::new()
-            .add_component::<Foo>()
-            .add_resource::<Foo>();
+            .with_component::<Foo>()
+            .with_resource::<Foo>();
 
         let mut pl = Vec::<u8>::new();
         let mut s = serde_json::Serializer::pretty(&mut pl);
@@ -505,8 +510,8 @@ mod tests {
         }
 
         let p = WorldPersister::new()
-            .add_component::<Foo>()
-            .add_component::<i32>();
+            .with_component::<Foo>()
+            .with_component::<i32>();
 
         let mut pl = Vec::<u8>::new();
         let mut s = serde_json::Serializer::pretty(&mut pl);
@@ -553,8 +558,8 @@ mod tests {
         world0.insert_resource(69u32);
 
         let p = WorldPersister::new()
-            .add_resource::<u32>()
-            .add_resource::<i64>();
+            .with_resource::<u32>()
+            .with_resource::<i64>();
 
         let mut result = Vec::<u8>::new();
         let mut s = bincode::Serializer::new(&mut result, bincode::config::DefaultOptions::new());
@@ -587,8 +592,8 @@ mod tests {
         }
 
         let p = WorldPersister::new()
-            .add_component::<Foo>()
-            .add_component::<i32>();
+            .with_component::<Foo>()
+            .with_component::<i32>();
 
         let mut result = Vec::<u8>::new();
         let mut s = bincode::Serializer::new(&mut result, bincode::config::DefaultOptions::new());
