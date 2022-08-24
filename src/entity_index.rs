@@ -197,6 +197,7 @@ impl EntityIndex {
     /// # Safety
     ///
     /// Caller must ensure that the id is unused
+    #[allow(unused)]
     pub(crate) unsafe fn set_gen(&mut self, index: usize, gen: u32) {
         while index >= self.cap as usize {
             self.grow((self.cap as f32 * 3.0 / 2.0).ceil() as u32);
@@ -208,6 +209,7 @@ impl EntityIndex {
     /// # Safety
     ///
     /// Caller must ensure that the entity is not in the free list, nor is is allocated.
+    #[allow(unused)]
     pub(crate) unsafe fn force_insert_entity(&mut self, id: EntityId) {
         debug_assert!(!self.is_valid(id));
 
