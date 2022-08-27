@@ -5,10 +5,12 @@ use crate::{query::WorldQuery, World};
 pub type InnerSystem<'a, R> = dyn Fn(&'a World, usize) -> R + 'a;
 pub type ShouldRunSystem<'a> = InnerSystem<'a, bool>;
 
+type SystemStorage<T> = smallvec::SmallVec<[T; 4]>;
+
 #[derive(Clone)]
 pub struct SystemStage<'a> {
     pub name: Cow<'a, str>,
-    pub should_run: Vec<ErasedSystem<'a, bool>>,
+    pub should_run: SystemStorage<ErasedSystem<'a, bool>>,
     pub systems: StageSystems<'a>,
 }
 
@@ -16,17 +18,17 @@ impl Default for SystemStage<'_> {
     fn default() -> Self {
         Self {
             name: "<default-empty-stage>".into(),
-            should_run: vec![],
-            systems: StageSystems::Serial(vec![]),
+            should_run: smallvec::smallvec![],
+            systems: StageSystems::Serial(smallvec::smallvec![]),
         }
     }
 }
 
 #[derive(Clone)]
 pub enum StageSystems<'a> {
-    Serial(Vec<ErasedSystem<'a, ()>>),
+    Serial(SystemStorage<ErasedSystem<'a, ()>>),
     #[cfg(feature = "parallel")]
-    Parallel(Vec<ErasedSystem<'a, ()>>),
+    Parallel(SystemStorage<ErasedSystem<'a, ()>>),
 }
 
 impl<'a> StageSystems<'a> {
@@ -83,8 +85,8 @@ impl<'a> SystemStage<'a> {
     pub fn serial<'b: 'a, N: Into<Cow<'b, str>>>(name: N) -> Self {
         Self {
             name: name.into(),
-            should_run: Vec::with_capacity(1),
-            systems: StageSystems::Serial(Vec::with_capacity(4)),
+            should_run: SystemStorage::with_capacity(1),
+            systems: StageSystems::Serial(SystemStorage::with_capacity(4)),
         }
     }
 
@@ -92,11 +94,11 @@ impl<'a> SystemStage<'a> {
     pub fn parallel<'b: 'a, N: Into<Cow<'b, str>>>(name: N) -> Self {
         Self {
             name: name.into(),
-            should_run: Vec::with_capacity(1),
+            should_run: SystemStorage::with_capacity(1),
             #[cfg(feature = "parallel")]
-            systems: StageSystems::Parallel(Vec::with_capacity(4)),
+            systems: StageSystems::Parallel(SystemStorage::with_capacity(4)),
             #[cfg(not(feature = "parallel"))]
-            systems: StageSystems::Serial(Vec::with_capacity(4)),
+            systems: StageSystems::Serial(SystemStorage::with_capacity(4)),
         }
     }
 
