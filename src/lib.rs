@@ -95,6 +95,8 @@ impl Clone for World {
 type TypeHash = u64;
 
 const fn hash_ty<T: 'static>() -> u64 {
+    debug_assert!(std::mem::size_of::<TypeId>() == std::mem::size_of::<u64>());
+
     let ty = TypeId::of::<T>();
     // FIXME extreme curse
     //
@@ -145,10 +147,6 @@ impl<T: 'static + ParallelComponent> Component for T {}
 
 impl World {
     pub fn new(initial_capacity: u32) -> Self {
-        // FIXME: can't add assert to const fn...
-        // the `hash_ty` function assumes that TypeId is a u64 under the hood
-        debug_assert_eq!(std::mem::size_of::<TypeId>(), std::mem::size_of::<u64>());
-
         let entity_ids = EntityIndex::new(initial_capacity);
 
         let mut result = Self {
