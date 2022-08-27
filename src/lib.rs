@@ -294,7 +294,7 @@ impl World {
                 archetype = new_arch.as_mut().get_mut();
             }
         }
-        bundle.insert(archetype, index)?;
+        bundle.insert_into(archetype, index)?;
         unsafe {
             self.entity_ids.update(entity_id, archetype, index);
         }

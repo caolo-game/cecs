@@ -3,7 +3,7 @@ use crate::{archetype::ArchetypeStorage, hash_ty, Component, RowIndex, TypeHash,
 pub trait Bundle {
     fn compute_hash(base: TypeHash) -> TypeHash;
     fn can_insert(&self, archetype: &ArchetypeStorage) -> bool;
-    fn insert(self, archetype: &mut ArchetypeStorage, index: RowIndex) -> WorldResult<()>;
+    fn insert_into(self, archetype: &mut ArchetypeStorage, index: RowIndex) -> WorldResult<()>;
     fn extend(archetype: &ArchetypeStorage) -> ArchetypeStorage;
 }
 
@@ -18,7 +18,7 @@ macro_rules! impl_tuple {
                 $(archetype.contains_column::<$ty>())&&*
             }
 
-            fn insert(self, archetype: &mut ArchetypeStorage, index: RowIndex) -> WorldResult<()> {
+            fn insert_into(self, archetype: &mut ArchetypeStorage, index: RowIndex) -> WorldResult<()> {
                 $(archetype.set_component(index, self.$i);)*
                 Ok(())
             }
