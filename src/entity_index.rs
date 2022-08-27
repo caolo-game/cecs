@@ -196,6 +196,17 @@ impl EntityIndex {
 
     /// # Safety
     ///
+    /// Caller must ensure that the id is valid
+    pub(crate) unsafe fn update_row_index(&mut self, id: EntityId, row: RowIndex) {
+        let index = id.index();
+        debug_assert!(index < self.cap);
+        let entry = &mut *self.entries.add(index as usize);
+        debug_assert_eq!(id.gen(), entry.gen);
+        entry.row_index = row;
+    }
+
+    /// # Safety
+    ///
     /// Caller must ensure that the id is unused
     #[allow(unused)]
     pub(crate) unsafe fn set_gen(&mut self, index: usize, gen: u32) {

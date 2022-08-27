@@ -249,7 +249,7 @@ impl World {
             .map_err(|_| WorldError::EntityNotFound)?;
         unsafe {
             if let Some(id) = archetype.as_mut().remove(index) {
-                self.entity_ids.update(id, archetype.as_ptr(), index);
+                self.entity_ids.update_row_index(id, index);
             }
             self.entity_ids.free(id);
         }
@@ -277,7 +277,7 @@ impl World {
                 let (mut res, updated_entity) = self.insert_archetype(archetype, index, new_arch);
                 if let Some(updated_entity) = updated_entity {
                     unsafe {
-                        self.entity_ids.update(updated_entity, archetype, index);
+                        self.entity_ids.update_row_index(updated_entity, index);
                     }
                 }
                 archetype = unsafe { res.as_mut() };
@@ -287,7 +287,7 @@ impl World {
                 let (i, updated_entity) = archetype.move_entity(new_arch, index);
                 if let Some(updated_entity) = updated_entity {
                     unsafe {
-                        self.entity_ids.update(updated_entity, archetype, index);
+                        self.entity_ids.update_row_index(updated_entity, index);
                     }
                 }
                 index = i;
@@ -336,7 +336,7 @@ impl World {
                 self.insert_archetype(archetype, index, archetype.reduce_with_column::<T>());
             if let Some(updated_entity) = updated_entity {
                 unsafe {
-                    self.entity_ids.update(updated_entity, archetype, index);
+                    self.entity_ids.update_row_index(updated_entity, index);
                 }
             }
             archetype = unsafe { res.as_mut() };
@@ -346,7 +346,7 @@ impl World {
             let (i, updated_entity) = archetype.move_entity(new_arch, index);
             if let Some(updated_entity) = updated_entity {
                 unsafe {
-                    self.entity_ids.update(updated_entity, archetype, index);
+                    self.entity_ids.update_row_index(updated_entity, index);
                 }
             }
             index = i;
