@@ -164,7 +164,7 @@ where
             match key.as_ref() {
                 ENTITY_FREE_LIST_KEY => {
                     #[cfg(feature = "tracing")]
-                    tracing::trace!("• Deserializing entity_free_list");
+                    tracing::trace!("Deserializing entity_free_list");
                     let free_list: Vec<(u32, u32)> = map.next_value()?;
                     unsafe {
                         let free_list = free_list.iter().map(|(_, i)| *i).collect();
@@ -177,7 +177,7 @@ where
                     }
                     self.index_initialized = true;
                     #[cfg(feature = "tracing")]
-                    tracing::trace!("✓ Deserializing entity_free_list");
+                    tracing::trace!("Deserializing entity_free_list done");
                 }
                 ENTITY_IDS_KEY => {
                     if !self.index_initialized {
@@ -186,7 +186,7 @@ where
                         ));
                     }
                     #[cfg(feature = "tracing")]
-                    tracing::trace!("• Deserializing entity_ids");
+                    tracing::trace!("Deserializing entity_ids");
                     let entity_ids: Vec<EntityId> = map.next_value()?;
                     for id in entity_ids {
                         unsafe {
@@ -196,7 +196,7 @@ where
                     }
                     self.ids_initialized = true;
                     #[cfg(feature = "tracing")]
-                    tracing::trace!("✓ Deserializing entity_ids");
+                    tracing::trace!("Deserializing entity_ids done");
                 }
                 _ => {
                     if !self.ids_initialized {
@@ -231,17 +231,17 @@ where
     fn save<S: serde::Serializer>(&self, s: S, world: &World) -> Result<S::Ok, S::Error> {
         let mut s = s.serialize_map(Some(self.depth + 2))?;
         #[cfg(feature = "tracing")]
-        tracing::trace!("• Serializing entity free_list");
+        tracing::trace!("Serializing entity free_list");
         let free_list = world.entity_ids.walk_free_list().collect::<Vec<_>>();
         s.serialize_entry(ENTITY_FREE_LIST_KEY, &free_list)?;
         #[cfg(feature = "tracing")]
-        tracing::trace!("✓ Serializing entity free_list");
+        tracing::trace!("Serializing entity free_list done");
         #[cfg(feature = "tracing")]
-        tracing::trace!("• Serializing entity_ids");
+        tracing::trace!("Serializing entity_ids");
         let ids = Query::<EntityId>::new(world).iter().collect::<Vec<_>>();
         s.serialize_entry(ENTITY_IDS_KEY, &ids)?;
         #[cfg(feature = "tracing")]
-        tracing::trace!("✓ Serializing entity_ids");
+        tracing::trace!("Serializing entity_ids done");
 
         self.save_entry::<S>(&mut s, world)?;
         s.end()
@@ -255,7 +255,7 @@ where
         let tname = entry_name::<T>(self.ty);
 
         #[cfg(feature = "tracing")]
-        tracing::trace!(name = &tname, "• Serializing");
+        tracing::trace!(name = &tname, "Serializing");
 
         match self.ty {
             SerTy::Component => {
@@ -272,7 +272,7 @@ where
             SerTy::Noop => {}
         }
         #[cfg(feature = "tracing")]
-        tracing::trace!(name = &tname, "✓ Serializing");
+        tracing::trace!(name = &tname, "Serializing done");
         if let Some(p) = self.next.as_ref() {
             p.save_entry::<S>(s, world)?;
         }
@@ -309,7 +309,7 @@ where
             return Ok(());
         }
         #[cfg(feature = "tracing")]
-        tracing::trace!(name = &tname, "• Deserializing");
+        tracing::trace!(name = &tname, "Deserializing");
         match self.ty {
             SerTy::Component => {
                 let values: Vec<(EntityId, T)> = map.next_value()?;
@@ -325,7 +325,7 @@ where
         }
 
         #[cfg(feature = "tracing")]
-        tracing::trace!(name = &tname, "✓ Deserializing");
+        tracing::trace!(name = &tname, "Deserializing done");
 
         Ok(())
     }

@@ -200,7 +200,7 @@ impl World {
 
     pub fn apply_commands(&mut self) -> WorldResult<()> {
         #[cfg(feature = "tracing")]
-        tracing::trace!("• Running commands");
+        tracing::trace!("Running commands");
         let mut commands = std::mem::take(&mut self.commands);
         for commands in commands.iter_mut() {
             for cmd in commands.get_mut().drain(0..) {
@@ -210,7 +210,7 @@ impl World {
         self.commands = commands;
 
         #[cfg(feature = "tracing")]
-        tracing::trace!("✓ Running commands done");
+        tracing::trace!("Running commands done");
         Ok(())
     }
 
@@ -460,7 +460,7 @@ impl World {
         let stage = &self.system_stages[i];
 
         #[cfg(feature = "tracing")]
-        tracing::trace!(stage_name = stage.name.as_ref(), "• Run stage");
+        tracing::trace!(stage_name = stage.name.as_ref(), "Run stage");
 
         for condition in stage.should_run.iter() {
             if !unsafe { run_system(self, condition) } {
@@ -491,7 +491,7 @@ impl World {
             }
         }
         #[cfg(feature = "tracing")]
-        tracing::trace!(stage_name = stage.name.as_ref(), "✓ Run stage finished");
+        tracing::trace!(stage_name = stage.name.as_ref(), "Run stage done");
     }
 
     fn resize_commands(&mut self, len: usize) {
@@ -567,7 +567,7 @@ impl World {
 // The system's queries must be disjoint to any other concurrently running system's
 unsafe fn run_system<'a, R>(world: &'a World, sys: &'a systems::ErasedSystem<'_, R>) -> R {
     #[cfg(feature = "tracing")]
-    tracing::trace!(system_name = sys.name.as_ref(), "• Running system");
+    tracing::trace!(system_name = sys.name.as_ref(), "Running system");
 
     let index = sys.commands_index;
     let execute: &systems::InnerSystem<'_, R> = { std::mem::transmute(sys.execute.as_ref()) };
@@ -575,7 +575,7 @@ unsafe fn run_system<'a, R>(world: &'a World, sys: &'a systems::ErasedSystem<'_,
     let res = (execute)(world, index);
 
     #[cfg(feature = "tracing")]
-    tracing::trace!(system_name = sys.name.as_ref(), "✓ Running system done");
+    tracing::trace!(system_name = sys.name.as_ref(), "Running system done");
 
     res
 }
