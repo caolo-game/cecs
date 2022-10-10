@@ -10,8 +10,8 @@ Heavily inspired by [Bevy](https://bevyengine.org/) and [Hexops](https://devlog.
 
 - Functions as systems
 - Query interface
-- Resources
+- Unique entities, called Resources
 - Cloning of the entire database (optional)
-- Serialization/Deserialization of select components (optional)
+- Serialization/Deserialization of select _components_ (optional)
 - (Very basic) parallel scheduler (optional)
 - Deterministic Command execution
