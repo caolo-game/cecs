@@ -209,7 +209,7 @@ fn test_parallel() {
         }
     }
 
-    fn par_sys<'a>(mut q: Query<(&'a mut Foo, &'a String)>) {
+    fn par_sys(mut q: Query<(&mut Foo, &String)>) {
         q.iter_mut().par_bridge().for_each(|(foo, _)| {
             foo.value += 1;
         });
@@ -297,7 +297,7 @@ fn world_execute_systems_test() {
 
     // FIXME: i'd like to be able to specify queries like this,
     // without using the same lifetime for all tuple items
-    fn sys0<'a>(mut q: Query<(&'a mut Foo, &'a ())>) {
+    fn sys0(mut q: Query<(&mut Foo, &())>) {
         for (foo, _) in q.iter_mut() {
             foo.value = 42;
         }
