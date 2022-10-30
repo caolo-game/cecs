@@ -24,6 +24,8 @@ use crate::query::WorldQuery;
 ///
 /// You must not stack WorldAccess queries! Do not run a system that needs WorldAccess inside
 /// another system with WorldAccess as they might violate Rust's borrow rules.
+///
+/// WorldAccess is unstable and the author would recommend avoiding using it for now
 pub struct WorldAccess<'a> {
     world: std::ptr::NonNull<crate::World>,
     _guard: WorldLockGuard<'a>,
