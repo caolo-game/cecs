@@ -18,7 +18,7 @@ macro_rules! impl_tuple {
         impl<'a, $($t, $f),*> QuerySet<($(Query<$t, $f>),*)>
         where
             $(
-            ArchQuery<$t>: QueryFragment<'a>,
+            ArchQuery<$t>: QueryFragment,
             $f: Filter,
             )*
         {
@@ -37,7 +37,7 @@ macro_rules! impl_tuple {
         impl<'a, $($t, $f),*> WorldQuery<'a> for QuerySet<($(Query<$t, $f>),*)>
         where
             $(
-            ArchQuery<$t>: QueryFragment<'a>,
+            ArchQuery<$t>: QueryFragment,
             $f: Filter,
             )*
         {
