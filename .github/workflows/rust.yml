@@ -20,10 +20,10 @@ jobs:
           profile: minimal
           toolchain: nightly
       - uses: Swatinem/rust-cache@v1
-      - name: Install deps
-        run: |
-          cargo install cargo-all-features
-
+      - uses: actions-rs/install@v0.1
+        with:
+          crate: cargo-all-features
+          version: latest
       - name: Build
         run: cargo build-all-features --tests --verbose
       - name: Run tests
