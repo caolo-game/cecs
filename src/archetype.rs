@@ -1,4 +1,4 @@
-use std::{any::TypeId, cell::UnsafeCell, collections::BTreeMap};
+use std::{alloc::Layout, any::TypeId, cell::UnsafeCell, collections::BTreeMap};
 
 // TODO: use dense storage instead of the Vec because of archetypes
 use crate::{entity_id::EntityId, hash_ty, Component, RowIndex, TypeHash};
@@ -60,7 +60,7 @@ impl ArchetypeStorage {
         let mut components = BTreeMap::new();
         components.insert(
             TypeId::of::<()>(),
-            UnsafeCell::new(ErasedTable::new(Vec::<()>::default())),
+            UnsafeCell::new(ErasedTable::new::<()>(0)),
         );
         Self {
             ty,
@@ -129,16 +129,17 @@ impl ArchetypeStorage {
 
     pub fn set_component<T: 'static>(&mut self, row_index: RowIndex, val: T) {
         unsafe {
-            let v = self
+            let table = self
                 .components
                 .get_mut(&TypeId::of::<T>())
                 .expect("set_component called on bad archetype")
-                .get_mut()
-                .as_inner_mut();
+                .get_mut();
+
+            let v = table.as_inner_mut();
             let row_index = row_index as usize;
             assert!(row_index <= v.len());
             if row_index == v.len() {
-                v.push(val);
+                table.push(val);
             } else {
                 v[row_index as usize] = val;
             }
@@ -160,10 +161,9 @@ impl ArchetypeStorage {
         let mut result = self.clone_empty();
         let new_ty = self.extended_hash::<T>();
         result.ty = new_ty;
-        result.components.insert(
-            TypeId::of::<T>(),
-            UnsafeCell::new(ErasedTable::new::<T>(Vec::default())),
-        );
+        result
+            .components
+            .insert(TypeId::of::<T>(), UnsafeCell::new(ErasedTable::new::<T>(0)));
         result
     }
 
@@ -207,7 +207,12 @@ impl ArchetypeStorage {
 /// Type erased Vec
 pub(crate) struct ErasedTable {
     ty_name: &'static str,
-    inner: *mut u8,
+    // Vec //
+    data: *mut u8,
+    end: usize,
+    capacity: usize,
+    layout: Layout,
+    // Type Erased Methods //
     finalize: fn(&mut ErasedTable),
     /// remove is always swap_remove
     remove: fn(RowIndex, &mut ErasedTable),
@@ -222,7 +227,7 @@ pub(crate) struct ErasedTable {
 
 impl Default for ErasedTable {
     fn default() -> Self {
-        Self::new::<()>(Vec::new())
+        Self::new::<()>(0)
     }
 }
 
@@ -248,46 +253,95 @@ impl std::fmt::Debug for ErasedTable {
 }
 
 impl ErasedTable {
-    pub fn new<T: crate::Component>(table: Vec<T>) -> Self {
+    pub fn new<T: crate::Component>(capacity: usize) -> Self {
+        let layout = Layout::array::<T>(capacity).unwrap();
         Self {
             ty_name: std::any::type_name::<T>(),
-            inner: Box::into_raw(Box::new(table)).cast(),
+            capacity,
+            end: 0,
+            data: unsafe { std::alloc::alloc(layout) },
+            layout,
             finalize: |erased_table: &mut ErasedTable| {
                 // drop the inner table
                 unsafe {
-                    let _ = Box::from_raw(erased_table.inner.cast::<Vec<T>>());
+                    let data: *mut T = erased_table.data.cast();
+                    for i in 0..erased_table.end {
+                        std::ptr::drop_in_place(data.add(i));
+                    }
+                    std::alloc::dealloc(erased_table.data, erased_table.layout);
                 }
             },
             remove: |entity_id, erased_table: &mut ErasedTable| unsafe {
-                let v = erased_table.as_inner_mut::<T>();
-                v.swap_remove(entity_id as usize);
+                erased_table.swap_remove::<T>(entity_id as usize);
             },
             #[cfg(feature = "clone")]
             clone: |table: &ErasedTable| {
-                let inner = unsafe { table.as_inner::<T>() };
-                let res: Vec<T> = inner.clone();
-                ErasedTable::new(res)
+                let mut res = ErasedTable::new::<T>(table.capacity);
+                res.end = table.end;
+                for i in 0..table.end {
+                    unsafe {
+                        let val = (&*table.data.cast::<T>().add(i)).clone();
+                        std::ptr::write(res.data.cast::<T>().add(i), val);
+                    }
+                }
+                res
             },
-            clone_empty: || ErasedTable::new::<T>(Vec::default()),
+            clone_empty: || ErasedTable::new::<T>(1),
             move_row: |src, dst, index| unsafe {
-                let src = src.as_inner_mut::<T>();
-                let dst = dst.as_inner_mut::<T>();
-                let src = src.swap_remove(index as usize);
-                dst.push(src);
+                let src = src.swap_remove::<T>(index as usize);
+                dst.push::<T>(src);
             },
         }
     }
 
     /// # SAFETY
     /// Must be called with the same type as `new`
-    pub unsafe fn as_inner<T>(&self) -> &Vec<T> {
-        &*self.inner.cast()
+    pub unsafe fn as_inner<T>(&self) -> &[T] {
+        std::slice::from_raw_parts(self.data.cast::<T>(), self.end)
     }
 
     /// # SAFETY
     /// Must be called with the same type as `new`
-    pub unsafe fn as_inner_mut<T>(&mut self) -> &mut Vec<T> {
-        &mut *self.inner.cast()
+    pub unsafe fn as_inner_mut<T>(&mut self) -> &mut [T] {
+        std::slice::from_raw_parts_mut(self.data.cast::<T>(), self.end)
+    }
+
+    /// # SAFETY
+    /// Must be called with the same type as `new`
+    pub unsafe fn push<T>(&mut self, val: T) {
+        debug_assert!(self.end <= self.capacity);
+        if self.end == self.capacity {
+            // full, have to reallocate
+            let new_cap = (self.capacity * 2).max(2);
+            let new_layout = Layout::array::<T>(new_cap).unwrap();
+            let new_data = std::alloc::alloc(new_layout);
+            for i in 0..self.end {
+                let t: T = std::ptr::read(self.data.cast::<T>().add(i));
+                std::ptr::write(new_data.cast::<T>().add(i), t);
+            }
+            std::alloc::dealloc(self.data, self.layout);
+            self.capacity = new_cap;
+            self.data = new_data;
+            self.layout = new_layout;
+        }
+        std::ptr::write(self.data.cast::<T>().add(self.end), val);
+        self.end += 1;
+    }
+
+    /// # SAFETY
+    /// Must be called with the same type as `new`
+    pub unsafe fn swap_remove<T>(&mut self, i: usize) -> T {
+        let res;
+        if i + 1 == self.end {
+            // last item
+            res = std::ptr::read(self.data.cast::<T>().add(i));
+        } else {
+            res = std::ptr::read(self.data.cast::<T>().add(i));
+            let last: T = std::ptr::read(self.data.cast::<T>().add(self.end - 1));
+            std::ptr::write(self.data.cast::<T>().add(i), last);
+        }
+        self.end -= 1;
+        res
     }
 
     pub fn remove(&mut self, id: RowIndex) {
