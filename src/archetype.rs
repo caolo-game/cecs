@@ -135,7 +135,7 @@ impl ArchetypeStorage {
                 .expect("set_component called on bad archetype")
                 .get_mut();
 
-            let v = table.as_inner_mut();
+            let v = table.as_slice_mut();
             let row_index = row_index as usize;
             assert!(row_index <= v.len());
             if row_index == v.len() {
@@ -194,13 +194,13 @@ impl ArchetypeStorage {
     pub fn get_component<T: 'static>(&self, row: RowIndex) -> Option<&T> {
         self.components
             .get(&TypeId::of::<T>())
-            .and_then(|columns| unsafe { (*columns.get()).as_inner().get(row as usize) })
+            .and_then(|columns| unsafe { (*columns.get()).as_slice().get(row as usize) })
     }
 
     pub fn get_component_mut<T: 'static>(&self, row: RowIndex) -> Option<&mut T> {
         self.components
             .get(&TypeId::of::<T>())
-            .and_then(|columns| unsafe { (*columns.get()).as_inner_mut().get_mut(row as usize) })
+            .and_then(|columns| unsafe { (*columns.get()).as_slice_mut().get_mut(row as usize) })
     }
 }
 
@@ -296,13 +296,13 @@ impl ErasedTable {
 
     /// # SAFETY
     /// Must be called with the same type as `new`
-    pub unsafe fn as_inner<T>(&self) -> &[T] {
+    pub unsafe fn as_slice<T>(&self) -> &[T] {
         std::slice::from_raw_parts(self.data.cast::<T>(), self.end)
     }
 
     /// # SAFETY
     /// Must be called with the same type as `new`
-    pub unsafe fn as_inner_mut<T>(&mut self) -> &mut [T] {
+    pub unsafe fn as_slice_mut<T>(&mut self) -> &mut [T] {
         std::slice::from_raw_parts_mut(self.data.cast::<T>(), self.end)
     }
 
@@ -331,6 +331,7 @@ impl ErasedTable {
     /// # SAFETY
     /// Must be called with the same type as `new`
     pub unsafe fn swap_remove<T>(&mut self, i: usize) -> T {
+        debug_assert!(i < self.end);
         let res;
         if i + 1 == self.end {
             // last item

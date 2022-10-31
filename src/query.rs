@@ -325,7 +325,7 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<Option<&'a T>> {
 
     fn iter_prim(archetype: &ArchetypeStorage) -> Self::It<'_> {
         match archetype.components.get(&TypeId::of::<T>()) {
-            Some(columns) => Box::new(unsafe { (*columns.get()).as_inner::<T>().iter() }.map(Some)),
+            Some(columns) => Box::new(unsafe { (*columns.get()).as_slice::<T>().iter() }.map(Some)),
             None => Box::new((0..archetype.rows).map(|_| None)),
         }
     }
@@ -363,7 +363,7 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<Option<&'a mut T>> {
 
     fn iter_prim(archetype: &ArchetypeStorage) -> Self::It<'_> {
         match archetype.components.get(&TypeId::of::<T>()) {
-            Some(columns) => Box::new(unsafe { (*columns.get()).as_inner::<T>().iter() }.map(Some)),
+            Some(columns) => Box::new(unsafe { (*columns.get()).as_slice::<T>().iter() }.map(Some)),
             None => Box::new((0..archetype.rows).map(|_| None)),
         }
     }
@@ -371,7 +371,7 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<Option<&'a mut T>> {
     fn iter_prim_mut(archetype: &ArchetypeStorage) -> Self::ItMut<'_> {
         match archetype.components.get(&TypeId::of::<T>()) {
             Some(columns) => {
-                Box::new(unsafe { (*columns.get()).as_inner_mut::<T>().iter_mut() }.map(Some))
+                Box::new(unsafe { (*columns.get()).as_slice_mut::<T>().iter_mut() }.map(Some))
             }
             None => Box::new((0..archetype.rows).map(|_| None)),
         }
@@ -428,7 +428,7 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<&'a T> {
         archetype
             .components
             .get(&TypeId::of::<T>())
-            .map(|columns| unsafe { (*columns.get()).as_inner::<T>().iter() })
+            .map(|columns| unsafe { (*columns.get()).as_slice::<T>().iter() })
             .into_iter()
             .flatten()
     }
@@ -448,7 +448,7 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<&'a mut T> {
         archetype
             .components
             .get(&TypeId::of::<T>())
-            .map(|columns| unsafe { (*columns.get()).as_inner::<T>().iter() })
+            .map(|columns| unsafe { (*columns.get()).as_slice::<T>().iter() })
             .into_iter()
             .flatten()
     }
@@ -457,7 +457,7 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<&'a mut T> {
         archetype
             .components
             .get(&TypeId::of::<T>())
-            .map(|columns| unsafe { (*columns.get()).as_inner_mut::<T>().iter_mut() })
+            .map(|columns| unsafe { (*columns.get()).as_slice_mut::<T>().iter_mut() })
             .into_iter()
             .flatten()
     }
