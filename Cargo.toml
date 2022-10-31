@@ -18,7 +18,7 @@ serde=["dep:serde"]
 [dependencies]
 rayon = {version= "1", optional=true}
 serde = { version = "1", features = ["derive"], optional=true}
-smallvec = "1.9.0"
+smallvec = "1"
 thiserror = "1"
 tracing = { version = "0.1", optional = true }
 
