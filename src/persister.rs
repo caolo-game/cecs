@@ -168,11 +168,11 @@ where
                     let free_list: Vec<(u32, u32)> = map.next_value()?;
                     unsafe {
                         let free_list = free_list.iter().map(|(_, i)| *i).collect();
-                        self.world.entity_ids.set_free_list(free_list);
+                        self.world.entity_ids.get_mut().set_free_list(free_list);
                     }
                     for (gen, i) in free_list {
                         unsafe {
-                            self.world.entity_ids.set_gen(i as usize, gen);
+                            self.world.entity_ids.get_mut().set_gen(i as usize, gen);
                         }
                     }
                     self.index_initialized = true;
@@ -190,7 +190,7 @@ where
                     let entity_ids: Vec<EntityId> = map.next_value()?;
                     for id in entity_ids {
                         unsafe {
-                            self.world.entity_ids.force_insert_entity(id);
+                            self.world.entity_ids.get_mut().force_insert_entity(id);
                             self.world.init_id(id);
                         }
                     }
@@ -232,7 +232,7 @@ where
         let mut s = s.serialize_map(Some(self.depth + 2))?;
         #[cfg(feature = "tracing")]
         tracing::trace!("Serializing entity free_list");
-        let free_list = world.entity_ids.walk_free_list().collect::<Vec<_>>();
+        let free_list = world.entity_ids().walk_free_list().collect::<Vec<_>>();
         s.serialize_entry(ENTITY_FREE_LIST_KEY, &free_list)?;
         #[cfg(feature = "tracing")]
         tracing::trace!("Serializing entity free_list done");

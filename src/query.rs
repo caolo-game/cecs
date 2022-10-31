@@ -194,7 +194,7 @@ where
         Self: 'a,
     {
         unsafe {
-            let (arch, index) = self.world.as_ref().entity_ids.read(id).ok()?;
+            let (arch, index) = self.world.as_ref().entity_ids().read(id).ok()?;
             if !F::filter(arch.as_ref()) {
                 return None;
             }
@@ -211,7 +211,7 @@ where
         Self: 'a,
     {
         unsafe {
-            let (arch, index) = self.world.as_ref().entity_ids.read(id).ok()?;
+            let (arch, index) = self.world.as_ref().entity_ids().read(id).ok()?;
             if !F::filter(arch.as_ref()) {
                 return None;
             }
@@ -222,7 +222,7 @@ where
 
     pub fn contains(&self, id: EntityId) -> bool {
         unsafe {
-            let (arch, _index) = match self.world.as_ref().entity_ids.read(id).ok() {
+            let (arch, _index) = match self.world.as_ref().entity_ids().read(id).ok() {
                 None => return false,
                 Some(x) => x,
             };

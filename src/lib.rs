@@ -1,6 +1,6 @@
 #![feature(const_type_id)]
 
-use std::{any::TypeId, collections::BTreeMap, pin::Pin, ptr::NonNull};
+use std::{any::TypeId, cell::UnsafeCell, collections::BTreeMap, pin::Pin, ptr::NonNull};
 
 use archetype::ArchetypeStorage;
 use commands::CommandPayload;
@@ -40,7 +40,7 @@ type CommandBuffer<T> = std::cell::UnsafeCell<Vec<T>>;
 
 pub struct World {
     pub(crate) this_lock: WorldLock,
-    pub(crate) entity_ids: EntityIndex,
+    pub(crate) entity_ids: UnsafeCell<EntityIndex>,
     pub(crate) archetypes: BTreeMap<TypeHash, Pin<Box<ArchetypeStorage>>>,
     pub(crate) resources: ResourceStorage,
     pub(crate) commands: Vec<CommandBuffer<CommandPayload>>,
@@ -62,9 +62,9 @@ impl Clone for World {
         let mut archetypes = self.archetypes.clone();
         let commands = Vec::default();
 
-        let mut entity_ids = self.entity_ids.clone();
+        let mut entity_ids = self.entity_ids().clone();
         for id in prelude::Query::<EntityId>::new(self).iter() {
-            let (ptr, row_index) = self.entity_ids.read(id).unwrap();
+            let (ptr, row_index) = self.entity_ids().read(id).unwrap();
             let ty = unsafe { ptr.as_ref() }.ty();
             let new_arch = archetypes.get_mut(&ty).unwrap();
             unsafe {
@@ -81,7 +81,7 @@ impl Clone for World {
 
         Self {
             this_lock: WorldLock::new(),
-            entity_ids,
+            entity_ids: UnsafeCell::new(entity_ids),
             archetypes,
             commands,
             resources,
@@ -151,7 +151,7 @@ impl World {
 
         let mut result = Self {
             this_lock: WorldLock::new(),
-            entity_ids,
+            entity_ids: UnsafeCell::new(entity_ids),
             archetypes: BTreeMap::new(),
             resources: ResourceStorage::new(),
             commands: Vec::default(),
@@ -181,7 +181,7 @@ impl World {
     /// Writes entity ids and their archetype hash
     pub fn write_entities(&self, mut w: impl std::io::Write) -> std::io::Result<()> {
         for id in prelude::Query::<EntityId>::new(self).iter() {
-            let (arch, _row_index) = self.entity_ids.read(id).unwrap();
+            let (arch, _row_index) = self.entity_ids().read(id).unwrap();
             let ty = unsafe { arch.as_ref().ty() };
             write!(w, "{}: {}, ", id, ty)?;
         }
@@ -189,11 +189,11 @@ impl World {
     }
 
     pub fn num_entities(&self) -> usize {
-        self.entity_ids.len()
+        self.entity_ids().len()
     }
 
     pub fn is_id_valid(&self, id: EntityId) -> bool {
-        self.entity_ids.is_valid(id)
+        self.entity_ids().is_valid(id)
     }
 
     pub fn apply_commands(&mut self) -> WorldResult<()> {
@@ -215,6 +215,7 @@ impl World {
     pub fn insert_entity(&mut self) -> WorldResult<EntityId> {
         let id = self
             .entity_ids
+            .get_mut()
             .allocate()
             .map_err(|_| WorldError::OutOfCapacity)?;
         unsafe {
@@ -233,25 +234,26 @@ impl World {
         let index = void_store.as_mut().insert_entity(id);
         void_store.as_mut().set_component(index, ());
         self.entity_ids
+            .get_mut()
             .update(id, void_store.as_mut().get_mut() as *mut _, index);
     }
 
     pub fn delete_entity(&mut self, id: EntityId) -> WorldResult<()> {
         #[cfg(feature = "tracing")]
         tracing::trace!(id = tracing::field::display(id), "Delete entity");
-        if !self.entity_ids.is_valid(id) {
+        if !self.entity_ids().is_valid(id) {
             return Err(WorldError::EntityNotFound);
         }
 
         let (mut archetype, index) = self
-            .entity_ids
+            .entity_ids()
             .read(id)
             .map_err(|_| WorldError::EntityNotFound)?;
         unsafe {
             if let Some(id) = archetype.as_mut().remove(index) {
-                self.entity_ids.update_row_index(id, index);
+                self.entity_ids.get_mut().update_row_index(id, index);
             }
-            self.entity_ids.free(id);
+            self.entity_ids.get_mut().free(id);
         }
         Ok(())
     }
@@ -265,7 +267,7 @@ impl World {
         );
 
         let (mut archetype, mut index) = self
-            .entity_ids
+            .entity_ids()
             .read(entity_id)
             .map_err(|_| WorldError::EntityNotFound)?;
         let mut archetype = unsafe { archetype.as_mut() };
@@ -277,7 +279,9 @@ impl World {
                 let (mut res, updated_entity) = self.insert_archetype(archetype, index, new_arch);
                 if let Some(updated_entity) = updated_entity {
                     unsafe {
-                        self.entity_ids.update_row_index(updated_entity, index);
+                        self.entity_ids
+                            .get_mut()
+                            .update_row_index(updated_entity, index);
                     }
                 }
                 archetype = unsafe { res.as_mut() };
@@ -287,7 +291,9 @@ impl World {
                 let (i, updated_entity) = archetype.move_entity(new_arch, index);
                 if let Some(updated_entity) = updated_entity {
                     unsafe {
-                        self.entity_ids.update_row_index(updated_entity, index);
+                        self.entity_ids
+                            .get_mut()
+                            .update_row_index(updated_entity, index);
                     }
                 }
                 index = i;
@@ -296,7 +302,9 @@ impl World {
         }
         bundle.insert_into(archetype, index)?;
         unsafe {
-            self.entity_ids.update(entity_id, archetype, index);
+            self.entity_ids
+                .get_mut()
+                .update(entity_id, archetype, index);
         }
         Ok(())
     }
@@ -310,7 +318,7 @@ impl World {
     }
 
     pub fn get_component<T: Component>(&self, entity_id: EntityId) -> Option<&T> {
-        let (arch, idx) = self.entity_ids.read(entity_id).ok()?;
+        let (arch, idx) = self.entity_ids().read(entity_id).ok()?;
         unsafe { arch.as_ref().get_component(idx) }
     }
 
@@ -323,10 +331,11 @@ impl World {
         );
 
         let (mut archetype, mut index) = self
-            .entity_ids
+            .entity_ids()
             .read(entity_id)
             .map_err(|_| WorldError::EntityNotFound)?;
-        let mut archetype = unsafe { archetype.as_mut() };
+        let archetype = unsafe { archetype.as_mut() };
+        let arch_ptr;
         if !archetype.contains_column::<T>() {
             return Err(WorldError::ComponentNotFound);
         }
@@ -336,25 +345,28 @@ impl World {
                 self.insert_archetype(archetype, index, archetype.reduce_with_column::<T>());
             if let Some(updated_entity) = updated_entity {
                 unsafe {
-                    self.entity_ids.update_row_index(updated_entity, index);
+                    self.entity_ids
+                        .get_mut()
+                        .update_row_index(updated_entity, index);
                 }
             }
-            archetype = unsafe { res.as_mut() };
+            arch_ptr = unsafe { res.as_mut() as *mut _ };
             index = 0;
         } else {
             let new_arch = self.archetypes.get_mut(&new_ty).unwrap();
             let (i, updated_entity) = archetype.move_entity(new_arch, index);
             if let Some(updated_entity) = updated_entity {
                 unsafe {
-                    self.entity_ids.update_row_index(updated_entity, index);
+                    self.entity_ids
+                        .get_mut()
+                        .update_row_index(updated_entity, index);
                 }
             }
             index = i;
-            archetype = new_arch.as_mut().get_mut();
+            arch_ptr = new_arch.as_mut().get_mut() as *mut _;
         }
         unsafe {
-            self.entity_ids
-                .update(entity_id, archetype as *mut _, index);
+            self.entity_ids.get_mut().update(entity_id, arch_ptr, index);
         }
         Ok(())
     }
@@ -533,7 +545,7 @@ impl World {
     ///
     /// This function is meant to be used to test successful saving/loading of entities
     pub fn get_entity_ty(&self, id: EntityId) -> Option<TypeHash> {
-        let (arch, _) = self.entity_ids.read(id).ok()?;
+        let (arch, _) = self.entity_ids().read(id).ok()?;
         Some(unsafe { arch.as_ref().ty() })
     }
 
@@ -547,7 +559,7 @@ impl World {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
 
         prelude::Query::<EntityId>::new(self).iter().for_each(|id| {
-            let (arch, row_index) = self.entity_ids.read(id).unwrap();
+            let (arch, row_index) = self.entity_ids().read(id).unwrap();
             let ty = unsafe { arch.as_ref().ty() };
             hasher.write_u32(id.into());
             hasher.write_u64(ty);
@@ -555,6 +567,10 @@ impl World {
         });
 
         hasher.finish()
+    }
+
+    pub(crate) fn entity_ids(&self) -> &EntityIndex {
+        unsafe { &*self.entity_ids.get() }
     }
 }
 
