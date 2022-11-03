@@ -1,6 +1,8 @@
 #![feature(const_type_id)]
 
-use std::{any::TypeId, cell::UnsafeCell, collections::BTreeMap, pin::Pin, ptr::NonNull};
+use std::{
+    any::TypeId, cell::UnsafeCell, collections::BTreeMap, mem::transmute, pin::Pin, ptr::NonNull,
+};
 
 use archetype::ArchetypeStorage;
 use commands::CommandPayload;
@@ -95,13 +97,12 @@ impl Clone for World {
 type TypeHash = u64;
 
 const fn hash_ty<T: 'static>() -> u64 {
-    debug_assert!(std::mem::size_of::<TypeId>() == std::mem::size_of::<u64>());
-
     let ty = TypeId::of::<T>();
     // FIXME extreme curse
     //
-    let ty: u64 = unsafe { std::mem::transmute(ty) };
-    if ty == unsafe { std::mem::transmute::<_, u64>(TypeId::of::<()>()) } {
+    debug_assert!(std::mem::size_of::<TypeId>() == std::mem::size_of::<u64>());
+    let ty: u64 = unsafe { transmute(ty) };
+    if ty == unsafe { transmute::<_, u64>(TypeId::of::<()>()) } {
         // ensure that unit type has hash=0
         0
     } else {
@@ -411,7 +412,7 @@ impl World {
     pub fn add_stage(&mut self, stage: SystemStage<'_>) {
         // # SAFETY
         // lifetimes are managed by the World instance from now
-        let stage = unsafe { std::mem::transmute(stage) };
+        let stage = unsafe { transmute(stage) };
         #[cfg(feature = "parallel")]
         {
             self.schedule.push(scheduler::schedule(&stage));
@@ -428,7 +429,7 @@ impl World {
         let i = self.system_stages.len();
         // # SAFETY
         // lifetimes are managed by the World instance from now
-        let stage = unsafe { std::mem::transmute(stage) };
+        let stage = unsafe { transmute(stage) };
 
         // move stage into the world
         #[cfg(feature = "parallel")]
@@ -584,7 +585,7 @@ unsafe fn run_system<'a, R>(world: &'a World, sys: &'a systems::ErasedSystem<'_,
     tracing::trace!(system_name = sys.name.as_ref(), "Running system");
 
     let index = sys.commands_index;
-    let execute: &systems::InnerSystem<'_, R> = { std::mem::transmute(sys.execute.as_ref()) };
+    let execute: &systems::InnerSystem<'_, R> = { transmute(sys.execute.as_ref()) };
 
     let res = (execute)(world, index);
 
