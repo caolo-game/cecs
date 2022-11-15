@@ -39,7 +39,7 @@ impl<'a, T: 'static> WorldQuery<'a> for Res<'a, T> {
 
 impl<'a, T: 'static> Res<'a, T> {
     pub fn new(world: &'a crate::World) -> Self {
-        let inner = match world.resources.fetch_mut() {
+        let inner = match world.resources.fetch() {
             Some(inner) => inner,
             None => {
                 panic!(
@@ -137,6 +137,66 @@ impl<'a, T: 'static> WorldQuery<'a> for ResMut<'a, T> {
 
     fn components_const(_set: &mut std::collections::HashSet<TypeId>) {
         // noop
+    }
+
+    fn exclusive() -> bool {
+        false
+    }
+}
+
+impl<'a, T: 'static> WorldQuery<'a> for Option<Res<'a, T>> {
+    fn new(world: &'a crate::World, _commands_index: usize) -> Self {
+        let inner = world.resources.fetch();
+        inner.map(|inner| Res {
+            inner,
+            _m: PhantomData,
+        })
+    }
+
+    fn components_mut(_set: &mut std::collections::HashSet<TypeId>) {
+        // noop
+    }
+
+    fn resources_mut(_set: &mut std::collections::HashSet<TypeId>) {
+        // noop
+    }
+
+    fn components_const(_set: &mut std::collections::HashSet<TypeId>) {
+        // noop
+    }
+
+    fn resources_const(set: &mut std::collections::HashSet<TypeId>) {
+        set.insert(TypeId::of::<T>());
+    }
+
+    fn exclusive() -> bool {
+        false
+    }
+}
+
+impl<'a, T: 'static> WorldQuery<'a> for Option<ResMut<'a, T>> {
+    fn new(world: &'a crate::World, _commands_index: usize) -> Self {
+        let inner = world.resources.fetch_mut();
+        inner.map(|inner| ResMut {
+            inner,
+            _m: PhantomData,
+        })
+    }
+
+    fn components_mut(_set: &mut std::collections::HashSet<TypeId>) {
+        // noop
+    }
+
+    fn resources_mut(_set: &mut std::collections::HashSet<TypeId>) {
+        // noop
+    }
+
+    fn components_const(_set: &mut std::collections::HashSet<TypeId>) {
+        // noop
+    }
+
+    fn resources_const(set: &mut std::collections::HashSet<TypeId>) {
+        set.insert(TypeId::of::<T>());
     }
 
     fn exclusive() -> bool {

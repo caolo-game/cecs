@@ -537,3 +537,18 @@ fn stacked_world_access_should_panic_test() {
     let mut world = World::new(0);
     world.run_system(sys);
 }
+
+#[test]
+fn optional_resource_test() {
+    fn sys(res: Option<Res<i32>>) {
+        assert!(res.is_none());
+    }
+
+    fn mut_sys(res: Option<ResMut<i32>>) {
+        assert!(res.is_none());
+    }
+
+    let mut world = World::new(0);
+    world.run_system(sys);
+    world.run_system(mut_sys);
+}
