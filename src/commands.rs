@@ -311,7 +311,7 @@ impl<T: Component> ResourceCommand<T> {
                 world.insert_resource::<T>(comp);
             }
             ResourceCommand::Delete => {
-                world.remove_resource::<T>();
+                let _ = world.remove_resource::<T>();
             }
         }
         Ok(())
