@@ -272,7 +272,9 @@ unsafe impl Sync for ErasedResourceCommand {}
 
 impl Drop for ErasedResourceCommand {
     fn drop(&mut self) {
-        (self.drop)(NonNull::new(self.inner).unwrap());
+        if !self.inner.is_null() {
+            (self.drop)(NonNull::new(self.inner).unwrap());
+        }
     }
 }
 
@@ -287,15 +289,18 @@ impl ErasedResourceCommand {
             },
             apply: |ptr, world| {
                 let mut ptr = ptr.cast();
-                let ptr: Box<ResourceCommand<T>> = unsafe { Box::from_raw(ptr.as_mut()) };
-                ptr.apply(world)?;
+                let cmd: Box<ResourceCommand<T>> = unsafe { Box::from_raw(ptr.as_mut()) };
+                cmd.apply(world)?;
                 Ok(())
             },
         }
     }
 
-    pub fn apply(self, world: &mut World) -> Result<(), WorldError> {
-        (self.apply)(NonNull::new(self.inner).unwrap(), world)
+    pub fn apply(mut self, world: &mut World) -> Result<(), WorldError> {
+        // self.inner will be dropped twice unless we clear it now
+        let ptr = self.inner;
+        self.inner = std::ptr::null_mut();
+        (self.apply)(NonNull::new(ptr).unwrap(), world)
     }
 }
 
@@ -387,5 +392,29 @@ mod tests {
         // entity should not exists
         let c = Query::<&()>::new(&world).fetch(id);
         assert!(c.is_none());
+    }
+
+    #[test]
+    fn double_insert_test() {
+        let mut world = World::new(0);
+
+        {
+            let mut cmd = world.ensure_commands();
+            cmd.insert_resource(0i32);
+
+            drop(cmd);
+            world.apply_commands().unwrap();
+        }
+        {
+            let mut cmd = world.ensure_commands();
+            cmd.insert_resource(42i32);
+
+            drop(cmd);
+            world.apply_commands().unwrap();
+        }
+
+        let i = world.get_resource::<i32>().unwrap();
+
+        assert_eq!(*i, 42);
     }
 }

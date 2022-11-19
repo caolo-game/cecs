@@ -98,6 +98,7 @@ impl ErasedResource {
             finalize: |resource| unsafe {
                 if !resource.inner.is_null() {
                     let _inner: Box<T> = Box::from_raw(resource.inner.cast::<T>());
+                    resource.inner = std::ptr::null_mut();
                 }
             },
             #[cfg(feature = "clone")]
