@@ -263,6 +263,26 @@ pub trait IntoSystem<'a, Param, R> {
     fn descriptor(self) -> SystemDescriptor<'a, R>;
 }
 
+pub trait Pipe<'a, P1, P2, Rhs> {
+    type Output;
+
+    fn pipe(self, rhs: Rhs) -> Self::Output;
+}
+
+impl<'a, P1, P2, Lhs, Rhs> Pipe<'a, P1, P2, Rhs> for Lhs
+where
+    Lhs: IntoSystem<'a, P1, ()>,
+    Rhs: IntoSystem<'a, P2, ()>,
+{
+    type Output = Piped<'a, (), ()>;
+
+    fn pipe(self, rhs: Rhs) -> Self::Output {
+        let lhs = self.descriptor();
+        let rhs = rhs.descriptor();
+        Piped { lhs, rhs }
+    }
+}
+
 macro_rules! impl_intosys_fn {
     ($($t: ident),* $(,)*) => {
         #[allow(unused_parens)]
