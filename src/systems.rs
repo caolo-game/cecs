@@ -134,7 +134,7 @@ impl<'a> SystemStage<'a> {
 
 pub struct ErasedSystem<'a, R> {
     pub name: Cow<'a, str>,
-    pub commands_index: usize,
+    pub(crate) commands_index: usize,
     pub(crate) execute: Box<InnerSystem<'a, R>>,
     pub(crate) components_mut: fn() -> HashSet<TypeId>,
     pub(crate) resources_mut: fn() -> HashSet<TypeId>,
