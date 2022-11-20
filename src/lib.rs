@@ -450,7 +450,7 @@ impl World {
         S: systems::IntoSystem<'a, P, R>,
     {
         self.resize_commands(1);
-        let result = unsafe { run_system(self, &system.system()) };
+        let result = unsafe { run_system(self, &system.descriptor().into()) };
         // apply commands immediately
         self.apply_commands().unwrap();
         result

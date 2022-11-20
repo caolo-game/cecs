@@ -110,7 +110,8 @@ impl<'a> SystemStage<'a> {
     where
         S: IntoSystem<'a, P, bool>,
     {
-        self.should_run.push(system.system());
+        let system = system.descriptor().into();
+        self.should_run.push(system);
         self
     }
 
@@ -128,8 +129,12 @@ impl<'a> SystemStage<'a> {
             commands_index = 0;
         }
 
-        let mut system = system.system();
-        system.commands_index = commands_index;
+        let descriptor = Rc::new(system.descriptor());
+        let system = ErasedSystem {
+            execute: (descriptor.factory)(),
+            commands_index,
+            descriptor,
+        };
         self.systems.push(system);
         self
     }
@@ -151,6 +156,17 @@ pub struct ErasedSystem<'a, R> {
     pub(crate) commands_index: usize,
     pub(crate) execute: Box<InnerSystem<'a, R>>,
     pub(crate) descriptor: Rc<SystemDescriptor<'a, R>>,
+}
+
+impl<'a, R> From<SystemDescriptor<'a, R>> for ErasedSystem<'a, R> {
+    fn from(system: SystemDescriptor<'a, R>) -> Self {
+        let descriptor = Rc::new(system);
+        ErasedSystem {
+            execute: (descriptor.factory)(),
+            commands_index: 0,
+            descriptor,
+        }
+    }
 }
 
 unsafe impl<R> Send for ErasedSystem<'_, R> {}
@@ -175,15 +191,6 @@ impl<'a> IntoSystem<'a, (), ()> for Piped<'a, (), ()>
 where
     Self: 'a,
 {
-    fn system(self) -> ErasedSystem<'a, ()> {
-        let descriptor = Rc::new(self.descriptor());
-        ErasedSystem {
-            execute: (descriptor.factory)(),
-            commands_index: 0,
-            descriptor,
-        }
-    }
-
     fn descriptor(self) -> SystemDescriptor<'a, ()> {
         let name = Cow::Owned(format!("{} | {}", self.lhs.name, self.rhs.name));
         let components_mut = {
@@ -253,7 +260,6 @@ where
 }
 
 pub trait IntoSystem<'a, Param, R> {
-    fn system(self) -> ErasedSystem<'a, R>;
     fn descriptor(self) -> SystemDescriptor<'a, R>;
 }
 
@@ -313,15 +319,6 @@ macro_rules! impl_intosys_fn {
                         false $(|| <$t>::exclusive())*
                     }),
                     factory,
-                }
-            }
-
-            fn system(self) -> ErasedSystem<'a, R> {
-                let descriptor = Rc::new(self.descriptor());
-                ErasedSystem {
-                    execute: (descriptor.factory)(),
-                    commands_index: 0,
-                    descriptor
                 }
             }
         }
