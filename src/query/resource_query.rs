@@ -43,7 +43,7 @@ impl<'a, T: 'static> Res<'a, T> {
             Some(inner) => inner,
             None => {
                 panic!(
-                    "Res query on initialized type: {}",
+                    "Res query on uninitialized type: {}",
                     std::any::type_name::<T>()
                 );
             }
@@ -80,7 +80,7 @@ impl<'a, T: 'static> ResMut<'a, T> {
             Some(inner) => inner,
             None => {
                 panic!(
-                    "ResMut query on initialized type: {}",
+                    "ResMut query on uninitialized type: {}",
                     std::any::type_name::<T>()
                 );
             }

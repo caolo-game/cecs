@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use std::{any::TypeId, borrow::Cow, collections::HashSet, rc::Rc};
 
 use crate::{query::WorldQuery, World};
@@ -135,13 +138,13 @@ impl<'a> SystemStage<'a> {
 #[allow(unused)] // with no feature=parallel most of this struct is unused
 pub struct SystemDescriptor<'a, R> {
     pub name: Cow<'a, str>,
-    pub components_mut: Box<dyn Fn() -> HashSet<TypeId>>,
-    pub resources_mut: Box<dyn Fn() -> HashSet<TypeId>>,
-    pub components_const: Box<dyn Fn() -> HashSet<TypeId>>,
-    pub resources_const: Box<dyn Fn() -> HashSet<TypeId>>,
-    pub exclusive: Box<dyn Fn() -> bool>,
+    pub components_mut: Box<dyn 'a + Fn() -> HashSet<TypeId>>,
+    pub resources_mut: Box<dyn 'a + Fn() -> HashSet<TypeId>>,
+    pub components_const: Box<dyn 'a + Fn() -> HashSet<TypeId>>,
+    pub resources_const: Box<dyn 'a + Fn() -> HashSet<TypeId>>,
+    pub exclusive: Box<dyn 'a + Fn() -> bool>,
     /// produce a system
-    pub factory: Box<dyn Fn() -> Box<InnerSystem<'a, R>>>,
+    pub factory: Box<dyn 'a + Fn() -> Box<InnerSystem<'a, R>>>,
 }
 
 pub struct ErasedSystem<'a, R> {
@@ -159,6 +162,92 @@ impl<'a, R> Clone for ErasedSystem<'a, R> {
             commands_index: self.commands_index,
             execute: (self.descriptor.factory)(),
             descriptor: self.descriptor.clone(),
+        }
+    }
+}
+
+pub struct Piped<'a, R1, R2> {
+    lhs: SystemDescriptor<'a, R1>,
+    rhs: SystemDescriptor<'a, R2>,
+}
+
+impl<'a> IntoSystem<'a, (), ()> for Piped<'a, (), ()>
+where
+    Self: 'a,
+{
+    fn system(self) -> ErasedSystem<'a, ()> {
+        let descriptor = Rc::new(self.descriptor());
+        ErasedSystem {
+            execute: (descriptor.factory)(),
+            commands_index: 0,
+            descriptor,
+        }
+    }
+
+    fn descriptor(self) -> SystemDescriptor<'a, ()> {
+        let name = Cow::Owned(format!("{} | {}", self.lhs.name, self.rhs.name));
+        let components_mut = {
+            let lhs = self.lhs.components_mut;
+            let rhs = self.rhs.components_mut;
+            Box::new(move || {
+                let mut result = (lhs)();
+                result.extend((rhs)().into_iter());
+                result
+            })
+        };
+        let components_const = {
+            let lhs = self.lhs.components_const;
+            let rhs = self.rhs.components_const;
+            Box::new(move || {
+                let mut result = (lhs)();
+                result.extend((rhs)().into_iter());
+                result
+            })
+        };
+        let resources_mut = {
+            let lhs = self.lhs.resources_mut;
+            let rhs = self.rhs.resources_mut;
+            Box::new(move || {
+                let mut result = (lhs)();
+                result.extend((rhs)().into_iter());
+                result
+            })
+        };
+        let resources_const = {
+            let lhs = self.lhs.resources_const;
+            let rhs = self.rhs.resources_const;
+            Box::new(move || {
+                let mut result = (lhs)();
+                result.extend((rhs)().into_iter());
+                result
+            })
+        };
+        let exclusive = {
+            let lhs = self.lhs.exclusive;
+            let rhs = self.rhs.exclusive;
+            Box::new(move || ((lhs)() || (rhs)()))
+        };
+        let factory: Box<dyn Fn() -> Box<InnerSystem<'a, ()>>> = {
+            let lfactory = self.lhs.factory;
+            let rfactory = self.rhs.factory;
+
+            Box::new(move || {
+                let lhs = (lfactory)();
+                let rhs = (rfactory)();
+                Box::new(move |world: &'a World, i| {
+                    (lhs)(world, i);
+                    (rhs)(world, i);
+                })
+            })
+        };
+        SystemDescriptor {
+            name,
+            factory,
+            components_mut,
+            resources_mut,
+            components_const,
+            resources_const,
+            exclusive,
         }
     }
 }
