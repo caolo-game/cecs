@@ -172,7 +172,7 @@ impl World {
             for (j, group) in self.schedule[i].iter().enumerate() {
                 writeln!(w, "\tGroup {}:", j)?;
                 for k in group.iter() {
-                    writeln!(w, "\t\t- {}", stage.systems.as_slice()[*k].name)?;
+                    writeln!(w, "\t\t- {}", stage.systems.as_slice()[*k].descriptor.name)?;
                 }
             }
         }
@@ -582,7 +582,7 @@ impl World {
 // The system's queries must be disjoint to any other concurrently running system's
 unsafe fn run_system<'a, R>(world: &'a World, sys: &'a systems::ErasedSystem<'_, R>) -> R {
     #[cfg(feature = "tracing")]
-    tracing::trace!(system_name = sys.name.as_ref(), "Running system");
+    tracing::trace!(system_name = sys.descriptor.name.as_ref(), "Running system");
 
     let index = sys.commands_index;
     let execute: &systems::InnerSystem<'_, R> = { transmute(sys.execute.as_ref()) };
@@ -590,7 +590,10 @@ unsafe fn run_system<'a, R>(world: &'a World, sys: &'a systems::ErasedSystem<'_,
     let res = (execute)(world, index);
 
     #[cfg(feature = "tracing")]
-    tracing::trace!(system_name = sys.name.as_ref(), "Running system done");
+    tracing::trace!(
+        system_name = sys.descriptor.name.as_ref(),
+        "Running system done"
+    );
 
     res
 }

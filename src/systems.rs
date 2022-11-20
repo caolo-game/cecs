@@ -132,16 +132,22 @@ impl<'a> SystemStage<'a> {
     }
 }
 
-pub struct ErasedSystem<'a, R> {
+#[allow(unused)] // with no feature=parallel most of this struct is unused
+pub struct SystemDescriptor<'a, R> {
     pub name: Cow<'a, str>,
+    pub components_mut: Box<dyn Fn() -> HashSet<TypeId>>,
+    pub resources_mut: Box<dyn Fn() -> HashSet<TypeId>>,
+    pub components_const: Box<dyn Fn() -> HashSet<TypeId>>,
+    pub resources_const: Box<dyn Fn() -> HashSet<TypeId>>,
+    pub exclusive: Box<dyn Fn() -> bool>,
+    /// produce a system
+    pub factory: Box<dyn Fn() -> Box<InnerSystem<'a, R>>>,
+}
+
+pub struct ErasedSystem<'a, R> {
     pub(crate) commands_index: usize,
     pub(crate) execute: Box<InnerSystem<'a, R>>,
-    pub(crate) components_mut: fn() -> HashSet<TypeId>,
-    pub(crate) resources_mut: fn() -> HashSet<TypeId>,
-    pub(crate) components_const: fn() -> HashSet<TypeId>,
-    pub(crate) resources_const: fn() -> HashSet<TypeId>,
-    pub(crate) exclusive: fn() -> bool,
-    factory: Rc<dyn Fn() -> Box<InnerSystem<'a, R>>>,
+    pub(crate) descriptor: Rc<SystemDescriptor<'a, R>>,
 }
 
 unsafe impl<R> Send for ErasedSystem<'_, R> {}
@@ -150,21 +156,16 @@ unsafe impl<R> Sync for ErasedSystem<'_, R> {}
 impl<'a, R> Clone for ErasedSystem<'a, R> {
     fn clone(&self) -> Self {
         Self {
-            name: self.name.clone(),
             commands_index: self.commands_index,
-            execute: (self.factory)(),
-            components_mut: self.components_mut,
-            resources_mut: self.resources_mut,
-            components_const: self.components_const,
-            resources_const: self.resources_const,
-            exclusive: self.exclusive,
-            factory: self.factory.clone(),
+            execute: (self.descriptor.factory)(),
+            descriptor: self.descriptor.clone(),
         }
     }
 }
 
 pub trait IntoSystem<'a, Param, R> {
     fn system(self) -> ErasedSystem<'a, R>;
+    fn descriptor(self) -> SystemDescriptor<'a, R>;
 }
 
 macro_rules! impl_intosys_fn {
@@ -176,7 +177,7 @@ macro_rules! impl_intosys_fn {
         where
             F: Fn($($t),*) -> R + 'static + Copy,
         {
-            fn system(self) -> ErasedSystem<'a, R> {
+            fn descriptor(self) -> SystemDescriptor<'a, R> {
                 #[cfg(debug_assertions)]
                 {
                     let mut _props = crate::query::QueryProperties::default();
@@ -188,43 +189,50 @@ macro_rules! impl_intosys_fn {
                         _props.extend(p);
                     )*
                 }
-                let factory: Rc<dyn Fn()-> Box<InnerSystem<'a, R>>>
-                    = Rc::new(move || {
+                let factory: Box<dyn Fn()-> Box<InnerSystem<'a, R>>>
+                    = Box::new(move || {
                         Box::new(move |_world: &'a World, _commands_index| {
                             (self)(
                                 $(<$t>::new(_world, _commands_index),)*
                             )
                         })
                     });
-                ErasedSystem {
+                SystemDescriptor {
                     name: std::any::type_name::<F>().into(),
-                    execute: factory(),
-                    commands_index: 0,
-                    components_mut: || {
+                    components_mut:Box::new( || {
                         let mut res = HashSet::new();
                         $(<$t>::components_mut(&mut res);)*
                         res
-                    },
-                    resources_mut: || {
+                    }),
+                    resources_mut:Box::new( || {
                         let mut res = HashSet::new();
                         $(<$t>::resources_mut(&mut res);)*
                         res
-                    },
-                    components_const: || {
+                    }),
+                    components_const:Box::new( || {
                         let mut res = HashSet::new();
                         $(<$t>::components_const(&mut res);)*
                         res
-                    },
-                    resources_const: || {
+                    }),
+                    resources_const:Box::new( || {
                         let mut res = HashSet::new();
                         $(<$t>::resources_const(&mut res);)*
                         res
-                    },
-                    exclusive: || {
+                    }),
+                    exclusive:Box::new( || {
                         // empty system is not exclusive
                         false $(|| <$t>::exclusive())*
-                    },
+                    }),
                     factory,
+                }
+            }
+
+            fn system(self) -> ErasedSystem<'a, R> {
+                let descriptor = Rc::new(self.descriptor());
+                ErasedSystem {
+                    execute: (descriptor.factory)(),
+                    commands_index: 0,
+                    descriptor
                 }
             }
         }

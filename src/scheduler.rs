@@ -19,20 +19,20 @@ pub fn schedule(stage: &SystemStage) -> Schedule {
 
     let mut result = vec![vec![0]];
     let mut history = vec![QueryProperties {
-        exclusive: (systems[0].exclusive)(),
-        comp_mut: (systems[0].components_mut)(),
-        comp_const: (systems[0].components_const)(),
-        res_mut: (systems[0].resources_mut)(),
-        res_const: (systems[0].resources_const)(),
+        exclusive: (systems[0].descriptor.exclusive)(),
+        comp_mut: (systems[0].descriptor.components_mut)(),
+        comp_const: (systems[0].descriptor.components_const)(),
+        res_mut: (systems[0].descriptor.resources_mut)(),
+        res_const: (systems[0].descriptor.resources_const)(),
     }];
 
     'systems: for (sys_index, sys) in systems.iter().enumerate().skip(1) {
         let props = QueryProperties {
-            exclusive: (sys.exclusive)(),
-            comp_mut: (sys.components_mut)(),
-            res_mut: (sys.resources_mut)(),
-            comp_const: (sys.components_const)(),
-            res_const: (sys.resources_const)(),
+            exclusive: (sys.descriptor.exclusive)(),
+            comp_mut: (sys.descriptor.components_mut)(),
+            res_mut: (sys.descriptor.resources_mut)(),
+            comp_const: (sys.descriptor.components_const)(),
+            res_const: (sys.descriptor.resources_const)(),
         };
 
         // try to find an existing group this system may run with, in parallel
