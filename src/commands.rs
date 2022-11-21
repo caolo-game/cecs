@@ -47,6 +47,14 @@ impl<'a> Commands<'a> {
         }
     }
 
+    /// reserve storage for  `additional` number of entities
+    pub fn reserve_entities(&mut self, additional: u32) {
+        unsafe {
+            let cmd = &mut *self.cmd.get();
+            cmd.push(CommandPayload::World(WorldCommands::Reserve { additional }));
+        }
+    }
+
     pub fn entity(&mut self, id: EntityId) -> &mut EntityCommands {
         unsafe {
             let cmd = &mut *self.cmd.get();
@@ -104,6 +112,7 @@ impl<'a> Commands<'a> {
 pub(crate) enum CommandPayload {
     Entity(EntityCommands),
     Resource(ErasedResourceCommand),
+    World(WorldCommands),
 }
 
 impl CommandPayload {
@@ -111,6 +120,7 @@ impl CommandPayload {
         match self {
             CommandPayload::Entity(c) => c.apply(world),
             CommandPayload::Resource(c) => c.apply(world),
+            CommandPayload::World(c) => c.apply(world),
         }
     }
 
@@ -347,6 +357,19 @@ impl<T: Component> ResourceCommand<T> {
             ResourceCommand::Delete => {
                 let _ = world.remove_resource::<T>();
             }
+        }
+        Ok(())
+    }
+}
+
+pub(crate) enum WorldCommands {
+    Reserve { additional: u32 },
+}
+
+impl WorldCommands {
+    pub fn apply(self, world: &mut World) -> Result<(), WorldError> {
+        match self {
+            WorldCommands::Reserve { additional } => world.reserve_entities(additional),
         }
         Ok(())
     }
