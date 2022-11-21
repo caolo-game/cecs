@@ -254,7 +254,7 @@ impl std::fmt::Debug for ErasedTable {
 
 impl ErasedTable {
     pub fn new<T: crate::Component>(capacity: usize) -> Self {
-        let layout = Layout::array::<T>(capacity).unwrap();
+        let layout = Self::layout::<T>(capacity);
         Self {
             ty_name: std::any::type_name::<T>(),
             capacity,
@@ -306,6 +306,16 @@ impl ErasedTable {
         std::slice::from_raw_parts_mut(self.data.cast::<T>(), self.end)
     }
 
+    fn layout<T>(capacity: usize) -> Layout {
+        let layout = Layout::array::<T>(capacity).unwrap();
+        // ensure non-zero layout
+        if layout.size() != 0 {
+            layout
+        } else {
+            Layout::from_size_align(1, 1).unwrap()
+        }
+    }
+
     /// # SAFETY
     /// Must be called with the same type as `new`
     pub unsafe fn push<T>(&mut self, val: T) {
@@ -313,7 +323,7 @@ impl ErasedTable {
         if self.end == self.capacity {
             // full, have to reallocate
             let new_cap = (self.capacity * 2).max(2);
-            let new_layout = Layout::array::<T>(new_cap).unwrap();
+            let new_layout = Self::layout::<T>(new_cap);
             let new_data = std::alloc::alloc(new_layout);
             for i in 0..self.end {
                 let t: T = std::ptr::read(self.data.cast::<T>().add(i));
