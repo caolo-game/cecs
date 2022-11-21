@@ -349,7 +349,7 @@ mod tests {
 
     #[test]
     fn save_load_json_test() {
-        let mut world0 = World::new(4);
+        let mut world0 = World::new(10);
 
         for i in 0u32..10u32 {
             let id = world0.insert_entity().unwrap();
@@ -394,7 +394,7 @@ mod tests {
 
     #[test]
     fn save_load_bincode_test() {
-        let mut world0 = World::new(4);
+        let mut world0 = World::new(10);
 
         for i in 0u32..10u32 {
             let id = world0.insert_entity().unwrap();
@@ -486,7 +486,7 @@ mod tests {
 
     #[test]
     fn entity_ids_inserted_are_the_same_after_serde_test() {
-        let mut world0 = World::new(4);
+        let mut world0 = World::new(400);
 
         let mut ids = Vec::with_capacity(100);
         for i in 0u32..100u32 {

@@ -149,10 +149,15 @@ impl EntityIndex {
         self.count as usize
     }
 
+    pub fn capacity(&self) -> usize {
+        self.cap as usize
+    }
+
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    /// Allocate will not grow the buffer, caller must ensure that sufficient capacity is reserved
     pub fn allocate(&mut self) -> Result<EntityId, HandleTableError> {
         // pop element off the free list
         //
@@ -160,7 +165,7 @@ impl EntityIndex {
             Some(i) => i,
             None => {
                 if self.count == self.cap {
-                    self.grow((self.cap as f32 * 3.0 / 2.0).ceil() as u32);
+                    return Err(HandleTableError::OutOfCapacity);
                 }
                 self.count
             }
@@ -363,8 +368,9 @@ mod tests {
 
     #[test]
     fn can_grow_handles_test() {
-        let mut table = EntityIndex::new(4);
+        let mut table = EntityIndex::new(0);
 
+        table.reserve(128);
         for _ in 0..128 {
             table.allocate().unwrap();
         }

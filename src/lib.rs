@@ -165,6 +165,14 @@ impl World {
         result
     }
 
+    pub fn reserve_entities(&mut self, additional: u32) {
+        self.entity_ids.get_mut().reserve(additional);
+    }
+
+    pub fn entity_capacity(&self) -> usize {
+        self.entity_ids().capacity()
+    }
+
     #[cfg(feature = "parallel")]
     pub fn write_schedule(&self, mut w: impl std::io::Write) -> std::io::Result<()> {
         for (i, stage) in self.system_stages.iter().enumerate() {

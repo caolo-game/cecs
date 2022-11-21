@@ -509,7 +509,7 @@ fn mutating_world_inside_system_test() {
         });
     }
 
-    let mut world = World::new(0);
+    let mut world = World::new(100);
     world.add_stage(SystemStage::parallel("monka").with_system(mutation));
 
     world.tick();
