@@ -47,7 +47,36 @@ impl<'a> Commands<'a> {
         }
     }
 
-    /// reserve storage for  `additional` number of entities
+    /// Reserve storage for  `additional` number of additional entities.
+    ///
+    /// Reserve happens lazily, this can be used in conjunction with `spawn` but not with `id()`
+    ///
+    ///
+    /// ```
+    /// # use cecs::prelude::*;
+    /// fn sys(mut cmd: Commands) {
+    ///     cmd.reserve_entities(128);
+    ///     for i in 0..128 {
+    ///         // this is fine
+    ///         cmd.spawn().insert(i);
+    ///     }
+    /// }
+    /// # let mut world = World::new(0);
+    /// # world.run_system(sys);
+    /// ```
+    ///
+    /// ```should_panic
+    /// # use cecs::prelude::*;
+    /// fn sys(mut cmd: Commands) {
+    ///     cmd.reserve_entities(128);
+    ///     for i in 0..128 {
+    ///         // id will return an error, since the reserve has not happened yet
+    ///         cmd.spawn().id().unwrap();
+    ///     }
+    /// }
+    /// # let mut world = World::new(0);
+    /// # world.run_system(sys);
+    /// ```
     pub fn reserve_entities(&mut self, additional: u32) {
         unsafe {
             let cmd = &mut *self.cmd.get();
@@ -149,6 +178,11 @@ enum EntityAction {
 }
 
 impl EntityCommands {
+    /// Note: fetching the `id` will force entity allocation, which can trigger out of capacity
+    /// error, even if you have reserved in this system stage.
+    ///
+    /// Ensure that you allocate enough capacity in a previous stage (or tick) before calling
+    /// `id()`
     pub fn id(&mut self) -> Result<EntityId, crate::entity_index::HandleTableError> {
         match self.action {
             EntityAction::Init(id) | EntityAction::Fetch(id) | EntityAction::Delete(id) => Ok(id),

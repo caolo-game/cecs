@@ -575,3 +575,16 @@ fn can_fetch_entity_id_in_cmd_test() {
 
     world.run_system(assert_sys)
 }
+
+#[test]
+fn can_reserve_and_insert_in_same_system_test() {
+    fn sys(mut cmd: Commands) {
+        cmd.reserve_entities(128);
+        for i in 0..128 {
+            cmd.spawn().insert(i);
+        }
+    }
+
+    let mut world = World::new(0);
+    world.run_system(sys);
+}
