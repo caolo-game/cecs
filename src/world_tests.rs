@@ -552,3 +552,26 @@ fn optional_resource_test() {
     world.run_system(sys);
     world.run_system(mut_sys);
 }
+
+#[test]
+fn can_fetch_entity_id_in_cmd_test() {
+    #[derive(Clone, Copy, Debug)]
+    struct Foo(EntityId);
+
+    fn sys(mut cmd: Commands) {
+        let cmd = cmd.spawn();
+        let id = cmd.id().unwrap();
+        cmd.insert(Foo(id));
+    }
+
+    fn assert_sys(q: Query<(EntityId, &Foo)>) {
+        for (id, foo) in q.iter() {
+            assert_eq!(id, foo.0);
+        }
+    }
+
+    let mut world = World::new(1);
+    world.run_system(sys);
+
+    world.run_system(assert_sys)
+}

@@ -6,6 +6,7 @@ use crate::{
 };
 
 pub struct Commands<'a> {
+    world: &'a World,
     cmd: &'a CommandBuffer<CommandPayload>,
 }
 
@@ -41,6 +42,7 @@ impl<'a> WorldQuery<'a> for Commands<'a> {
 impl<'a> Commands<'a> {
     pub(crate) fn new(w: &'a World, commands_index: usize) -> Self {
         Self {
+            world: &w,
             cmd: &w.commands[commands_index],
         }
     }
@@ -49,6 +51,7 @@ impl<'a> Commands<'a> {
         unsafe {
             let cmd = &mut *self.cmd.get();
             cmd.push(CommandPayload::Entity(EntityCommands {
+                world: self.world,
                 action: EntityAction::Fetch(id),
                 payload: Vec::default(),
             }));
@@ -60,6 +63,7 @@ impl<'a> Commands<'a> {
         unsafe {
             let cmd = &mut *self.cmd.get();
             cmd.push(CommandPayload::Entity(EntityCommands {
+                world: self.world,
                 action: EntityAction::Insert,
                 payload: Vec::default(),
             }));
@@ -71,6 +75,7 @@ impl<'a> Commands<'a> {
         unsafe {
             let cmd = &mut *self.cmd.get();
             cmd.push(CommandPayload::Entity(EntityCommands {
+                world: self.world,
                 action: EntityAction::Delete(id),
                 payload: Vec::default(),
             }));
@@ -120,19 +125,43 @@ impl CommandPayload {
 pub struct EntityCommands {
     /// if the action is delete, then `payload` is ignored
     action: EntityAction,
+    world: *const World,
     payload: Vec<ErasedComponentCommand>,
 }
 
 enum EntityAction {
     Fetch(EntityId),
+    /// Like fetch, but initialize the id first
+    /// Insert actions can become Init actions if the id is requested
+    Init(EntityId),
     Insert,
     Delete(EntityId),
 }
 
 impl EntityCommands {
+    pub fn id(&mut self) -> Result<EntityId, crate::entity_index::HandleTableError> {
+        match self.action {
+            EntityAction::Init(id) | EntityAction::Fetch(id) | EntityAction::Delete(id) => Ok(id),
+            EntityAction::Insert => unsafe {
+                let world = &*self.world;
+                let _guard = world.this_lock.lock();
+                let index = world.entity_ids.get();
+                let id = (*index).allocate()?;
+                self.action = EntityAction::Init(id);
+                Ok(id)
+            },
+        }
+    }
+
     pub(crate) fn apply(self, world: &mut World) -> Result<(), WorldError> {
         let id = match self.action {
             EntityAction::Fetch(id) => id,
+            EntityAction::Init(id) => {
+                unsafe {
+                    world.init_id(id);
+                }
+                id
+            }
             EntityAction::Insert => world.insert_entity()?,
             EntityAction::Delete(id) => return world.delete_entity(id),
         };
