@@ -177,6 +177,13 @@ impl EntityIndex {
         Ok(id)
     }
 
+    pub fn reserve(&mut self, additional: u32) {
+        let new_cap = self.count + additional;
+        if new_cap > self.cap {
+            self.grow(new_cap);
+        }
+    }
+
     /// # Safety
     ///
     /// Caller must ensure that the id is valid
