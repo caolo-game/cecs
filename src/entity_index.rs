@@ -157,6 +157,14 @@ impl EntityIndex {
         self.len() == 0
     }
 
+    /// Can resize the buffer, if out of capacity
+    pub fn allocate_with_resize(&mut self) -> EntityId {
+        if self.free_list.is_empty() && self.count == self.cap {
+            self.grow(self.cap * 2);
+        }
+        self.allocate().unwrap()
+    }
+
     /// Allocate will not grow the buffer, caller must ensure that sufficient capacity is reserved
     pub fn allocate(&mut self) -> Result<EntityId, HandleTableError> {
         // pop element off the free list

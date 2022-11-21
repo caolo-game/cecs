@@ -25,7 +25,7 @@ fn pair_query_set_test() {
 
     let mut world = World::new(4);
 
-    let e = world.insert_entity().unwrap();
+    let e = world.insert_entity();
     world.set_component(e, Foo::default()).unwrap();
     world.set_component(e, Bar).unwrap();
 
@@ -53,7 +53,7 @@ fn triplet_query_set_test() {
 
     let mut world = World::new(4);
 
-    let e = world.insert_entity().unwrap();
+    let e = world.insert_entity();
     world.set_component(e, Foo::default()).unwrap();
     world.set_component(e, Bar).unwrap();
 

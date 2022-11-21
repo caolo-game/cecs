@@ -352,7 +352,7 @@ mod tests {
         let mut world0 = World::new(10);
 
         for i in 0u32..10u32 {
-            let id = world0.insert_entity().unwrap();
+            let id = world0.insert_entity();
             world0.set_component(id, 42i32).unwrap();
             world0.set_component(id, i).unwrap();
             world0.set_component(id, Foo { value: i }).unwrap();
@@ -397,7 +397,7 @@ mod tests {
         let mut world0 = World::new(10);
 
         for i in 0u32..10u32 {
-            let id = world0.insert_entity().unwrap();
+            let id = world0.insert_entity();
             world0.set_component(id, 42i32).unwrap();
             world0.set_component(id, i).unwrap();
             world0.set_component(id, Foo { value: i }).unwrap();
@@ -441,7 +441,7 @@ mod tests {
         let mut world0 = World::new(4);
 
         for i in 0u32..4u32 {
-            let id = world0.insert_entity().unwrap();
+            let id = world0.insert_entity();
             world0.set_component(id, 42i32).unwrap();
             world0.set_component(id, i).unwrap();
             world0.set_component(id, Foo { value: i }).unwrap();
@@ -490,7 +490,7 @@ mod tests {
 
         let mut ids = Vec::with_capacity(100);
         for i in 0u32..100u32 {
-            let id = world0.insert_entity().unwrap();
+            let id = world0.insert_entity();
             world0.set_component(id, 42i32).unwrap();
             world0.set_component(id, i).unwrap();
             world0.set_component(id, Foo { value: i }).unwrap();
@@ -498,7 +498,7 @@ mod tests {
         }
         // add some entities that are not saved
         for i in 0u32..100u32 {
-            let id = world0.insert_entity().unwrap();
+            let id = world0.insert_entity();
             world0.set_component(id, i).unwrap();
             ids.push(id);
         }
@@ -526,8 +526,8 @@ mod tests {
             .unwrap();
 
         for i in 0..20 {
-            let id0 = world0.insert_entity().unwrap();
-            let id1 = world1.insert_entity().unwrap();
+            let id0 = world0.insert_entity();
+            let id1 = world1.insert_entity();
             ids.push(id0);
 
             assert_eq!(id0, id1, "#{}: expected: {} actual: {}", i, id0, id1,);
@@ -541,8 +541,8 @@ mod tests {
             }
         }
         for i in 0..20 {
-            let id0 = world0.insert_entity().unwrap();
-            let id1 = world1.insert_entity().unwrap();
+            let id0 = world0.insert_entity();
+            let id1 = world1.insert_entity();
 
             assert_eq!(id0, id1, "#{}: expected: {} actual: {}", i, id0, id1,);
         }
@@ -585,7 +585,7 @@ mod tests {
         let mut world0 = World::new(100);
 
         for i in 0u32..100u32 {
-            let id = world0.insert_entity().unwrap();
+            let id = world0.insert_entity();
             world0.set_component(id, 42i32).unwrap();
             world0.set_component(id, i).unwrap();
             world0.set_component(id, Foo { value: i }).unwrap();

@@ -221,18 +221,14 @@ impl World {
         Ok(())
     }
 
-    pub fn insert_entity(&mut self) -> WorldResult<EntityId> {
-        let id = self
-            .entity_ids
-            .get_mut()
-            .allocate()
-            .map_err(|_| WorldError::OutOfCapacity)?;
+    pub fn insert_entity(&mut self) -> EntityId {
+        let id = self.entity_ids.get_mut().allocate_with_resize();
         unsafe {
             self.init_id(id);
         }
         #[cfg(feature = "tracing")]
         tracing::trace!(id = tracing::field::display(id), "Inserted entity");
-        Ok(id)
+        id
     }
 
     /// # Safety

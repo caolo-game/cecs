@@ -204,9 +204,11 @@ impl EntityCommands {
                 unsafe {
                     world.init_id(id);
                 }
+                // ensure entity buffer growth
+                world.reserve_entities(1);
                 id
             }
-            EntityAction::Insert => world.insert_entity()?,
+            EntityAction::Insert => world.insert_entity(),
             EntityAction::Delete(id) => return world.delete_entity(id),
         };
         if !world.is_id_valid(id) {
@@ -441,7 +443,7 @@ mod tests {
     fn can_remove_component_test() {
         let mut world = World::new(100);
 
-        let id = world.insert_entity().unwrap();
+        let id = world.insert_entity();
         world.set_component(id, 69i32).unwrap();
 
         let _c = Query::<&i32>::new(&world).fetch(id).unwrap();
@@ -462,7 +464,7 @@ mod tests {
     fn can_delete_entity_test() {
         let mut world = World::new(100);
 
-        let id = world.insert_entity().unwrap();
+        let id = world.insert_entity();
         world.set_component(id, 69i32).unwrap();
 
         let _c = Query::<&i32>::new(&world).fetch(id).unwrap();
