@@ -475,14 +475,14 @@ impl World {
         let stage = &self.system_stages[i];
 
         #[cfg(feature = "tracing")]
-        tracing::trace!(stage_name = stage.name.as_ref(), "Run stage");
+        tracing::trace!(stage_name = stage.name.to_string(), "Run stage");
 
         for condition in stage.should_run.iter() {
             if !unsafe { run_system(self, condition) } {
                 // stage should not run
                 #[cfg(feature = "tracing")]
                 tracing::trace!(
-                    stage_name = stage.name.as_ref(),
+                    stage_name = stage.name.to_string(),
                     "Stage should_run was false"
                 );
                 return;
@@ -506,7 +506,7 @@ impl World {
             }
         }
         #[cfg(feature = "tracing")]
-        tracing::trace!(stage_name = stage.name.as_ref(), "Run stage done");
+        tracing::trace!(stage_name = stage.name.to_string(), "Run stage done");
     }
 
     fn resize_commands(&mut self, len: usize) {
