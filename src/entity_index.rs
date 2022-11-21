@@ -160,7 +160,7 @@ impl EntityIndex {
     /// Can resize the buffer, if out of capacity
     pub fn allocate_with_resize(&mut self) -> EntityId {
         if self.free_list.is_empty() && self.count == self.cap {
-            self.grow(self.cap * 2);
+            self.grow((self.cap as f32 * 3.0 / 2.0).ceil() as u32);
         }
         self.allocate().unwrap()
     }
