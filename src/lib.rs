@@ -428,7 +428,7 @@ impl World {
     ///
     pub fn run_stage(&mut self, stage: SystemStage<'_>) {
         #[cfg(feature = "tracing")]
-        tracing::trace!(stage_name = stage.name.as_ref(), "Update stage");
+        tracing::trace!(stage_name = stage.name.as_str(), "Update stage");
 
         let i = self.system_stages.len();
         // # SAFETY
@@ -477,7 +477,7 @@ impl World {
         #[cfg(feature = "tracing")]
         let stage_name = stage.name.clone();
         #[cfg(feature = "tracing")]
-        tracing::trace!(stage_name = stage_name.as_ref(), "Run stage");
+        tracing::trace!(stage_name = stage_name.as_str(), "Run stage");
 
         for condition in stage.should_run.iter() {
             if !unsafe { run_system(self, condition) } {
@@ -508,7 +508,7 @@ impl World {
             }
         }
         #[cfg(feature = "tracing")]
-        tracing::trace!(stage_name = stage_name.as_ref(), "Run stage done");
+        tracing::trace!(stage_name = stage_name.as_str(), "Run stage done");
     }
 
     fn resize_commands(&mut self, len: usize) {
@@ -590,7 +590,7 @@ unsafe fn run_system<'a, R>(world: &'a World, sys: &'a systems::ErasedSystem<'_,
     #[cfg(feature = "tracing")]
     let name = sys.descriptor.name.clone();
     #[cfg(feature = "tracing")]
-    tracing::trace!(system_name = name.as_ref(), "Running system");
+    tracing::trace!(system_name = name.as_str(), "Running system");
 
     let index = sys.commands_index;
     let execute: &systems::InnerSystem<'_, R> = { transmute(sys.execute.as_ref()) };
@@ -598,7 +598,7 @@ unsafe fn run_system<'a, R>(world: &'a World, sys: &'a systems::ErasedSystem<'_,
     let res = (execute)(world, index);
 
     #[cfg(feature = "tracing")]
-    tracing::trace!(system_name = name.as_ref(), "Running system done");
+    tracing::trace!(system_name = name, "Running system done");
 
     res
 }

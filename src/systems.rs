@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests;
 
-use std::{any::TypeId, borrow::Cow, collections::HashSet, rc::Rc};
+use std::{any::TypeId, collections::HashSet, rc::Rc};
 
 use crate::{query::WorldQuery, World};
 
@@ -12,7 +12,7 @@ type SystemStorage<T> = smallvec::SmallVec<[T; 4]>;
 
 #[derive(Clone)]
 pub struct SystemStage<'a> {
-    pub name: Cow<'a, str>,
+    pub name: String,
     pub should_run: SystemStorage<ErasedSystem<'a, bool>>,
     pub systems: StageSystems<'a>,
 }
@@ -85,7 +85,7 @@ impl<'a> StageSystems<'a> {
 }
 
 impl<'a> SystemStage<'a> {
-    pub fn serial<'b: 'a, N: Into<Cow<'b, str>>>(name: N) -> Self {
+    pub fn serial<N: Into<String>>(name: N) -> Self {
         Self {
             name: name.into(),
             should_run: SystemStorage::with_capacity(1),
@@ -94,7 +94,7 @@ impl<'a> SystemStage<'a> {
     }
 
     /// If `feature=parallel` is disabled, then this created a `serial` SystemStage
-    pub fn parallel<'b: 'a, N: Into<Cow<'b, str>>>(name: N) -> Self {
+    pub fn parallel<N: Into<String>>(name: N) -> Self {
         Self {
             name: name.into(),
             should_run: SystemStorage::with_capacity(1),
@@ -158,7 +158,7 @@ impl<'a> SystemStage<'a> {
 
 #[allow(unused)] // with no feature=parallel most of this struct is unused
 pub struct SystemDescriptor<'a, R> {
-    pub name: Cow<'a, str>,
+    pub name: String,
     pub components_mut: Box<dyn 'a + Fn() -> HashSet<TypeId>>,
     pub resources_mut: Box<dyn 'a + Fn() -> HashSet<TypeId>>,
     pub components_const: Box<dyn 'a + Fn() -> HashSet<TypeId>>,
@@ -208,7 +208,7 @@ where
     Self: 'a,
 {
     fn descriptor(self) -> SystemDescriptor<'a, ()> {
-        let name = Cow::Owned(format!("{} | {}", self.lhs.name, self.rhs.name));
+        let name = format!("{} | {}", self.lhs.name, self.rhs.name);
         let components_mut = {
             let lhs = self.lhs.components_mut;
             let rhs = self.rhs.components_mut;
