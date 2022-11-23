@@ -110,12 +110,20 @@ impl<'a> SystemStage<'a> {
     where
         S: IntoSystem<'a, P, bool>,
     {
+        self.add_should_run(system);
+        self
+    }
+
+    pub fn add_should_run<S, P>(&mut self, system: S) -> &mut Self
+    where
+        S: IntoSystem<'a, P, bool>,
+    {
         let system = system.descriptor().into();
         self.should_run.push(system);
         self
     }
 
-    pub fn with_system<S, P>(mut self, system: S) -> Self
+    pub fn add_system<S, P>(&mut self, system: S) -> &mut Self
     where
         S: IntoSystem<'a, P, ()>,
     {
@@ -136,6 +144,14 @@ impl<'a> SystemStage<'a> {
             descriptor,
         };
         self.systems.push(system);
+        self
+    }
+
+    pub fn with_system<S, P>(mut self, system: S) -> Self
+    where
+        S: IntoSystem<'a, P, ()>,
+    {
+        self.add_system(system);
         self
     }
 }
