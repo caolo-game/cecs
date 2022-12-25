@@ -588,3 +588,91 @@ fn can_reserve_and_insert_in_same_system_test() {
     let mut world = World::new(0);
     world.run_system(sys);
 }
+
+#[test]
+fn can_merge_entities_test() {
+    let mut world = World::new(16);
+
+    let a = world.insert_entity();
+    let b = world.insert_entity();
+
+    world.set_component(a, 1u64).unwrap();
+    world.set_component(b, 2u32).unwrap();
+    world.set_component(b, 2u64).unwrap();
+
+    world.merge_entities(a, b).unwrap();
+
+    assert!(!world.is_id_valid(a));
+
+    let c = world.get_component::<u64>(b).unwrap();
+    assert_eq!(c, &1);
+    let c = world.get_component::<u32>(b).unwrap();
+    assert_eq!(c, &2);
+}
+
+#[test]
+fn can_merge_entities_test_2() {
+    // same as above but swapped
+    let mut world = World::new(16);
+
+    let a = world.insert_entity();
+    let b = world.insert_entity();
+
+    world.set_component(a, 1u64).unwrap();
+    world.set_component(b, 2u32).unwrap();
+    world.set_component(b, 2u64).unwrap();
+
+    world.merge_entities(b, a).unwrap();
+
+    assert!(!world.is_id_valid(b));
+
+    let c = world.get_component::<u64>(a).unwrap();
+    assert_eq!(c, &2);
+    let c = world.get_component::<u32>(a).unwrap();
+    assert_eq!(c, &2);
+}
+
+#[test]
+fn can_merge_entities_test_3() {
+    // the two entities are disjoint
+    //
+    let mut world = World::new(16);
+
+    let a = world.insert_entity();
+    let b = world.insert_entity();
+    // control
+    let c = world.insert_entity();
+
+    world.set_component(a, 1u64).unwrap();
+    world.set_component(a, 1u32).unwrap();
+    world.set_component(b, 2i32).unwrap();
+    world.set_component(b, 2i64).unwrap();
+
+    world.set_component(c, 3u64).unwrap();
+    world.set_component(c, 3u32).unwrap();
+    world.set_component(c, 3i64).unwrap();
+    world.set_component(c, 3i32).unwrap();
+
+    world.merge_entities(b, a).unwrap();
+
+    assert!(!world.is_id_valid(b), "Entity b should have been deleted");
+
+    // test if c entity is intact
+    let comp = world.get_component::<u64>(c).unwrap();
+    assert_eq!(comp, &3);
+    let comp = world.get_component::<u32>(c).unwrap();
+    assert_eq!(comp, &3);
+    let comp = world.get_component::<i64>(c).unwrap();
+    assert_eq!(comp, &3);
+    let comp = world.get_component::<i32>(c).unwrap();
+    assert_eq!(comp, &3);
+
+    let c = world.get_component::<u64>(a).unwrap();
+    assert_eq!(c, &1);
+    let c = world.get_component::<u32>(a).unwrap();
+    assert_eq!(c, &1);
+    let c = world.get_component::<i64>(a).unwrap();
+    assert_eq!(c, &2);
+    let c = world.get_component::<i32>(a).unwrap();
+    assert_eq!(c, &2);
+}
