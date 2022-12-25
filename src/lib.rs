@@ -98,6 +98,10 @@ type TypeHash = u64;
 
 const fn hash_ty<T: 'static>() -> u64 {
     let ty = TypeId::of::<T>();
+    hash_type_id(ty)
+}
+
+const fn hash_type_id(ty: TypeId) -> u64 {
     // FIXME extreme curse
     //
     debug_assert!(std::mem::size_of::<TypeId>() == std::mem::size_of::<u64>());
@@ -578,6 +582,127 @@ impl World {
 
     pub(crate) fn entity_ids(&self) -> &EntityIndex {
         unsafe { &*self.entity_ids.get() }
+    }
+
+    /// Move all components from `lhs` to `rhs`, overrinding components `rhs` already has. Then
+    /// delete the `lhs` entity
+    pub fn merge_entities(&mut self, lhs: EntityId, rhs: EntityId) -> WorldResult<()> {
+        if lhs == rhs {
+            return Ok(());
+        }
+        let (mut lhs_archetype, lhs_index) = self
+            .entity_ids()
+            .read(lhs)
+            .map_err(|_| WorldError::EntityNotFound)?;
+        let lhs_archetype = unsafe { lhs_archetype.as_mut() };
+
+        let (mut rhs_archetype, rhs_index) = self
+            .entity_ids()
+            .read(rhs)
+            .map_err(|_| WorldError::EntityNotFound)?;
+        let rhs_archetype = unsafe { rhs_archetype.as_mut() };
+
+        if lhs_archetype.ty() == rhs_archetype.ty() {
+            // if they're the same archetype just swap and remove
+            rhs_archetype.swap_components(lhs_index, rhs_index);
+            unsafe {
+                let entity_ids = self.entity_ids.get_mut();
+                entity_ids.update_row_index(lhs, rhs_index);
+                entity_ids.update_row_index(rhs, lhs_index);
+            }
+            return self.delete_entity(lhs);
+        }
+
+        // figure out the new archetype hash
+        let mut dst_hash = rhs_archetype.ty();
+        if dst_hash != lhs_archetype.ty() {
+            for col in lhs_archetype.components.keys() {
+                if !rhs_archetype.components.contains_key(col) {
+                    dst_hash ^= hash_type_id(*col);
+                }
+            }
+        }
+        if dst_hash == rhs_archetype.ty() {
+            // rhs is already in the correct archetype
+            // this means that lhs is a subset of rhs
+            let moved = lhs_archetype.move_entity_into(lhs_index, rhs_archetype, rhs_index);
+            if let Some(moved) = moved {
+                unsafe {
+                    self.entity_ids.get_mut().update_row_index(moved, lhs_index);
+                }
+            }
+            self.entity_ids.get_mut().free(lhs);
+            return Ok(());
+        }
+        if dst_hash == lhs_archetype.ty() {
+            // rhs is a subset of lhs
+            // delete rhs components, update the lhs id to rhs and delete the lhs id
+            //
+            let moved = rhs_archetype.remove(rhs_index);
+            if let Some(moved) = moved {
+                unsafe {
+                    self.entity_ids.get_mut().update_row_index(moved, rhs_index);
+                }
+            }
+            // update the entity id in lhs
+            lhs_archetype.entities[lhs_index as usize] = rhs;
+            // entity id update
+            let entity_ids = self.entity_ids.get_mut();
+            unsafe {
+                entity_ids.update(rhs, lhs_archetype, lhs_index);
+            }
+            entity_ids.free(lhs);
+            return Ok(());
+        }
+
+        // dst_arch is disjoint from both lhs and rhs
+        //
+        let dst_arch = self
+            .archetypes
+            .entry(dst_hash)
+            .or_insert_with(|| Box::pin(rhs_archetype.merged(&lhs_archetype)));
+        // move rhs components to the dst
+        //
+        let (dst_index, moved) = rhs_archetype.move_entity(dst_arch, rhs_index);
+        if let Some(id) = moved {
+            unsafe {
+                self.entity_ids.get_mut().update_row_index(id, rhs_index);
+            }
+        }
+        // for lhs columns, if both rhs and lhs have them, then update the dst value
+        // else move
+        for (ty, col) in lhs_archetype.components.iter_mut() {
+            let dst_col = dst_arch
+                .components
+                .get_mut(ty)
+                .expect("dst should have all lhs components")
+                .get_mut();
+            if rhs_archetype.contains_column_ty(*ty) {
+                (col.get_mut().move_row_into)(col.get_mut(), lhs_index, dst_col, dst_index);
+            } else {
+                (col.get_mut().move_row)(col.get_mut(), dst_col, lhs_index);
+            }
+        }
+        // all lhs components have been moved
+        // swap_remove the id
+        //
+        lhs_archetype.entities.swap_remove(lhs_index as usize);
+        lhs_archetype.rows -= 1;
+        if lhs_archetype.rows > 0 && lhs_index < lhs_archetype.rows {
+            unsafe {
+                self.entity_ids
+                    .get_mut()
+                    .update_row_index(lhs_archetype.entities[lhs_index as usize], lhs_index);
+            }
+        }
+
+        // entity bookkeeping
+        unsafe {
+            let entity_ids = self.entity_ids.get_mut();
+            entity_ids.update(rhs, Pin::as_mut(dst_arch).get_mut() as *mut _, dst_index);
+            entity_ids.free(lhs);
+        }
+        Ok(())
     }
 }
 

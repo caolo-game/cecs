@@ -1,7 +1,7 @@
 use std::{alloc::Layout, any::TypeId, cell::UnsafeCell, collections::BTreeMap};
 
 // TODO: use dense storage instead of the Vec because of archetypes
-use crate::{entity_id::EntityId, hash_ty, Component, RowIndex, TypeHash};
+use crate::{entity_id::EntityId, hash_ty, hash_type_id, Component, RowIndex, TypeHash};
 
 // TODO: hide from public interface, because it's fairly unsafe
 pub struct ArchetypeStorage {
@@ -106,25 +106,66 @@ impl ArchetypeStorage {
     /// any
     #[must_use]
     pub fn move_entity(&mut self, dst: &mut Self, index: RowIndex) -> (RowIndex, Option<EntityId>) {
-        debug_assert!(self.rows > 0);
-        debug_assert!(index < self.rows);
-        self.rows -= 1;
         let entity_id = self.entities.swap_remove(index as usize);
-        let mut moved = None;
-        if self.rows > 0 && index < self.rows {
-            // if we have remaining rows, and the removed row was not the last
-            moved = Some(self.entities[index as usize]);
-        }
         let res = dst.insert_entity(entity_id);
+        let moved = unsafe { self.move_entity_noinsert(dst, index) };
+        (res, moved)
+    }
+
+    /// return the moved entity in `self`, if any
+    #[must_use]
+    pub fn move_entity_into(
+        &mut self,
+        src_index: RowIndex,
+        dst: &mut Self,
+        dst_index: RowIndex,
+    ) -> Option<EntityId> {
+        self.entities.swap_remove(src_index as usize);
+        self.rows -= 1;
+        let mut moved = None;
+        if self.rows > 0 && src_index < self.rows {
+            // if we have remaining rows, and the removed row was not the last
+            moved = Some(self.entities[src_index as usize]);
+        }
         for (ty, col) in self.components.iter_mut() {
             if let Some(dst) = dst.components.get_mut(ty) {
-                (col.get_mut().move_row)(col.get_mut(), dst.get_mut(), index);
+                (col.get_mut().move_row_into)(col.get_mut(), src_index, dst.get_mut(), dst_index);
             } else {
                 // destination does not have this column
-                col.get_mut().remove(index);
+                col.get_mut().remove(src_index);
             }
         }
-        (res, moved)
+        moved
+    }
+
+    /// Move components into the last entity of `dst`
+    ///
+    /// # SAFETY
+    ///
+    /// Caller must ensure that an entity is inserted
+    #[must_use]
+    pub unsafe fn move_entity_noinsert(
+        &mut self,
+        dst: &mut Self,
+        src_index: RowIndex,
+    ) -> Option<EntityId> {
+        debug_assert!(self.rows > 0);
+        debug_assert!(src_index < self.rows);
+        self.rows -= 1;
+        let mut moved = None;
+        if self.rows > 0 && src_index < self.rows {
+            // if we have remaining rows, and the removed row was not the last
+            moved = Some(self.entities[src_index as usize]);
+        }
+        for (ty, col) in self.components.iter_mut() {
+            if let Some(dst) = dst.components.get_mut(ty) {
+                (col.get_mut().move_row)(col.get_mut(), dst.get_mut(), src_index);
+            } else {
+                // destination does not have this column
+                col.get_mut().remove(src_index);
+            }
+        }
+        moved
     }
 
     pub fn set_component<T: 'static>(&mut self, row_index: RowIndex, val: T) {
@@ -148,11 +189,19 @@ impl ArchetypeStorage {
 
     pub fn contains_column<T: 'static>(&self) -> bool {
         let hash = TypeId::of::<T>();
-        self.components.contains_key(&hash)
+        self.contains_column_ty(hash)
+    }
+
+    pub fn contains_column_ty(&self, ty: TypeId) -> bool {
+        self.components.contains_key(&ty)
     }
 
     pub fn extended_hash<T: Component>(&self) -> TypeHash {
-        self.ty ^ hash_ty::<T>()
+        self.extended_hash_ty(hash_ty::<T>())
+    }
+
+    pub fn extended_hash_ty(&self, ty: TypeHash) -> TypeHash {
+        self.ty ^ ty
     }
 
     pub fn extend_with_column<T: Component>(&self) -> Self {
@@ -165,6 +214,29 @@ impl ArchetypeStorage {
             .components
             .insert(TypeId::of::<T>(), UnsafeCell::new(ErasedTable::new::<T>(0)));
         result
+    }
+
+    /// Creates a new archetype that holds tables with both `self` and `rhs` columns
+    pub fn merged(&self, rhs: &Self) -> Self {
+        let mut result = self.clone_empty();
+        for (col, table) in rhs.components.iter() {
+            if !self.contains_column_ty(*col) {
+                let table = unsafe { &*table.get() };
+                result.ty = result.extended_hash_ty(hash_type_id(*col));
+                result
+                    .components
+                    .insert(*col, UnsafeCell::new((table.clone_empty)()));
+            }
+        }
+        result
+    }
+
+    /// Swap all components of two entities
+    pub fn swap_components(&mut self, a: RowIndex, b: RowIndex) {
+        for table in self.components.values_mut() {
+            let table = table.get_mut();
+            (table.swap_rows)(table, a, b);
+        }
     }
 
     pub fn reduce_with_column<T: Component>(&self) -> Self {
@@ -213,16 +285,24 @@ pub(crate) struct ErasedTable {
     capacity: usize,
     layout: Layout,
     // Type Erased Methods //
-    finalize: fn(&mut ErasedTable),
+    pub(crate) finalize: fn(&mut ErasedTable),
     /// remove is always swap_remove
-    remove: fn(RowIndex, &mut ErasedTable),
+    pub(crate) remove: fn(RowIndex, &mut ErasedTable),
     #[cfg(feature = "clone")]
-    clone: fn(&ErasedTable) -> ErasedTable,
-    clone_empty: fn() -> ErasedTable,
+    pub(crate) clone: fn(&ErasedTable) -> ErasedTable,
+    pub(crate) clone_empty: fn() -> ErasedTable,
     /// src, dst
     ///
     /// if component is not in `src` then this is a noop
-    move_row: fn(&mut ErasedTable, &mut ErasedTable, RowIndex),
+    /// Caller must ensure that both tables have the same underlying type
+    pub(crate) move_row: fn(&mut ErasedTable, &mut ErasedTable, RowIndex),
+    /// src, dst
+    /// Move the row from src to the specified slow in dst
+    ///
+    /// Caller must ensure that dst is initialized and both tables have the same underlying type
+    pub(crate) move_row_into: fn(&mut ErasedTable, RowIndex, &mut ErasedTable, RowIndex),
+    /// Swap rows in an entity
+    pub(crate) swap_rows: fn(&mut ErasedTable, RowIndex, RowIndex),
 }
 
 impl Default for ErasedTable {
@@ -290,6 +370,13 @@ impl ErasedTable {
             move_row: |src, dst, index| unsafe {
                 let src = src.swap_remove::<T>(index as usize);
                 dst.push::<T>(src);
+            },
+            move_row_into: |src_t, src, dst_t, dst| unsafe {
+                let src = src_t.swap_remove::<T>(src as usize);
+                dst_t.as_slice_mut::<T>()[dst as usize] = src;
+            },
+            swap_rows: |this, src, dst| unsafe {
+                this.as_slice_mut::<T>().swap(src as usize, dst as usize);
             },
         }
     }
