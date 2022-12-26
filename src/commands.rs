@@ -136,6 +136,17 @@ impl<'a> Commands<'a> {
             )));
         }
     }
+
+    pub fn merge_entities(&mut self, src: EntityId, dst: EntityId) {
+        unsafe {
+            let cmd = &mut *self.cmd.get();
+            cmd.push(CommandPayload::Entity(EntityCommands {
+                world: self.world,
+                action: EntityAction::Merge { src, dst },
+                payload: Vec::default(),
+            }));
+        }
+    }
 }
 
 pub(crate) enum CommandPayload {
@@ -162,7 +173,7 @@ impl CommandPayload {
 }
 
 pub struct EntityCommands {
-    /// if the action is delete, then `payload` is ignored
+    /// if the action is delete or merge, then `payload` is ignored
     action: EntityAction,
     world: *const World,
     payload: Vec<ErasedComponentCommand>,
@@ -175,6 +186,10 @@ enum EntityAction {
     Init(EntityId),
     Insert,
     Delete(EntityId),
+    Merge {
+        src: EntityId,
+        dst: EntityId,
+    },
 }
 
 impl EntityCommands {
@@ -194,6 +209,7 @@ impl EntityCommands {
                 self.action = EntityAction::Init(id);
                 Ok(id)
             },
+            EntityAction::Merge { src: _, dst } => Ok(dst),
         }
     }
 
@@ -210,6 +226,9 @@ impl EntityCommands {
             }
             EntityAction::Insert => world.insert_entity(),
             EntityAction::Delete(id) => return world.delete_entity(id),
+            EntityAction::Merge { src, dst } => {
+                return world.merge_entities(src, dst);
+            }
         };
         if !world.is_id_valid(id) {
             return Err(WorldError::EntityNotFound);
@@ -504,5 +523,54 @@ mod tests {
         let i = world.get_resource::<i32>().unwrap();
 
         assert_eq!(*i, 42);
+    }
+
+    #[test]
+    fn merge_entities_test() {
+        let mut world = World::new(16);
+
+        let a = world.insert_entity();
+        let b = world.insert_entity();
+        // control
+        let c = world.insert_entity();
+
+        world.set_component(a, 1u64).unwrap();
+        world.set_component(a, 1u32).unwrap();
+        world.set_component(b, 2i32).unwrap();
+        world.set_component(b, 2i64).unwrap();
+
+        world.set_component(c, 3u64).unwrap();
+        world.set_component(c, 3u32).unwrap();
+        world.set_component(c, 3i64).unwrap();
+        world.set_component(c, 3i32).unwrap();
+
+        {
+            let mut cmd = world.ensure_commands();
+            cmd.merge_entities(a, b);
+
+            drop(cmd);
+            world.apply_commands().unwrap();
+        }
+
+        assert!(!world.is_id_valid(a), "Entity a should have been deleted");
+
+        // test if c entity is intact
+        let comp = world.get_component::<u64>(c).unwrap();
+        assert_eq!(comp, &3);
+        let comp = world.get_component::<u32>(c).unwrap();
+        assert_eq!(comp, &3);
+        let comp = world.get_component::<i64>(c).unwrap();
+        assert_eq!(comp, &3);
+        let comp = world.get_component::<i32>(c).unwrap();
+        assert_eq!(comp, &3);
+
+        let c = world.get_component::<u64>(b).unwrap();
+        assert_eq!(c, &1);
+        let c = world.get_component::<u32>(b).unwrap();
+        assert_eq!(c, &1);
+        let c = world.get_component::<i64>(b).unwrap();
+        assert_eq!(c, &2);
+        let c = world.get_component::<i32>(b).unwrap();
+        assert_eq!(c, &2);
     }
 }
