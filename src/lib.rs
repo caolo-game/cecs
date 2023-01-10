@@ -430,7 +430,8 @@ impl World {
 
     /// Run a single stage withouth adding it to the World
     ///
-    pub fn run_stage(&mut self, stage: SystemStage<'_>) {
+    /// Return the command result
+    pub fn run_stage(&mut self, stage: SystemStage<'_>) -> WorldResult<()> {
         #[cfg(feature = "tracing")]
         tracing::trace!(stage_name = stage.name.as_str(), "Update stage");
 
@@ -451,6 +452,7 @@ impl World {
         self.system_stages.pop();
         #[cfg(feature = "parallel")]
         self.schedule.pop();
+        self.apply_commands()
     }
 
     pub fn run_system<'a, S, P, R>(&mut self, system: S) -> R

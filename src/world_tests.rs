@@ -329,11 +329,13 @@ fn world_execute_systems_test() {
 
     world.run_system(assert_sys);
 
-    world.run_stage(
-        SystemStage::parallel("")
-            .with_system(assert_sys)
-            .with_system(assert_sys),
-    );
+    world
+        .run_stage(
+            SystemStage::parallel("")
+                .with_system(assert_sys)
+                .with_system(assert_sys),
+        )
+        .unwrap();
 }
 
 #[test]
@@ -350,11 +352,13 @@ fn can_skip_stage_test() {
         false
     }
 
-    world.run_stage(
-        SystemStage::parallel("instant-run")
-            .with_should_run(should_not_run)
-            .with_system(system),
-    );
+    world
+        .run_stage(
+            SystemStage::parallel("instant-run")
+                .with_should_run(should_not_run)
+                .with_system(system),
+        )
+        .unwrap();
 
     world.add_stage(
         SystemStage::parallel("tick-run")
