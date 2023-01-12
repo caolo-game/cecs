@@ -680,3 +680,88 @@ fn can_merge_entities_test_3() {
     let c = world.get_component::<i32>(a).unwrap();
     assert_eq!(c, &2);
 }
+
+#[test]
+fn unsafe_test() {
+    let mut world = World::new(128);
+
+    for _ in 0..64 {
+        let a = world.insert_entity();
+        world.set_component(a, 1u64).unwrap();
+        world.set_component(a, 42u32).unwrap();
+    }
+
+    // note that q is not mutable
+    fn unsafe_iter_sys(q: Query<&u32>) {
+        unsafe {
+            for p in q.iter_unsafe() {
+                assert_eq!(*p, 42);
+                *p = 69;
+            }
+        }
+    }
+
+    world.run_system(unsafe_iter_sys);
+}
+
+#[cfg(feature = "parallel")]
+#[test]
+fn unsafe_partition_test() {
+    use crate::prelude::With;
+
+    #[derive(Debug, Clone)]
+    struct Children(Vec<EntityId>);
+
+    let mut world = World::new(128);
+
+    {
+        let parent = world.insert_entity();
+        world.set_component(parent, 69u32).unwrap();
+        world
+            .set_component(parent, Children(Vec::default()))
+            .unwrap();
+        for _ in 0..32 {
+            let a = world.insert_entity();
+            world
+                .get_component_mut::<Children>(parent)
+                .unwrap()
+                .0
+                .push(a);
+            world.set_component(a, 1u32).unwrap();
+        }
+    }
+
+    unsafe fn add(i: &u32, id: EntityId, q: &Query<&u32>) {
+        *q.fetch_unsafe(id).unwrap() += *i;
+    }
+
+    /// This system updates children values based on parent value, in parallel for all parents
+    ///
+    /// Cecs has no way of knowing that no aliasing happens, parents' values are not changed and
+    /// all children must be unique. We can, carefully, use unsafe accessors to achieve our goal
+    fn unsafe_iter_sys(q: Query<&u32>, parents: Query<(&u32, &Children)>) {
+        rayon::scope(|s| {
+            for (i, children) in parents.iter() {
+                s.spawn(|_| {
+                    for child in (*children).0.iter().copied() {
+                        unsafe {
+                            add(i, child, &q);
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    fn asserts(q0: Query<&u32, WithOut<Children>>, q1: Query<&u32, With<Children>>) {
+        for i in q0.iter().copied() {
+            assert_eq!(i, 70);
+        }
+        for i in q1.iter().copied() {
+            assert_eq!(i, 69);
+        }
+    }
+
+    world.run_system(unsafe_iter_sys);
+    world.run_system(asserts);
+}

@@ -331,6 +331,11 @@ impl World {
         unsafe { arch.as_ref().get_component(idx) }
     }
 
+    pub fn get_component_mut<T: Component>(&self, entity_id: EntityId) -> Option<&mut T> {
+        let (mut arch, idx) = self.entity_ids().read(entity_id).ok()?;
+        unsafe { arch.as_mut().get_component_mut(idx) }
+    }
+
     pub fn remove_component<T: Component>(&mut self, entity_id: EntityId) -> WorldResult<()> {
         #[cfg(feature = "tracing")]
         tracing::trace!(
