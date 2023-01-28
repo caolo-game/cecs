@@ -23,6 +23,9 @@ pub mod resources;
 pub mod systems;
 pub mod world_access;
 
+// FIXME: only when parallel feature is active
+pub mod job_system;
+
 #[cfg(feature = "serde")]
 pub mod persister;
 
