@@ -195,6 +195,11 @@ impl<T> Queue<T> {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        sync::{Arc, Barrier},
+        thread,
+    };
+
     use super::*;
 
     #[test]
@@ -259,6 +264,44 @@ mod tests {
             assert_eq!(q1.pop().unwrap(), 0);
             assert_eq!(q0.pop().unwrap(), 3);
             assert_eq!(q0.pop().unwrap(), 2);
+        }
+    }
+
+    /// Intended to be run via tsan
+    #[test]
+    fn steal_thread_test() {
+        let q0 = Queue::new(NonZeroUsize::new(1000).unwrap());
+        let q1 = Queue::new(NonZeroUsize::new(1000).unwrap());
+
+        let n = thread::available_parallelism()
+            .map(|x| x.get())
+            .unwrap_or(1);
+        let bar = Arc::new(Barrier::new(n + 1));
+
+        for i in 0..1000i32 {
+            unsafe {
+                q0.push(i).unwrap();
+            }
+        }
+
+        unsafe {
+            let threads = (0..n)
+                .map(|_| {
+                    let q0 = std::mem::transmute::<&Queue<i32>, &'static Queue<i32>>(&q0);
+                    let q1 = std::mem::transmute::<&Queue<i32>, &'static Queue<i32>>(&q1);
+                    let bar = Arc::clone(&bar);
+                    thread::spawn(move || {
+                        bar.wait();
+                        q1.steal(q0).unwrap_or_default();
+                    })
+                })
+                .collect::<Vec<_>>();
+
+            bar.wait();
+            while q0.pop().is_ok() {}
+            for j in threads {
+                j.join().unwrap();
+            }
         }
     }
 }
