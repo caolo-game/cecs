@@ -164,6 +164,8 @@ pub trait AsJob {
     unsafe fn execute(this: *const ());
 }
 
+// Executor should deal in jobs
+// The public API should be job graphs
 struct Job {
     tasks_left: Todos,
     children: SmallVec<[Todos; 4]>,
