@@ -520,6 +520,7 @@ fn mutating_world_inside_system_test() {
     world.tick();
 }
 
+#[cfg(debug_assertions)]
 #[test]
 #[should_panic]
 fn world_access_is_unique_test() {

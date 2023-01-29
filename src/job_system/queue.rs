@@ -75,8 +75,7 @@ impl<T> Queue<T> {
     pub unsafe fn push(&self, val: T) -> PushResult<T> {
         let head = self.head.load(Ordering::Acquire);
         let tail = self.tail.load(Ordering::Relaxed);
-        atomic::fence(Ordering::Acquire);
-        if head - tail >= self.capacity as isize {
+        if head - tail >= self.capacity_mask as isize {
             return Err(PushError::Full(val));
         }
 
@@ -131,14 +130,15 @@ impl<T> Queue<T> {
             return Ok(());
         }
 
-        let mut victim_tail = victim.tail.load(Ordering::Relaxed);
         'retry: loop {
+            let mut victim_tail = victim.tail.load(Ordering::Relaxed);
             let head = self.head.load(Ordering::Relaxed);
-            let target = (victim.len() / 2).min(self.capacity - self.len());
-            let target_tail = victim_tail + target as isize;
+            let capacity = self.capacity_mask - self.len();
+            let target = (victim.len() / 2).min(capacity);
             if target == 0 {
                 return Err(PopError::Empty);
             }
+            let mut target_tail = victim_tail + target as isize;
             if victim
                 .steal_lock
                 .compare_exchange_weak(false, true, Ordering::Release, Ordering::Relaxed)
@@ -152,11 +152,11 @@ impl<T> Queue<T> {
             // copy the items
             for t in victim_tail..target_tail {
                 unsafe {
-                    if self
-                        .push(ptr::read(victim.items.as_ptr().add(victim.index(t))))
-                        .is_err()
-                    {
-                        panic!("Insertion failed");
+                    let stolen_goods = ptr::read(victim.items.as_ptr().add(victim.index(t)));
+                    if self.push(stolen_goods).is_err() {
+                        // partial success
+                        target_tail = t + 1;
+                        break;
                     }
                 }
             }
@@ -167,6 +167,7 @@ impl<T> Queue<T> {
                 // undo the insertion
                 self.head.store(head, Ordering::Relaxed);
                 victim.steal_lock.store(false, Ordering::Release);
+                atomic::fence(Ordering::Release);
                 std::thread::yield_now();
                 continue 'retry;
             }
@@ -209,7 +210,7 @@ mod tests {
         assert_eq!(q.capacity, 8);
 
         unsafe {
-            for _ in 0..8 {
+            for _ in 0..7 {
                 q.push(42i32).unwrap();
             }
             let res = q.push(69);
