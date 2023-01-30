@@ -267,9 +267,9 @@ impl EntityCommands {
 }
 
 pub(crate) struct ErasedComponentCommand {
-    inner: *mut u8,
-    apply: fn(NonNull<u8>, EntityId, &mut World) -> Result<(), WorldError>,
-    drop: fn(NonNull<u8>),
+    inner: *mut (),
+    apply: fn(NonNull<()>, EntityId, &mut World) -> Result<(), WorldError>,
+    drop: fn(NonNull<()>),
 }
 
 unsafe impl Send for ErasedComponentCommand {}
@@ -352,7 +352,12 @@ impl<T: Component> ComponentCommand<T> {
                 world.set_component(entity_id, comp)?;
             }
             ComponentCommand::Delete => {
-                world.remove_component::<T>(entity_id)?;
+                if let Err(err) = world.remove_component::<T>(entity_id) {
+                    match err {
+                        WorldError::ComponentNotFound => { /*ignore*/ }
+                        WorldError::OutOfCapacity | WorldError::EntityNotFound => return Err(err),
+                    }
+                }
             }
         }
         Ok(())
@@ -360,9 +365,9 @@ impl<T: Component> ComponentCommand<T> {
 }
 
 pub(crate) struct ErasedResourceCommand {
-    inner: *mut u8,
-    apply: fn(NonNull<u8>, &mut World) -> Result<(), WorldError>,
-    drop: fn(NonNull<u8>),
+    inner: *mut (),
+    apply: fn(NonNull<()>, &mut World) -> Result<(), WorldError>,
+    drop: fn(NonNull<()>),
 }
 
 unsafe impl Send for ErasedResourceCommand {}
