@@ -108,4 +108,8 @@ impl<'a> WorldQuery<'a> for WorldAccess<'a> {
     fn exclusive() -> bool {
         true
     }
+
+    fn read_only() -> bool {
+        false
+    }
 }

@@ -471,6 +471,19 @@ impl World {
         result
     }
 
+    /// Run a system that only gets a read-only view of the world.
+    /// All mutable access is forbidden, including Commands
+    ///
+    /// Panics if the system does not conform to the requirements
+    pub fn run_view_system<'a, S, P, R>(&self, system: S) -> R
+    where
+        S: systems::IntoSystem<'a, P, R>,
+    {
+        let desc = system.descriptor();
+        assert!((desc.read_only)());
+        unsafe { run_system(self, &desc.into()) }
+    }
+
     pub fn tick(&mut self) {
         #[cfg(feature = "parallel")]
         debug_assert_eq!(self.system_stages.len(), self.schedule.len());

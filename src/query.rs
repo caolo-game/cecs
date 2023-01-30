@@ -23,6 +23,7 @@ pub(crate) trait WorldQuery<'a> {
     fn resources_const(set: &mut HashSet<TypeId>);
     /// Return wether this system should run in isolation
     fn exclusive() -> bool;
+    fn read_only() -> bool;
 }
 
 #[derive(Default)]
@@ -129,6 +130,10 @@ where
 
     fn resources_const(_set: &mut HashSet<TypeId>) {
         // noop
+    }
+
+    fn read_only() -> bool {
+        <ArchQuery<T> as QueryFragment>::read_only()
     }
 }
 
@@ -305,6 +310,7 @@ pub trait QueryFragment {
     fn types_mut(set: &mut HashSet<TypeId>);
     fn types_const(set: &mut HashSet<TypeId>);
     fn contains(archetype: &ArchetypeStorage) -> bool;
+    fn read_only() -> bool;
 }
 
 pub trait QueryPrimitive {
@@ -327,6 +333,7 @@ pub trait QueryPrimitive {
     fn contains_prim(archetype: &ArchetypeStorage) -> bool;
     fn types_mut(set: &mut HashSet<TypeId>);
     fn types_const(set: &mut HashSet<TypeId>);
+    fn read_only() -> bool;
 }
 
 impl QueryPrimitive for ArchQuery<EntityId> {
@@ -337,16 +344,23 @@ impl QueryPrimitive for ArchQuery<EntityId> {
     type ItemMut<'a> = EntityId;
     type ItMut<'a> = std::iter::Copied<std::slice::Iter<'a, EntityId>>;
 
+    unsafe fn iter_prim_unsafe<'a>(archetype: &'a ArchetypeStorage) -> Self::ItUnsafe<'a> {
+        archetype.entities.iter().copied()
+    }
+
+    unsafe fn fetch_prim_unsafe(
+        archetype: &ArchetypeStorage,
+        index: RowIndex,
+    ) -> Option<Self::ItemUnsafe<'_>> {
+        archetype.entities.get(index as usize).copied()
+    }
+
     fn iter_prim<'a>(archetype: &'a ArchetypeStorage) -> Self::It<'a> {
         archetype.entities.iter().copied()
     }
 
     fn iter_prim_mut<'a>(archetype: &'a ArchetypeStorage) -> Self::ItMut<'a> {
         Self::iter_prim(archetype)
-    }
-
-    unsafe fn iter_prim_unsafe<'a>(archetype: &'a ArchetypeStorage) -> Self::ItUnsafe<'a> {
-        archetype.entities.iter().copied()
     }
 
     fn fetch_prim(archetype: &ArchetypeStorage, index: RowIndex) -> Option<Self::Item<'_>> {
@@ -357,11 +371,8 @@ impl QueryPrimitive for ArchQuery<EntityId> {
         Self::fetch_prim(archetype, index)
     }
 
-    unsafe fn fetch_prim_unsafe(
-        archetype: &ArchetypeStorage,
-        index: RowIndex,
-    ) -> Option<Self::ItemUnsafe<'_>> {
-        archetype.entities.get(index as usize).copied()
+    fn contains_prim(_archetype: &ArchetypeStorage) -> bool {
+        true
     }
 
     fn types_mut(_set: &mut HashSet<TypeId>) {
@@ -373,7 +384,7 @@ impl QueryPrimitive for ArchQuery<EntityId> {
         // entity_id is not considered while scheduling
     }
 
-    fn contains_prim(_archetype: &ArchetypeStorage) -> bool {
+    fn read_only() -> bool {
         true
     }
 }
@@ -435,6 +446,10 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<Option<&'a T>> {
     }
 
     fn contains_prim(_archetype: &ArchetypeStorage) -> bool {
+        true
+    }
+
+    fn read_only() -> bool {
         true
     }
 }
@@ -500,6 +515,10 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<Option<&'a mut T>> {
     fn contains_prim(_archetype: &ArchetypeStorage) -> bool {
         true
     }
+
+    fn read_only() -> bool {
+        false
+    }
 }
 
 impl<'a, T: Component> QueryPrimitive for ArchQuery<&'a T> {
@@ -564,6 +583,10 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<&'a T> {
                 .into_iter()
                 .flatten(),
         )
+    }
+
+    fn read_only() -> bool {
+        true
     }
 }
 
@@ -637,6 +660,10 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<&'a mut T> {
     fn types_const(_set: &mut HashSet<TypeId>) {
         // noop
     }
+
+    fn read_only() -> bool {
+        false
+    }
 }
 
 impl<T> QueryFragment for ArchQuery<T>
@@ -687,6 +714,10 @@ where
 
     unsafe fn iter_unsafe(archetype: &ArchetypeStorage) -> Self::ItUnsafe<'_> {
         Self::iter_prim_unsafe(archetype)
+    }
+
+    fn read_only() -> bool {
+        <Self as QueryPrimitive>::read_only()
     }
 }
 
@@ -783,6 +814,10 @@ macro_rules! impl_tuple {
 
             fn types_const(set: &mut HashSet<TypeId>) {
                 $(<ArchQuery<$t> as QueryPrimitive>::types_const(set));+
+            }
+
+            fn read_only() -> bool {
+                true $(&& <ArchQuery<$t> as QueryPrimitive>::read_only())+
             }
         }
     };

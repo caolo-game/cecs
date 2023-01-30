@@ -166,6 +166,7 @@ pub struct SystemDescriptor<'a, R> {
     pub exclusive: Box<dyn 'a + Fn() -> bool>,
     /// produce a system
     pub factory: Box<dyn 'a + Fn() -> Box<InnerSystem<'a, R>>>,
+    pub read_only: Box<dyn 'a + Fn() -> bool>,
 }
 
 pub struct ErasedSystem<'a, R> {
@@ -250,6 +251,11 @@ where
             let rhs = self.rhs.exclusive;
             Box::new(move || ((lhs)() || (rhs)()))
         };
+        let read_only = {
+            let lhs = self.lhs.read_only;
+            let rhs = self.rhs.read_only;
+            Box::new(move || ((lhs)() || (rhs)()))
+        };
         let factory: Box<dyn Fn() -> Box<InnerSystem<'a, ()>>> = {
             let lfactory = self.lhs.factory;
             let rfactory = self.rhs.factory;
@@ -271,6 +277,7 @@ where
             components_const,
             resources_const,
             exclusive,
+            read_only,
         }
     }
 }
@@ -353,6 +360,10 @@ macro_rules! impl_intosys_fn {
                     exclusive:Box::new( || {
                         // empty system is not exclusive
                         false $(|| <$t>::exclusive())*
+                    }),
+                    read_only:Box::new( || {
+                        // empty system is read_only
+                        true $(&& <$t>::read_only())*
                     }),
                     factory,
                 }

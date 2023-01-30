@@ -37,6 +37,10 @@ impl<'a> WorldQuery<'a> for Commands<'a> {
     fn exclusive() -> bool {
         false
     }
+
+    fn read_only() -> bool {
+        false
+    }
 }
 
 impl<'a> Commands<'a> {

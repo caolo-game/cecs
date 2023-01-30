@@ -50,6 +50,14 @@ macro_rules! impl_tuple {
 
             fn exclusive() -> bool {false}
 
+            fn read_only() -> bool {
+                true
+                $(
+                    &&
+                    <ArchQuery<$t> as QueryFragment>::read_only()
+                )*
+            }
+
             fn components_mut(set: &mut HashSet<TypeId>) {
                 // sub queries may have overlapping type (that's the point of the QuerySet)
                 // types_mut will panic in this case, so we'll try all in isolation, then

@@ -35,6 +35,10 @@ impl<'a, T: 'static> WorldQuery<'a> for Res<'a, T> {
     fn exclusive() -> bool {
         false
     }
+
+    fn read_only() -> bool {
+        true
+    }
 }
 
 impl<'a, T: 'static> Res<'a, T> {
@@ -142,6 +146,10 @@ impl<'a, T: 'static> WorldQuery<'a> for ResMut<'a, T> {
     fn exclusive() -> bool {
         false
     }
+
+    fn read_only() -> bool {
+        false
+    }
 }
 
 impl<'a, T: 'static> WorldQuery<'a> for Option<Res<'a, T>> {
@@ -172,6 +180,10 @@ impl<'a, T: 'static> WorldQuery<'a> for Option<Res<'a, T>> {
     fn exclusive() -> bool {
         false
     }
+
+    fn read_only() -> bool {
+        true
+    }
 }
 
 impl<'a, T: 'static> WorldQuery<'a> for Option<ResMut<'a, T>> {
@@ -200,6 +212,10 @@ impl<'a, T: 'static> WorldQuery<'a> for Option<ResMut<'a, T>> {
     }
 
     fn exclusive() -> bool {
+        false
+    }
+
+    fn read_only() -> bool {
         false
     }
 }
