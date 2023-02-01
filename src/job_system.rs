@@ -118,16 +118,28 @@ impl JobPool {
     // Somehow tell the type system that this job must live until completion
     pub fn enqueue(&self, job: &impl AsJob) -> Result<JobHandle, PushError<()>> {
         let job = Job::new(job);
+        self.enqueue_job(job)
+    }
+
+    fn enqueue_job(&self, job: Job) -> Result<JobHandle, PushError<()>> {
         let res = job.as_handle();
         THREAD_INDEX
             .with(|id| unsafe {
                 let id = *id.get();
                 self.queues[id].push(job)
             })
-            .map(|_| res)
+            .map(move |_| res)
             .map_err(|err| match err {
                 PushError::Full(_) => PushError::Full(()),
             })
+    }
+
+    pub fn enqueue_graph(&self, graph: JobGraph) -> Result<(), PushError<()>> {
+        for job in graph.build() {
+            self.enqueue_job(job)?;
+        }
+        // TODO: return a handle
+        Ok(())
     }
 
     pub fn wait(&self, job: JobHandle) {
@@ -213,11 +225,56 @@ impl Job {
 
     pub fn add_child(&mut self, child: &Job) {
         self.children.push(Arc::clone(&child.tasks_left));
+        if self.done() {
+            child.tasks_left.fetch_sub(1, Ordering::Relaxed);
+        }
     }
 
     fn as_handle(&self) -> JobHandle {
         JobHandle {
             tasks_left: Arc::clone(&self.tasks_left),
         }
+    }
+}
+
+pub struct InlineJob<F> {
+    inner: F,
+}
+
+impl<F: Fn()> AsJob for InlineJob<F> {
+    unsafe fn execute(this: *const ()) {
+        let this: *const Self = this.cast();
+        let this = &*this;
+        (this.inner)();
+    }
+}
+
+/// FIXME: should have some empty job that depends on all other jobs in the graph
+/// Return a handle to this job when enqueue_graph is called
+pub struct JobGraph {
+    jobs: Vec<Job>,
+}
+
+impl JobGraph {
+    pub fn new() -> Self {
+        Self {
+            jobs: Vec::with_capacity(128),
+        }
+    }
+
+    pub fn add_job(&mut self, j: &impl AsJob) -> usize {
+        let i = self.jobs.len();
+        self.jobs.push(Job::new(j));
+        i
+    }
+
+    pub fn add_child(&mut self, parent: usize, child: usize) {
+        debug_assert_ne!(parent, child);
+        let child = Arc::clone(&self.jobs[child].tasks_left);
+        self.jobs[parent].children.push(child);
+    }
+
+    fn build(self) -> impl Iterator<Item = Job> {
+        self.jobs.into_iter()
     }
 }
