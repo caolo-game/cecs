@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod tests;
 
-use std::{any::TypeId, collections::HashSet, rc::Rc};
+use std::{any::TypeId, collections::HashSet, ptr::NonNull, rc::Rc};
 
-use crate::{query::WorldQuery, World};
+use crate::{job_system::AsJob, query::WorldQuery, World};
 
 pub type InnerSystem<'a, R> = dyn Fn(&'a World, usize) -> R + 'a;
 pub type ShouldRunSystem<'a> = InnerSystem<'a, bool>;
@@ -303,6 +303,21 @@ where
         let lhs = self.descriptor();
         let rhs = rhs.descriptor();
         Piped { lhs, rhs }
+    }
+}
+
+pub struct SystemJob<'a, R> {
+    world: NonNull<World>,
+    sys: NonNull<ErasedSystem<'a, R>>,
+}
+
+impl<'a, R> AsJob for SystemJob<'a, R> {
+    unsafe fn execute(this: *const ()) {
+        let job: *const Self = this.cast();
+        let job = &*job;
+        let sys = job.sys.as_ref();
+        let world = job.world.as_ref();
+        (sys.execute)(world, sys.commands_index);
     }
 }
 
