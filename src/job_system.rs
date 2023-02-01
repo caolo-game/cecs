@@ -148,13 +148,22 @@ impl JobPool {
     }
 }
 
+lazy_static::lazy_static!(
+    static ref JOB_POOL: Pin<Box<JobPool>> = unsafe {
+        let conc = std::thread::available_parallelism().unwrap_or(NonZeroUsize::new_unchecked(1));
+        JobPool::new(conc)
+    };
+);
+
 type Todos = Arc<AtomicIsize>;
 
-pub struct JobHandle(Todos);
+pub struct JobHandle {
+    tasks_left: Todos,
+}
 
 impl JobHandle {
     pub fn is_done(&self) -> bool {
-        let left = self.0.load(Ordering::Relaxed);
+        let left = self.tasks_left.load(Ordering::Relaxed);
         debug_assert!(left >= 0);
         left <= 0
     }
@@ -186,7 +195,6 @@ impl Job {
     }
 
     pub fn execute(&mut self) {
-        // TODO: catch_unwind
         unsafe {
             debug_assert!(!self.data.is_null());
             (self.func)(self.data);
@@ -208,6 +216,8 @@ impl Job {
     }
 
     fn as_handle(&self) -> JobHandle {
-        JobHandle(Arc::clone(&self.tasks_left))
+        JobHandle {
+            tasks_left: Arc::clone(&self.tasks_left),
+        }
     }
 }
