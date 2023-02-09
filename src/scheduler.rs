@@ -1,6 +1,90 @@
-use crate::{query::QueryProperties, systems::SystemStage};
+use std::{alloc::System, any::TypeId, collections::HashMap, ptr::NonNull};
+
+use smallvec::SmallVec;
+
+use crate::{
+    job_system::JobGraph,
+    query::QueryProperties,
+    systems::{self, ErasedSystem, SystemJob, SystemStage},
+    World,
+};
 
 pub type Schedule = Vec<Vec<usize>>;
+
+pub struct ScheduleV2 {
+    parents: Vec<SmallVec<[usize; 8]>>,
+}
+
+impl ScheduleV2 {
+    pub fn from_stage<T>(systems: &[ErasedSystem<T>]) -> Self {
+        let mut res = Self {
+            parents: Vec::with_capacity(systems.len()),
+        };
+        if systems.is_empty() {
+            return res;
+        }
+        // TODO:
+        // - what about explicit ordering?
+        // - forbid circular deps
+
+        let mut history = vec![QueryProperties {
+            exclusive: (systems[0].descriptor.exclusive)(),
+            comp_mut: (systems[0].descriptor.components_mut)(),
+            comp_const: (systems[0].descriptor.components_const)(),
+            res_mut: (systems[0].descriptor.resources_mut)(),
+            res_const: (systems[0].descriptor.resources_const)(),
+        }];
+        history.reserve(systems.len() - 1);
+        res.parents.push(Default::default());
+        for i in 1..systems.len() {
+            let sys = &systems[i];
+            let props = QueryProperties {
+                exclusive: (sys.descriptor.exclusive)(),
+                comp_mut: (sys.descriptor.components_mut)(),
+                res_mut: (sys.descriptor.resources_mut)(),
+                comp_const: (sys.descriptor.components_const)(),
+                res_const: (sys.descriptor.resources_const)(),
+            };
+            res.parents.push(Default::default());
+
+            for j in 0..i {
+                if !props.is_disjoint(&history[j]) {
+                    res.parents[i].push(j);
+                }
+            }
+            history.push(props);
+        }
+        res
+    }
+
+    pub fn jobs<'a, T>(
+        &self,
+        stage: &[ErasedSystem<'a, T>],
+        world: &World,
+    ) -> JobGraph<SystemJob<'a, T>> {
+        debug_assert_eq!(stage.len(), self.parents.len());
+
+        let mut graph = JobGraph::new(
+            stage
+                .iter()
+                .map(|s| SystemJob {
+                    // TODO: neither of these should move in memory
+                    // so maybe memoize the vector and clone per tick?
+                    world: NonNull::from(world),
+                    sys: NonNull::from(s),
+                })
+                .collect::<Vec<_>>(),
+        );
+
+        for (i, parents) in self.parents.iter().enumerate() {
+            for j in parents {
+                graph.add_child(*j, i);
+            }
+        }
+
+        graph
+    }
+}
 
 /// Return list of systems that must run sequentially
 /// All sublist may run in parallel

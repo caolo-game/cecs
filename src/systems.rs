@@ -159,6 +159,7 @@ impl<'a> SystemStage<'a> {
 #[allow(unused)] // with no feature=parallel most of this struct is unused
 pub struct SystemDescriptor<'a, R> {
     pub name: String,
+    pub id: TypeId,
     pub components_mut: Box<dyn 'a + Fn() -> HashSet<TypeId>>,
     pub resources_mut: Box<dyn 'a + Fn() -> HashSet<TypeId>>,
     pub components_const: Box<dyn 'a + Fn() -> HashSet<TypeId>>,
@@ -206,7 +207,7 @@ pub struct Piped<'a, R1, R2> {
 
 impl<'a> IntoSystem<'a, (), ()> for Piped<'a, (), ()>
 where
-    Self: 'a,
+    Self: 'static,
 {
     fn descriptor(self) -> SystemDescriptor<'a, ()> {
         let name = format!("{} | {}", self.lhs.name, self.rhs.name);
@@ -270,6 +271,7 @@ where
             })
         };
         SystemDescriptor {
+            id: TypeId::of::<Self>(),
             name,
             factory,
             components_mut,
@@ -307,8 +309,8 @@ where
 }
 
 pub struct SystemJob<'a, R> {
-    world: NonNull<World>,
-    sys: NonNull<ErasedSystem<'a, R>>,
+    pub world: NonNull<World>,
+    pub sys: NonNull<ErasedSystem<'a, R>>,
 }
 
 impl<'a, R> AsJob for SystemJob<'a, R> {
@@ -351,6 +353,7 @@ macro_rules! impl_intosys_fn {
                         })
                     });
                 SystemDescriptor {
+                    id: TypeId::of::<F>(),
                     name: std::any::type_name::<F>().into(),
                     components_mut:Box::new( || {
                         let mut res = HashSet::new();

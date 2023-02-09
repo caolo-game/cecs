@@ -114,9 +114,10 @@ impl JobPool {
         result
     }
 
-    // FIXME: lifetime guarantees
-    // Somehow tell the type system that this job must live until completion
-    pub fn enqueue(&self, job: &impl AsJob) -> Result<JobHandle, PushError<()>> {
+    /// # Safety
+    ///
+    /// Caller must ensure that `job` outlives the returned `JobHandle`
+    pub unsafe fn enqueue(&self, job: &impl AsJob) -> Result<JobHandle, PushError<()>> {
         let job = Job::new(job);
         self.enqueue_job(job)
     }
@@ -134,11 +135,15 @@ impl JobPool {
             })
     }
 
-    pub fn enqueue_graph(&self, graph: JobGraph) -> Result<(), PushError<()>> {
-        for job in graph.build() {
+    pub fn execute_graph<T>(&self, graph: JobGraph<T>) -> Result<(), PushError<()>> {
+        let root = unsafe { Job::new(&graph.root) };
+        for mut job in graph.jobs.into_iter() {
+            job.add_child(&root);
             self.enqueue_job(job)?;
         }
-        // TODO: return a handle
+        let handle = self.enqueue_job(root)?;
+        self.wait(handle);
+        // TODO: return handle?
         Ok(())
     }
 
@@ -197,7 +202,10 @@ struct Job {
 unsafe impl Send for Job {}
 
 impl Job {
-    pub fn new<T: AsJob>(data: &T) -> Self {
+    /// # Safety
+    ///
+    /// Caller must ensure that `data` outlives the Job
+    pub unsafe fn new<T: AsJob>(data: &T) -> Self {
         Self {
             tasks_left: Todos::new(1.into()),
             children: SmallVec::new(),
@@ -251,30 +259,34 @@ impl<F: Fn()> AsJob for InlineJob<F> {
 
 /// FIXME: should have some empty job that depends on all other jobs in the graph
 /// Return a handle to this job when enqueue_graph is called
-pub struct JobGraph {
+pub struct JobGraph<T> {
     jobs: Vec<Job>,
+    data: Vec<T>,
+    root: InlineJob<fn()>,
 }
 
-impl JobGraph {
-    pub fn new() -> Self {
-        Self {
-            jobs: Vec::with_capacity(128),
+impl<T> JobGraph<T>
+where
+    T: AsJob,
+{
+    pub fn new(data: impl Into<Vec<T>>) -> Self {
+        unsafe {
+            let data = data.into();
+            let mut root = InlineJob {
+                inner: (|| {}) as _,
+            };
+            let jobs = data.iter().map(|d| Job::new(d)).collect();
+            Self {
+                root,
+                data: data.into(),
+                jobs,
+            }
         }
-    }
-
-    pub fn add_job(&mut self, j: &impl AsJob) -> usize {
-        let i = self.jobs.len();
-        self.jobs.push(Job::new(j));
-        i
     }
 
     pub fn add_child(&mut self, parent: usize, child: usize) {
         debug_assert_ne!(parent, child);
         let child = Arc::clone(&self.jobs[child].tasks_left);
         self.jobs[parent].children.push(child);
-    }
-
-    fn build(self) -> impl Iterator<Item = Job> {
-        self.jobs.into_iter()
     }
 }
