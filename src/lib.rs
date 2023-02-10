@@ -35,8 +35,6 @@ mod archetype;
 #[cfg(feature = "parallel")]
 mod scheduler;
 
-#[cfg(feature = "parallel")]
-pub use rayon;
 use world_access::WorldLock;
 
 #[cfg(test)]
@@ -571,19 +569,6 @@ impl World {
             self.commands
                 .resize_with(len, std::cell::UnsafeCell::default);
         }
-    }
-
-    #[cfg(feature = "parallel")]
-    fn execute_systems_parallel<'a>(
-        &'a self,
-        group: &[usize],
-        systems: &[systems::ErasedSystem<()>],
-    ) {
-        use rayon::prelude::*;
-
-        group.par_iter().copied().for_each(|i| unsafe {
-            run_system(self, &systems[i]);
-        });
     }
 
     /// Constructs a new [[crate::commands::Commands]] instance with initialized buffers in this world
