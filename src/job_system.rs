@@ -26,6 +26,24 @@ pub struct JobPool {
 }
 
 impl JobPool {
+    pub fn join(&self, a: impl FnOnce() + Send, b: impl FnOnce() + Send) {
+        let a = InlineJob::new(a);
+        let b = InlineJob::new(b);
+        let c = InlineJob::new(|| {});
+
+        unsafe {
+            let c = Job::new(&c);
+            let mut a = Job::new(&a);
+            a.add_child(&c);
+            self.enqueue_job(a);
+            let mut b = Job::new(&b);
+            b.add_child(&c);
+            self.enqueue_job(b);
+            let handle = self.enqueue_job(c);
+            self.wait(handle);
+        }
+    }
+
     /// # Safety
     ///
     /// Caller must ensure that `job` outlives the job completion
@@ -64,7 +82,7 @@ impl JobPool {
     }
 
     pub fn execute_graph<T>(&self, mut graph: JobGraph<T>) {
-        let root = InlineJob { inner: (|| {}) };
+        let root = InlineJob::new(|| {});
         let root = unsafe { Job::new(&root) };
         for job in graph.jobs.drain(..) {
             let mut job = job.into_inner();
@@ -381,14 +399,23 @@ impl Job {
 }
 
 pub struct InlineJob<F> {
-    inner: F,
+    inner: UnsafeCell<Option<F>>,
 }
 
-impl<F: Fn()> AsJob for InlineJob<F> {
+impl<F> InlineJob<F> {
+    pub fn new(inner: F) -> Self {
+        Self {
+            inner: UnsafeCell::new(Some(inner)),
+        }
+    }
+}
+
+impl<F: FnOnce() + Send> AsJob for InlineJob<F> {
     unsafe fn execute(instance: *const ()) {
         let instance: *const Self = instance.cast();
         let instance = &*instance;
-        (instance.inner)();
+        let inner = (&mut *instance.inner.get()).take();
+        (inner.unwrap())();
     }
 }
 
@@ -418,5 +445,30 @@ where
         unsafe {
             (&mut *self.jobs[parent].get()).add_child(&*self.jobs[child].get());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn join_test() {
+        let pool = JobPool::default();
+
+        let mut a = 0;
+        let mut b = 0;
+
+        pool.join(
+            || {
+                a += 1;
+            },
+            || {
+                b += 1;
+            },
+        );
+
+        assert_eq!(a, 1);
+        assert_eq!(b, 1);
     }
 }
