@@ -10,7 +10,7 @@ use entity_id::EntityId;
 use entity_index::EntityIndex;
 use prelude::Bundle;
 use resources::ResourceStorage;
-use scheduler::ScheduleV2;
+use scheduler::Schedule;
 use systems::SystemStage;
 
 pub mod bundle;
@@ -52,9 +52,7 @@ pub struct World {
     // for each system stage: a group of parallel systems
     //
     #[cfg(feature = "parallel")]
-    pub(crate) schedule: Vec<Vec<Vec<usize>>>,
-    #[cfg(feature = "parallel")]
-    pub(crate) schedule_v2: Vec<ScheduleV2>,
+    pub(crate) schedule: Vec<Schedule>,
     #[cfg(feature = "parallel")]
     pub(crate) job_system: Pin<Box<job_system::JobPool>>,
 }
@@ -87,8 +85,6 @@ impl Clone for World {
         #[cfg(feature = "parallel")]
         let schedule = self.schedule.clone();
         #[cfg(feature = "parallel")]
-        let schedule_v2 = self.schedule_v2.clone();
-        #[cfg(feature = "parallel")]
         let job_system = Default::default();
 
         Self {
@@ -100,8 +96,6 @@ impl Clone for World {
             system_stages: systems,
             #[cfg(feature = "parallel")]
             schedule,
-            #[cfg(feature = "parallel")]
-            schedule_v2,
             #[cfg(feature = "parallel")]
             job_system,
         }
@@ -178,8 +172,6 @@ impl World {
             #[cfg(feature = "parallel")]
             schedule: Default::default(),
             #[cfg(feature = "parallel")]
-            schedule_v2: Default::default(),
-            #[cfg(feature = "parallel")]
             job_system: Default::default(),
         };
         let void_store = Box::pin(ArchetypeStorage::empty());
@@ -193,20 +185,6 @@ impl World {
 
     pub fn entity_capacity(&self) -> usize {
         self.entity_ids().capacity()
-    }
-
-    #[cfg(feature = "parallel")]
-    pub fn write_schedule(&self, mut w: impl std::io::Write) -> std::io::Result<()> {
-        for (i, stage) in self.system_stages.iter().enumerate() {
-            writeln!(w, "Stage {}:", stage.name)?;
-            for (j, group) in self.schedule[i].iter().enumerate() {
-                writeln!(w, "\tGroup {}:", j)?;
-                for k in group.iter() {
-                    writeln!(w, "\t\t- {}", stage.systems.as_slice()[*k].descriptor.name)?;
-                }
-            }
-        }
-        Ok(())
     }
 
     /// Writes entity ids and their archetype hash
@@ -446,9 +424,8 @@ impl World {
         let stage = unsafe { transmute(stage) };
         #[cfg(feature = "parallel")]
         {
-            self.schedule.push(scheduler::schedule(&stage));
-            self.schedule_v2
-                .push(scheduler::ScheduleV2::from_stage(&stage));
+            self.schedule
+                .push(scheduler::Schedule::from_stage(&stage));
         }
         self.system_stages.push(stage);
     }
@@ -467,10 +444,8 @@ impl World {
 
         // move stage into the world
         #[cfg(feature = "parallel")]
-        self.schedule.push(scheduler::schedule(&stage));
-        #[cfg(feature = "parallel")]
-        self.schedule_v2
-            .push(scheduler::ScheduleV2::from_stage(&stage));
+        self.schedule
+            .push(scheduler::Schedule::from_stage(&stage));
 
         self.system_stages.push(stage);
 
@@ -480,8 +455,6 @@ impl World {
         self.system_stages.pop();
         #[cfg(feature = "parallel")]
         self.schedule.pop();
-        #[cfg(feature = "parallel")]
-        self.schedule_v2.pop();
         self.apply_commands()
     }
 
@@ -550,7 +523,7 @@ impl World {
             }
             #[cfg(feature = "parallel")]
             systems::StageSystems::Parallel(ref systems) => {
-                let schedule = &self.schedule_v2[i];
+                let schedule = &self.schedule[i];
                 let graph = schedule.jobs(systems, self);
                 self.job_system.execute_graph(graph);
 
