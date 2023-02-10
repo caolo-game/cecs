@@ -51,8 +51,9 @@ pub struct World {
     //
     #[cfg(feature = "parallel")]
     pub(crate) schedule: Vec<scheduler::Schedule>,
+    // TODO: insert job pool as a resource
     #[cfg(feature = "parallel")]
-    pub(crate) job_system: Pin<Box<job_system::JobPool>>,
+    pub(crate) job_system: job_system::JobPool,
 }
 
 unsafe impl Send for World {}
@@ -83,7 +84,7 @@ impl Clone for World {
         #[cfg(feature = "parallel")]
         let schedule = self.schedule.clone();
         #[cfg(feature = "parallel")]
-        let job_system = Default::default();
+        let job_system = self.job_system.clone();
 
         Self {
             this_lock: WorldLock::new(),

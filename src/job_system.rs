@@ -20,7 +20,95 @@ mod queue;
 type WorkerQueue = queue::Queue<Job>;
 type Sleep = Arc<(Mutex<bool>, Condvar)>;
 
+#[derive(Clone)]
 pub struct JobPool {
+    inner: Arc<Inner>,
+}
+
+impl JobPool {
+    /// # Safety
+    ///
+    /// Caller must ensure that `job` outlives the job completion
+    pub unsafe fn enqueue(&self, job: &impl AsJob) -> JobHandle {
+        let job = Job::new(job);
+        self.enqueue_job(job)
+    }
+
+    fn enqueue_job(&self, job: Job) -> JobHandle {
+        let res = job.as_handle();
+        THREAD_INDEX.with(|id| unsafe {
+            let id = *id.get();
+            if job.ready() {
+                let res = self.inner.runnable_queues[id].push(job);
+                match res {
+                    Ok(_) => {}
+                    Err(err) => match err {
+                        PushError::Full(job) => {
+                            #[cfg(feature = "tracing")]
+                            tracing::debug!(
+                                id = id,
+                                data = tracing::field::debug(job.data),
+                                "Job queue is full, pushing job into the waiting list"
+                            );
+                            (&mut *self.inner.wait_lists[id].get()).push(job);
+                        }
+                    },
+                }
+                // wake up a worker
+                self.inner.sleep.1.notify_one();
+            } else {
+                (&mut *self.inner.wait_lists[id].get()).push(job);
+            }
+            res
+        })
+    }
+
+    pub fn execute_graph<T>(&self, mut graph: JobGraph<T>) {
+        let root = InlineJob { inner: (|| {}) };
+        let root = unsafe { Job::new(&root) };
+        for job in graph.jobs.drain(..) {
+            let mut job = job.into_inner();
+            job.add_child(&root);
+            self.enqueue_job(job);
+        }
+        let handle = self.enqueue_job(root);
+        self.wait(handle);
+        // TODO: return handle?
+        // do consider that graph owns the data used by jobs and must outlive the execution
+        drop(graph);
+    }
+
+    pub fn wait(&self, job: JobHandle) {
+        THREAD_INDEX.with(|id| unsafe {
+            let id = *id.get();
+            let q = &*self.inner.runnable_queues as *const _;
+            let wait_list = NonNull::new(self.inner.wait_lists[id].get()).unwrap();
+            let mut tmp_exec =
+                Executor::new(id, QueueArray(q), wait_list, Arc::clone(&self.inner.sleep));
+            while !job.is_done() {
+                if tmp_exec.run_once().is_err() {
+                    // make sure other threads keep cleaning their wait lists
+                    self.inner.sleep.1.notify_all();
+                    // busy wait so `wait` returns asap
+                    std::thread::yield_now();
+                }
+            }
+        });
+    }
+}
+
+impl Default for JobPool {
+    fn default() -> Self {
+        unsafe {
+            let conc =
+                std::thread::available_parallelism().unwrap_or(NonZeroUsize::new_unchecked(1));
+            let inner = Arc::new(Inner::new(conc));
+            Self { inner }
+        }
+    }
+}
+
+struct Inner {
     threads: Vec<JoinHandle<()>>,
     runnable_queues: Pin<Box<[WorkerQueue]>>,
     /// threads may only access their own waiting_queues
@@ -28,10 +116,10 @@ pub struct JobPool {
     sleep: Sleep,
 }
 
-unsafe impl Send for JobPool {}
-unsafe impl Sync for JobPool {}
+unsafe impl Send for Inner {}
+unsafe impl Sync for Inner {}
 
-impl Drop for JobPool {
+impl Drop for Inner {
     fn drop(&mut self) {
         {
             *self.sleep.0.lock().unwrap() = true;
@@ -160,8 +248,8 @@ enum RunError {
 struct QueueArray(*const [WorkerQueue]);
 unsafe impl Send for QueueArray {}
 
-impl JobPool {
-    pub fn new(workers: NonZeroUsize) -> Pin<Box<Self>> {
+impl Inner {
+    pub fn new(workers: NonZeroUsize) -> Self {
         let capacity = NonZeroUsize::new(1 << 16).unwrap();
         let workers = workers.get();
         let mut queues = Vec::with_capacity(workers);
@@ -171,7 +259,7 @@ impl JobPool {
         let queues = Pin::new(queues.into_boxed_slice());
         let q = &*queues as *const _;
         let sleep = Arc::default();
-        let mut result = Box::pin(Self {
+        let mut result = Self {
             sleep: Arc::clone(&sleep),
             runnable_queues: queues,
             threads: Vec::with_capacity(workers),
@@ -181,7 +269,7 @@ impl JobPool {
                     .collect::<Vec<_>>()
                     .into_boxed_slice(),
             ),
-        });
+        };
         // the main thread is also used a worker on wait points
         // the index of the main thread is 0
         for i in 1..workers {
@@ -201,89 +289,10 @@ impl JobPool {
         });
         result
     }
-
-    /// # Safety
-    ///
-    /// Caller must ensure that `job` outlives the job completion
-    pub unsafe fn enqueue(&self, job: &impl AsJob) -> JobHandle {
-        let job = Job::new(job);
-        self.enqueue_job(job)
-    }
-
-    fn enqueue_job(&self, job: Job) -> JobHandle {
-        let res = job.as_handle();
-        THREAD_INDEX.with(|id| unsafe {
-            let id = *id.get();
-            if job.ready() {
-                let res = self.runnable_queues[id].push(job);
-                match res {
-                    Ok(_) => {}
-                    Err(err) => match err {
-                        PushError::Full(job) => {
-                            #[cfg(feature = "tracing")]
-                            tracing::debug!(
-                                id = id,
-                                data = tracing::field::debug(job.data),
-                                "Job queue is full, pushing job into the waiting list"
-                            );
-                            (&mut *self.wait_lists[id].get()).push(job);
-                        }
-                    },
-                }
-                // wake up a worker
-                self.sleep.1.notify_one();
-            } else {
-                (&mut *self.wait_lists[id].get()).push(job);
-            }
-            res
-        })
-    }
-
-    pub fn execute_graph<T>(&self, mut graph: JobGraph<T>) {
-        let root = InlineJob { inner: (|| {}) };
-        let root = unsafe { Job::new(&root) };
-        for job in graph.jobs.drain(..) {
-            let mut job = job.into_inner();
-            job.add_child(&root);
-            self.enqueue_job(job);
-        }
-        let handle = self.enqueue_job(root);
-        self.wait(handle);
-        // TODO: return handle?
-        // do consider that graph owns the data used by jobs and must outlive the execution
-        drop(graph);
-    }
-
-    pub fn wait(&self, job: JobHandle) {
-        THREAD_INDEX.with(|id| unsafe {
-            let id = *id.get();
-            let q = &*self.runnable_queues as *const _;
-            let wait_list = NonNull::new(self.wait_lists[id].get()).unwrap();
-            let mut tmp_exec = Executor::new(id, QueueArray(q), wait_list, Arc::clone(&self.sleep));
-            while !job.is_done() {
-                if tmp_exec.run_once().is_err() {
-                    // make sure other threads keep cleaning their wait lists
-                    self.sleep.1.notify_all();
-                    // busy wait so `wait` returns asap
-                    std::thread::yield_now();
-                }
-            }
-        });
-    }
-}
-
-impl Default for Pin<Box<JobPool>> {
-    fn default() -> Self {
-        unsafe {
-            let conc =
-                std::thread::available_parallelism().unwrap_or(NonZeroUsize::new_unchecked(1));
-            JobPool::new(conc)
-        }
-    }
 }
 
 lazy_static::lazy_static!(
-    pub static ref JOB_POOL: Pin<Box<JobPool>> = {
+    pub static ref JOB_POOL: JobPool = {
         Default::default()
     };
 );
