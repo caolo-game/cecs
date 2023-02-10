@@ -13,6 +13,7 @@ pub struct Queue<T> {
     head: AtomicIsize,
     tail: AtomicIsize,
     // stealers can lock this queue so at most 1 thread is stealing at a time
+    // since concurrent steals would fail anyway this seems like an OK compromise
     steal_lock: AtomicBool,
     capacity: usize,
     capacity_mask: usize,
@@ -289,7 +290,6 @@ mod tests {
     #[test]
     fn steal_thread_test() {
         let q0 = Queue::new(NonZeroUsize::new(1000).unwrap());
-        let q1 = Queue::new(NonZeroUsize::new(1000).unwrap());
 
         let n = thread::available_parallelism()
             .map(|x| x.get())
@@ -306,9 +306,9 @@ mod tests {
             let threads = (0..n)
                 .map(|_| {
                     let q0 = std::mem::transmute::<&Queue<i32>, &'static Queue<i32>>(&q0);
-                    let q1 = std::mem::transmute::<&Queue<i32>, &'static Queue<i32>>(&q1);
                     let bar = Arc::clone(&bar);
                     thread::spawn(move || {
+                        let q1 = Queue::new(NonZeroUsize::new(1000).unwrap());
                         bar.wait();
                         q1.steal(q0).unwrap_or_default();
                     })
