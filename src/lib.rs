@@ -10,6 +10,7 @@ use entity_id::EntityId;
 use entity_index::EntityIndex;
 use prelude::Bundle;
 use resources::ResourceStorage;
+use scheduler::ScheduleV2;
 use systems::SystemStage;
 
 pub mod bundle;
@@ -54,6 +55,10 @@ pub struct World {
     //
     #[cfg(feature = "parallel")]
     pub(crate) schedule: Vec<Vec<Vec<usize>>>,
+    #[cfg(feature = "parallel")]
+    pub(crate) schedule_v2: Vec<ScheduleV2>,
+    #[cfg(feature = "parallel")]
+    pub(crate) job_system: Pin<Box<job_system::JobPool>>,
 }
 
 unsafe impl Send for World {}
@@ -83,6 +88,10 @@ impl Clone for World {
 
         #[cfg(feature = "parallel")]
         let schedule = self.schedule.clone();
+        #[cfg(feature = "parallel")]
+        let schedule_v2 = self.schedule_v2.clone();
+        #[cfg(feature = "parallel")]
+        let job_system = Default::default();
 
         Self {
             this_lock: WorldLock::new(),
@@ -93,6 +102,10 @@ impl Clone for World {
             system_stages: systems,
             #[cfg(feature = "parallel")]
             schedule,
+            #[cfg(feature = "parallel")]
+            schedule_v2,
+            #[cfg(feature = "parallel")]
+            job_system,
         }
     }
 }
@@ -166,6 +179,10 @@ impl World {
             system_stages: Default::default(),
             #[cfg(feature = "parallel")]
             schedule: Default::default(),
+            #[cfg(feature = "parallel")]
+            schedule_v2: Default::default(),
+            #[cfg(feature = "parallel")]
+            job_system: Default::default(),
         };
         let void_store = Box::pin(ArchetypeStorage::empty());
         result.archetypes.insert(VOID_TY, void_store);
@@ -432,6 +449,8 @@ impl World {
         #[cfg(feature = "parallel")]
         {
             self.schedule.push(scheduler::schedule(&stage));
+            self.schedule_v2
+                .push(scheduler::ScheduleV2::from_stage(&stage));
         }
         self.system_stages.push(stage);
     }
@@ -450,7 +469,10 @@ impl World {
 
         // move stage into the world
         #[cfg(feature = "parallel")]
-        self.schedule.push(crate::scheduler::schedule(&stage));
+        self.schedule.push(scheduler::schedule(&stage));
+        #[cfg(feature = "parallel")]
+        self.schedule_v2
+            .push(scheduler::ScheduleV2::from_stage(&stage));
 
         self.system_stages.push(stage);
 
@@ -460,6 +482,8 @@ impl World {
         self.system_stages.pop();
         #[cfg(feature = "parallel")]
         self.schedule.pop();
+        #[cfg(feature = "parallel")]
+        self.schedule_v2.pop();
         self.apply_commands()
     }
 
@@ -528,10 +552,13 @@ impl World {
             }
             #[cfg(feature = "parallel")]
             systems::StageSystems::Parallel(ref systems) => {
-                let schedule = &self.schedule[i];
-                for group in schedule {
-                    self.execute_systems_parallel(group, systems)
-                }
+                let schedule = &self.schedule_v2[i];
+                let graph = schedule.jobs(systems, self);
+                self.job_system.execute_graph(graph);
+
+                // for group in schedule {
+                //     self.execute_systems_parallel(group, systems)
+                // }
             }
         }
         #[cfg(feature = "tracing")]

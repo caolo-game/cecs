@@ -1,22 +1,34 @@
-use std::{alloc::System, any::TypeId, collections::HashMap, ptr::NonNull};
+use std::ptr::NonNull;
 
 use smallvec::SmallVec;
 
 use crate::{
     job_system::JobGraph,
     query::QueryProperties,
-    systems::{self, ErasedSystem, SystemJob, SystemStage},
+    systems::{ErasedSystem, SystemJob, SystemStage},
     World,
 };
 
 pub type Schedule = Vec<Vec<usize>>;
 
+#[derive(Debug, Clone)]
 pub struct ScheduleV2 {
     parents: Vec<SmallVec<[usize; 8]>>,
 }
 
 impl ScheduleV2 {
-    pub fn from_stage<T>(systems: &[ErasedSystem<T>]) -> Self {
+    pub fn from_stage(stage: &SystemStage) -> Self {
+        let systems = match &stage.systems {
+            crate::systems::StageSystems::Serial(_v) => {
+                // trivial schedule
+                return Self { parents: vec![] };
+            }
+            crate::systems::StageSystems::Parallel(s) => s,
+        };
+        Self::from_systems(systems)
+    }
+
+    pub fn from_systems<T>(systems: &[ErasedSystem<T>]) -> Self {
         let mut res = Self {
             parents: Vec::with_capacity(systems.len()),
         };
@@ -27,24 +39,12 @@ impl ScheduleV2 {
         // - what about explicit ordering?
         // - forbid circular deps
 
-        let mut history = vec![QueryProperties {
-            exclusive: (systems[0].descriptor.exclusive)(),
-            comp_mut: (systems[0].descriptor.components_mut)(),
-            comp_const: (systems[0].descriptor.components_const)(),
-            res_mut: (systems[0].descriptor.resources_mut)(),
-            res_const: (systems[0].descriptor.resources_const)(),
-        }];
+        let mut history = vec![QueryProperties::from_system(&systems[0].descriptor)];
         history.reserve(systems.len() - 1);
         res.parents.push(Default::default());
         for i in 1..systems.len() {
             let sys = &systems[i];
-            let props = QueryProperties {
-                exclusive: (sys.descriptor.exclusive)(),
-                comp_mut: (sys.descriptor.components_mut)(),
-                res_mut: (sys.descriptor.resources_mut)(),
-                comp_const: (sys.descriptor.components_const)(),
-                res_const: (sys.descriptor.resources_const)(),
-            };
+            let props = QueryProperties::from_system(&sys.descriptor);
             res.parents.push(Default::default());
 
             for j in 0..i {

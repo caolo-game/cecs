@@ -6,7 +6,10 @@ pub mod resource_query;
 #[cfg(test)]
 mod query_tests;
 
-use crate::{archetype::ArchetypeStorage, entity_id::EntityId, Component, RowIndex, World};
+use crate::{
+    archetype::ArchetypeStorage, entity_id::EntityId, systems::SystemDescriptor, Component,
+    RowIndex, World,
+};
 use filters::Filter;
 use std::{any::TypeId, collections::HashSet, marker::PhantomData};
 
@@ -61,6 +64,16 @@ impl QueryProperties {
             && self.res_mut.is_empty()
             && self.res_const.is_empty()
             && self.comp_const.is_empty()
+    }
+
+    pub fn from_system<T>(desc: &SystemDescriptor<T>) -> Self {
+        Self {
+            exclusive: (desc.exclusive)(),
+            comp_mut: (desc.components_mut)(),
+            res_mut: (desc.resources_mut)(),
+            comp_const: (desc.components_const)(),
+            res_const: (desc.resources_const)(),
+        }
     }
 }
 

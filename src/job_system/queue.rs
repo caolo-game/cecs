@@ -1,14 +1,15 @@
 use std::{
     alloc::Layout,
+    mem::MaybeUninit,
     num::NonZeroUsize,
     ptr::{self, NonNull},
-    sync::atomic::{self, AtomicBool, AtomicIsize, Ordering},
+    sync::atomic::{AtomicBool, AtomicIsize, Ordering},
 };
 
 // assume 64 byte cachelines for the vast majority of deployments
 #[repr(align(64))]
 pub struct Queue<T> {
-    items: NonNull<T>,
+    items: NonNull<MaybeUninit<T>>,
     head: AtomicIsize,
     tail: AtomicIsize,
     // stealers can lock this queue so at most 1 thread is stealing at a time
@@ -27,13 +28,18 @@ impl<T> Drop for Queue<T> {
             let head = self.head.load(Ordering::Relaxed);
 
             while head > tail {
-                std::ptr::drop_in_place(self.items.as_ptr().add(self.index(tail)));
+                self.items
+                    .as_ptr()
+                    .add(self.index(tail))
+                    .as_mut()
+                    .unwrap()
+                    .assume_init_drop();
                 tail += 1;
             }
 
             std::alloc::dealloc(
                 self.items.cast().as_ptr(),
-                Layout::array::<T>(self.capacity).unwrap(),
+                Layout::array::<MaybeUninit<T>>(self.capacity).unwrap(),
             );
         }
     }
@@ -58,7 +64,7 @@ impl<T> Queue<T> {
     pub fn new(capacity: NonZeroUsize) -> Self {
         let capacity = capacity.get().max(2).next_power_of_two();
         unsafe {
-            let jobs = std::alloc::alloc(Layout::array::<T>(capacity).unwrap());
+            let jobs = std::alloc::alloc(Layout::array::<MaybeUninit<T>>(capacity).unwrap());
             Self {
                 items: NonNull::new_unchecked(jobs.cast()),
                 head: AtomicIsize::new(0),
@@ -80,7 +86,7 @@ impl<T> Queue<T> {
         }
 
         let slot = self.items.as_ptr().add(self.index(head));
-        ptr::write(slot, val);
+        ptr::write(slot, MaybeUninit::new(val));
         self.head.fetch_add(1, Ordering::Release);
         Ok(())
     }
@@ -90,10 +96,9 @@ impl<T> Queue<T> {
     pub unsafe fn pop(&self) -> PopResult<T> {
         let head = self.head.fetch_sub(1, Ordering::AcqRel) - 1;
         let tail = self.tail.load(Ordering::Relaxed);
-        atomic::fence(Ordering::Acquire);
         if tail > head {
             // queue is empty
-            //reset head
+            // reset head
             self.head.store(tail, Ordering::Release);
             return Err(PopError::Empty);
         }
@@ -102,20 +107,22 @@ impl<T> Queue<T> {
 
         if head != tail {
             // done
-            return Ok(value);
+            return Ok(value.assume_init());
         }
 
         // `value` is the last item in the queue
+        // ensure no other thread takes the value
+        // reset queue to 0
         let new_tail = tail + 1;
         match self
             .tail
-            .compare_exchange_weak(tail, new_tail, Ordering::Release, Ordering::Relaxed)
+            .compare_exchange(tail, new_tail, Ordering::Release, Ordering::Relaxed)
         {
-            Ok(_) => Ok(value),
+            Ok(_current_tail) => {
+                self.head.store(new_tail, Ordering::Release);
+                Ok(value.assume_init())
+            }
             Err(tail) => {
-                // another thread stole this item
-                std::mem::forget(value);
-                // reset queue to 0
                 self.head.store(tail, Ordering::Release);
                 Err(PopError::Empty)
             }
@@ -131,33 +138,37 @@ impl<T> Queue<T> {
         }
 
         'retry: loop {
-            let mut victim_tail = victim.tail.load(Ordering::Relaxed);
             let head = self.head.load(Ordering::Relaxed);
             let capacity = self.capacity_mask - self.len();
-            let target = (victim.len() / 2).min(capacity);
-            if target == 0 {
+            let desired = (victim.len() / 2).min(capacity);
+            std::sync::atomic::fence(Ordering::Acquire);
+            if desired == 0 {
                 return Err(PopError::Empty);
             }
-            let mut target_tail = victim_tail + target as isize;
             if victim
                 .steal_lock
-                .compare_exchange_weak(false, true, Ordering::Release, Ordering::Relaxed)
+                .compare_exchange_weak(false, true, Ordering::AcqRel, Ordering::Relaxed)
                 .is_err()
             {
                 // victim is locked by a third thread
                 std::thread::yield_now();
                 continue 'retry;
             }
+            let victim_tail = victim.tail.load(Ordering::Relaxed);
+            let target_tail = victim_tail + desired as isize;
 
             // copy the items
+            //
+            // another thread may steal from self while we're stealing
+            // and steal can fail in which case we undo
+            // so self.head must not be modified at this point
+            let mut h = head;
             for t in victim_tail..target_tail {
                 unsafe {
                     let stolen_goods = ptr::read(victim.items.as_ptr().add(victim.index(t)));
-                    if self.push(stolen_goods).is_err() {
-                        // partial success
-                        target_tail = t + 1;
-                        break;
-                    }
+                    let slot = self.items.as_ptr().add(self.index(h));
+                    ptr::write(slot, stolen_goods);
+                    h += 1;
                 }
             }
             let victim_head = victim.head.load(Ordering::Acquire);
@@ -166,18 +177,21 @@ impl<T> Queue<T> {
             if victim_head <= target_tail {
                 // undo the insertion
                 self.head.store(head, Ordering::Relaxed);
-                victim.steal_lock.store(false, Ordering::Release);
-                atomic::fence(Ordering::Release);
+                victim.steal_lock.store(false, Ordering::Relaxed);
+                std::sync::atomic::fence(Ordering::Release);
                 std::thread::yield_now();
                 continue 'retry;
             }
+            // commit changes
+            self.head.store(h, Ordering::Relaxed);
             victim.tail.store(target_tail, Ordering::Relaxed);
-            victim.steal_lock.store(false, Ordering::Release);
-            atomic::fence(Ordering::Release);
+            victim.steal_lock.store(false, Ordering::Relaxed);
+            std::sync::atomic::fence(Ordering::Release);
             return Ok(());
         }
     }
 
+    #[inline]
     fn index(&self, i: isize) -> usize {
         i.max(0) as usize & self.capacity_mask
     }
@@ -189,6 +203,7 @@ impl<T> Queue<T> {
         (head - tail).max(0) as usize
     }
 
+    #[allow(unused)]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -266,6 +281,8 @@ mod tests {
             assert_eq!(q0.pop().unwrap(), 3);
             assert_eq!(q0.pop().unwrap(), 2);
         }
+        assert_eq!(q0.len(), 0);
+        assert_eq!(q1.len(), 0);
     }
 
     /// Intended to be run via tsan

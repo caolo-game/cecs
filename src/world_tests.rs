@@ -496,6 +496,7 @@ fn fetching_same_resource_twice_is_panic_test() {
 }
 
 #[test]
+#[cfg_attr(feature = "tracing", tracing_test::traced_test)]
 fn mutating_world_inside_system_test() {
     fn mutation(mut access: WorldAccess) {
         let w = access.world_mut();
