@@ -127,6 +127,7 @@ impl Executor {
             debug_assert!(!wait_list[i].done());
             if wait_list[i].ready() {
                 let job = wait_list.swap_remove(i);
+                #[cfg(feature = "tracing")]
                 let data = job.data;
                 if let Err(err) = queues[id].push(job) {
                     match err {

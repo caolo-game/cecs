@@ -10,7 +10,6 @@ use entity_id::EntityId;
 use entity_index::EntityIndex;
 use prelude::Bundle;
 use resources::ResourceStorage;
-use scheduler::Schedule;
 use systems::SystemStage;
 
 pub mod bundle;
@@ -24,14 +23,13 @@ pub mod resources;
 pub mod systems;
 pub mod world_access;
 
-// FIXME: only when parallel feature is active
-pub mod job_system;
-
 #[cfg(feature = "serde")]
 pub mod persister;
 
 mod archetype;
 
+#[cfg(feature = "parallel")]
+pub mod job_system;
 #[cfg(feature = "parallel")]
 mod scheduler;
 
@@ -52,7 +50,7 @@ pub struct World {
     // for each system stage: a group of parallel systems
     //
     #[cfg(feature = "parallel")]
-    pub(crate) schedule: Vec<Schedule>,
+    pub(crate) schedule: Vec<scheduler::Schedule>,
     #[cfg(feature = "parallel")]
     pub(crate) job_system: Pin<Box<job_system::JobPool>>,
 }
@@ -424,8 +422,7 @@ impl World {
         let stage = unsafe { transmute(stage) };
         #[cfg(feature = "parallel")]
         {
-            self.schedule
-                .push(scheduler::Schedule::from_stage(&stage));
+            self.schedule.push(scheduler::Schedule::from_stage(&stage));
         }
         self.system_stages.push(stage);
     }
@@ -444,8 +441,7 @@ impl World {
 
         // move stage into the world
         #[cfg(feature = "parallel")]
-        self.schedule
-            .push(scheduler::Schedule::from_stage(&stage));
+        self.schedule.push(scheduler::Schedule::from_stage(&stage));
 
         self.system_stages.push(stage);
 

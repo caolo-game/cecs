@@ -3,7 +3,10 @@ mod tests;
 
 use std::{any::TypeId, collections::HashSet, ptr::NonNull, rc::Rc};
 
-use crate::{job_system::AsJob, query::WorldQuery, World};
+#[cfg(feature = "parallel")]
+use crate::job_system::AsJob;
+
+use crate::{query::WorldQuery, World};
 
 pub type InnerSystem<'a, R> = dyn Fn(&'a World, usize) -> R + 'a;
 pub type ShouldRunSystem<'a> = InnerSystem<'a, bool>;
@@ -313,6 +316,7 @@ pub struct SystemJob<'a, R> {
     pub sys: NonNull<ErasedSystem<'a, R>>,
 }
 
+#[cfg(feature = "parallel")]
 impl<'a, R> AsJob for SystemJob<'a, R> {
     unsafe fn execute(this: *const ()) {
         let job: *const Self = this.cast();
