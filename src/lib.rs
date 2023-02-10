@@ -51,7 +51,6 @@ pub struct World {
     //
     #[cfg(feature = "parallel")]
     pub(crate) schedule: Vec<scheduler::Schedule>,
-    // TODO: insert job pool as a resource
     #[cfg(feature = "parallel")]
     pub(crate) job_system: job_system::JobPool,
 }
@@ -161,6 +160,8 @@ impl World {
     pub fn new(initial_capacity: u32) -> Self {
         let entity_ids = EntityIndex::new(initial_capacity);
 
+        #[cfg(feature = "parallel")]
+        let job_system: job_system::JobPool = Default::default();
         let mut result = Self {
             this_lock: WorldLock::new(),
             entity_ids: UnsafeCell::new(entity_ids),
@@ -171,10 +172,12 @@ impl World {
             #[cfg(feature = "parallel")]
             schedule: Default::default(),
             #[cfg(feature = "parallel")]
-            job_system: Default::default(),
+            job_system: job_system.clone(),
         };
         let void_store = Box::pin(ArchetypeStorage::empty());
         result.archetypes.insert(VOID_TY, void_store);
+        #[cfg(feature = "parallel")]
+        result.insert_resource(job_system);
         result
     }
 
