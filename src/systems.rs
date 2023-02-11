@@ -316,6 +316,8 @@ pub struct SystemJob<'a, R> {
     pub sys: NonNull<ErasedSystem<'a, R>>,
 }
 
+unsafe impl<'a, R> Sync for SystemJob<'a, R> {}
+
 #[cfg(feature = "parallel")]
 impl<'a, R> AsJob for SystemJob<'a, R> {
     unsafe fn execute(this: *const ()) {
