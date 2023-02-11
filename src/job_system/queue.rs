@@ -54,9 +54,15 @@ pub enum PushError<T> {
 
 type PushResult<T> = Result<(), PushError<T>>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum PopError {
     Empty,
+}
+
+#[derive(Debug, Clone)]
+pub enum StealError {
+    Empty,
+    Busy,
 }
 
 type PopResult<T> = Result<T, PopError>;
@@ -133,7 +139,7 @@ impl<T> Queue<T> {
     /// Stealing from itself is a noop
     ///
     /// `self` will try to steal half of `other`'s items
-    pub fn steal(&self, victim: &Self) -> Result<(), PopError> {
+    pub fn steal(&self, victim: &Self) -> Result<(), StealError> {
         if self.items == victim.items {
             return Ok(());
         }
@@ -144,7 +150,7 @@ impl<T> Queue<T> {
             let desired = (victim.len() / 2).min(capacity);
             std::sync::atomic::fence(Ordering::Acquire);
             if desired == 0 {
-                return Err(PopError::Empty);
+                return Err(StealError::Empty);
             }
             if victim
                 .steal_lock
@@ -152,8 +158,7 @@ impl<T> Queue<T> {
                 .is_err()
             {
                 // victim is locked by a third thread
-                std::thread::yield_now();
-                continue 'retry;
+                return Err(StealError::Busy);
             }
             let victim_tail = victim.tail.load(Ordering::Relaxed);
             let target_tail = victim_tail + desired as isize;
