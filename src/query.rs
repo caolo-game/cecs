@@ -297,6 +297,48 @@ where
     {
         self.iter().next().unwrap()
     }
+
+    // TODO: take slice as input in f
+    //
+    /// `batch_size` controls how many items are processed by a single job
+    #[cfg(feature = "parallel")]
+    pub fn par_for_each_mut<'a>(
+        &mut self,
+        batch_size: usize,
+        f: impl Fn(<ArchQuery<T> as QueryFragment>::ItemMut<'a>) + Sync,
+    ) where
+        T: Send + Sync,
+    {
+        use smallvec::SmallVec;
+
+        unsafe {
+            let world = self.world.as_ref();
+            let pool = &world.job_system;
+            let root = crate::job_system::InlineJob::new(|| {});
+            let root = pool.enqueue(&root);
+            let f = &f;
+            let _jobs = world
+                .archetypes
+                .iter()
+                .filter(|(_, arch)| F::filter(arch))
+                .map(|(_, arch)| {
+                    // for each archetype create a new job that creates a new job for each window of size
+                    // <= batch_size in the archetype
+                    let job = crate::job_system::InlineJob::new(move || {
+                        let _a = arch;
+                        let _f = f;
+                        // TODO: create jobs for each window size <= batch_size
+                    });
+                    let mut j = crate::job_system::Job::new(&job);
+                    j.add_child_handle(&root);
+                    pool.enqueue_job(j);
+                    job
+                })
+                .collect::<SmallVec<[_; 8]>>();
+
+            pool.wait(root);
+        }
+    }
 }
 
 pub struct ArchQuery<T> {

@@ -53,7 +53,7 @@ impl JobPool {
         self.enqueue_job(job)
     }
 
-    fn enqueue_job(&self, job: Job) -> JobHandle {
+    pub(crate) fn enqueue_job(&self, job: Job) -> JobHandle {
         let res = job.as_handle();
         THREAD_INDEX.with(|id| unsafe {
             let id = *id.get();
@@ -104,7 +104,7 @@ impl JobPool {
             let wait_list = NonNull::new(self.inner.wait_lists[id].get()).unwrap();
             let mut tmp_exec =
                 Executor::new(id, QueueArray(q), wait_list, Arc::clone(&self.inner.sleep));
-            while !job.is_done() {
+            while !job.done() {
                 if tmp_exec.run_once().is_err() {
                     // make sure other threads keep cleaning their wait lists
                     self.inner.sleep.1.notify_all();
@@ -327,7 +327,7 @@ pub struct JobHandle {
 }
 
 impl JobHandle {
-    pub fn is_done(&self) -> bool {
+    pub fn done(&self) -> bool {
         let left = self.tasks_left.load(Ordering::Relaxed);
         debug_assert!(left >= 0, "{left}");
         left <= 0
@@ -341,7 +341,7 @@ pub trait AsJob: Sync {
 // Executor should deal in jobs
 // The public API should be job graphs
 #[derive(Debug)]
-struct Job {
+pub(crate) struct Job {
     tasks_left: Todos,
     children: SmallVec<[Todos; 4]>,
     func: unsafe fn(*const ()),
@@ -389,6 +389,13 @@ impl Job {
     }
 
     pub fn add_child(&mut self, child: &Job) {
+        debug_assert!(!self.done());
+        debug_assert!(!child.done());
+        self.children.push(Arc::clone(&child.tasks_left));
+        child.tasks_left.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn add_child_handle(&mut self, child: &JobHandle) {
         debug_assert!(!self.done());
         debug_assert!(!child.done());
         self.children.push(Arc::clone(&child.tasks_left));
