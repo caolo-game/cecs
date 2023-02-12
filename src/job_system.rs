@@ -217,16 +217,27 @@ impl Executor {
         #[cfg(feature = "tracing")]
         tracing::debug!(id = id, "Pop failed");
         // if pop fails try to steal from another thread
-        for _ in 0..queues.len() {
-            self.steal_id = (self.steal_id + 1) % queues.len();
-            if self.steal_id == id {
-                continue;
-            }
-            match queues[id].steal(&queues[self.steal_id]) {
-                Ok(_) => {
-                    return Ok(());
+        loop {
+            let mut retry = false;
+            for _ in 0..queues.len() {
+                self.steal_id = (self.steal_id + 1) % queues.len();
+                if self.steal_id == id {
+                    continue;
                 }
-                Err(_) => {}
+                match queues[id].steal(&queues[self.steal_id]) {
+                    Ok(_) => {
+                        return Ok(());
+                    }
+                    Err(err) => match err {
+                        queue::StealError::Empty => {}
+                        // if the queue is busy then move on immediately
+                        // but do retry if all other queues are empty
+                        queue::StealError::Busy => retry = true,
+                    },
+                }
+            }
+            if !retry {
+                break;
             }
         }
         // if stealing fails too try to promote waiting items
