@@ -160,7 +160,7 @@ impl<T> Queue<T> {
                 // victim is locked by a third thread
                 return Err(StealError::Busy);
             }
-            let victim_tail = victim.tail.load(Ordering::Relaxed);
+            let victim_tail = victim.tail.load(Ordering::Acquire);
             let target_tail = victim_tail + desired as isize;
 
             // copy the items
@@ -171,7 +171,9 @@ impl<T> Queue<T> {
             let mut h = head;
             for t in victim_tail..target_tail {
                 unsafe {
-                    let stolen_goods = ptr::read(victim.items.as_ptr().add(victim.index(t)));
+                    // TSAN complains about the read if it's not marked volatile
+                    let stolen_goods =
+                        ptr::read_volatile(victim.items.as_ptr().add(victim.index(t)));
                     let slot = self.items.as_ptr().add(self.index(h));
                     ptr::write(slot, stolen_goods);
                     h += 1;
@@ -183,14 +185,14 @@ impl<T> Queue<T> {
             if victim_head <= target_tail {
                 // undo the insertion
                 self.head.store(head, Ordering::Relaxed);
-                victim.steal_lock.store(false, Ordering::Relaxed);
+                victim.steal_lock.store(false, Ordering::Release);
                 std::sync::atomic::fence(Ordering::Release);
                 std::thread::yield_now();
                 continue 'retry;
             }
             // commit changes
             self.head.store(h, Ordering::Relaxed);
-            victim.tail.store(target_tail, Ordering::Relaxed);
+            victim.tail.store(target_tail, Ordering::Release);
             victim.steal_lock.store(false, Ordering::Relaxed);
             std::sync::atomic::fence(Ordering::Release);
             return Ok(());
