@@ -16,6 +16,7 @@ clone = []
 serde = ["dep:serde"]
 
 [dependencies]
+cache-padded = "1.2.0"
 lazy_static = { version = "1.4.0", optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 smallvec = "1"

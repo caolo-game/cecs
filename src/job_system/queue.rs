@@ -6,15 +6,15 @@ use std::{
     sync::atomic::{AtomicBool, AtomicIsize, Ordering},
 };
 
-// assume 64 byte cachelines for the vast majority of deployments
-#[repr(align(64))]
+use cache_padded::CachePadded;
+
 pub struct Queue<T> {
-    items: NonNull<MaybeUninit<T>>,
-    head: AtomicIsize,
-    tail: AtomicIsize,
+    items: CachePadded<NonNull<MaybeUninit<T>>>,
+    head: CachePadded<AtomicIsize>,
+    tail: CachePadded<AtomicIsize>,
     // stealers can lock this queue so at most 1 thread is stealing at a time
     // since concurrent steals would fail anyway this seems like an OK compromise
-    steal_lock: AtomicBool,
+    steal_lock: CachePadded<AtomicBool>,
     capacity: usize,
     capacity_mask: usize,
 }
@@ -73,10 +73,10 @@ impl<T> Queue<T> {
         unsafe {
             let jobs = std::alloc::alloc(Layout::array::<MaybeUninit<T>>(capacity).unwrap());
             Self {
-                items: NonNull::new_unchecked(jobs.cast()),
-                head: AtomicIsize::new(0),
-                tail: AtomicIsize::new(0),
-                steal_lock: AtomicBool::new(false),
+                items: NonNull::new_unchecked(jobs.cast()).into(),
+                head: AtomicIsize::new(0).into(),
+                tail: AtomicIsize::new(0).into(),
+                steal_lock: AtomicBool::new(false).into(),
                 capacity,
                 capacity_mask: capacity - 1,
             }
