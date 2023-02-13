@@ -44,6 +44,14 @@ impl JobPool {
         }
     }
 
+    pub fn scope(&self, f: impl FnOnce(Scope)) {
+        let scope = Scope {
+            pool: self,
+            root: Default::default(),
+        };
+        f(scope);
+    }
+
     /// # Safety
     ///
     /// Caller must ensure that `job` outlives the job completion
@@ -331,7 +339,7 @@ lazy_static::lazy_static!(
 
 type Todos = Arc<AtomicIsize>;
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct JobHandle {
     tasks_left: Todos,
 }
@@ -344,7 +352,7 @@ impl JobHandle {
     }
 }
 
-pub trait AsJob: Sync {
+pub trait AsJob: Send {
     unsafe fn execute(instance: *const ());
 }
 
@@ -406,7 +414,6 @@ impl Job {
 
     pub fn add_child_handle(&mut self, child: &JobHandle) {
         debug_assert!(!self.done());
-        debug_assert!(!child.done());
         self.children.push(Arc::clone(&child.tasks_left));
         child.tasks_left.fetch_add(1, Ordering::Relaxed);
     }
@@ -421,8 +428,6 @@ impl Job {
 pub struct InlineJob<F> {
     inner: UnsafeCell<Option<F>>,
 }
-
-unsafe impl<F: Send> Sync for InlineJob<F> {}
 
 impl<F> InlineJob<F> {
     pub fn new(inner: F) -> Self {
@@ -446,6 +451,73 @@ impl<F: FnOnce() + Send> AsJob for InlineJob<F> {
         let instance = &*instance;
         let inner = (&mut *instance.inner.get()).take();
         (inner.unwrap())();
+    }
+}
+
+pub struct BoxedJob<F> {
+    inner: F,
+}
+
+impl<F> AsJob for BoxedJob<F>
+where
+    F: FnOnce() + Send,
+{
+    unsafe fn execute(instance: *const ()) {
+        let instance: Box<Self> = Box::from_raw(instance.cast_mut().cast());
+        (instance.inner)();
+    }
+}
+
+impl<F> BoxedJob<F> {
+    pub fn new(inner: F) -> Box<Self> {
+        Box::new(Self { inner })
+    }
+
+    /// # Safety caller must ensure that the job is executed exactly once
+    /// The job takes ownership of self
+    pub(crate) unsafe fn into_job(self: Box<Self>) -> Job
+    where
+        F: FnOnce() + Send,
+    {
+        Job::new(Box::into_raw(self))
+    }
+}
+
+pub struct Scope<'a> {
+    pool: &'a JobPool,
+    root: JobHandle,
+}
+
+impl<'a> Drop for Scope<'a> {
+    fn drop(&mut self) {
+        let handle = std::mem::take(&mut self.root);
+        if !handle.done() {
+            self.pool.wait(handle);
+        }
+    }
+}
+
+impl<'a> Scope<'a> {
+    pub fn new(pool: &'a JobPool) -> Self {
+        Self {
+            pool,
+            root: Default::default(),
+        }
+    }
+
+    pub fn spawn(&self, task: impl FnOnce(Scope<'a>) + Send) {
+        let child = Scope {
+            pool: self.pool,
+            root: Default::default(),
+        };
+        let job = BoxedJob::new(move || {
+            task(child);
+        });
+        unsafe {
+            let mut job = job.into_job();
+            job.add_child_handle(&self.root);
+            self.pool.enqueue_job(job);
+        }
     }
 }
 
@@ -497,6 +569,26 @@ mod tests {
                 b += 1;
             },
         );
+
+        assert_eq!(a, 1);
+        assert_eq!(b, 1);
+    }
+
+    #[test]
+    fn scope_test() {
+        let pool = JobPool::default();
+
+        let mut a = 0;
+        let mut b = 0;
+
+        pool.scope(|s| {
+            s.spawn(|_s| {
+                a += 1;
+            });
+            s.spawn(|_s| {
+                b += 1;
+            });
+        });
 
         assert_eq!(a, 1);
         assert_eq!(b, 1);
