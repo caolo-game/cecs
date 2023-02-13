@@ -709,6 +709,8 @@ fn unsafe_test() {
 #[cfg(feature = "parallel")]
 #[test]
 fn unsafe_partition_test() {
+    use prelude::JobPool;
+
     use crate::prelude::With;
 
     #[derive(Debug, Clone)]
@@ -741,8 +743,8 @@ fn unsafe_partition_test() {
     ///
     /// Cecs has no way of knowing that no aliasing happens, parents' values are not changed and
     /// all children must be unique. We can, carefully, use unsafe accessors to achieve our goal
-    fn unsafe_iter_sys(q: Query<&u32>, parents: Query<(&u32, &Children)>) {
-        rayon::scope(|s| {
+    fn unsafe_iter_sys(q: Query<&u32>, parents: Query<(&u32, &Children)>, pool: Res<JobPool>) {
+        pool.scope(|s| {
             for (i, children) in parents.iter() {
                 s.spawn(|_| {
                     for child in (*children).0.iter().copied() {
