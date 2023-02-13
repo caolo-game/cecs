@@ -298,8 +298,6 @@ where
         self.iter().next().unwrap()
     }
 
-    // TODO: take slice as input in f
-    //
     /// `batch_size` controls how many items are processed by a single job
     #[cfg(feature = "parallel")]
     pub fn par_for_each_mut<'a>(
@@ -309,34 +307,28 @@ where
     ) where
         T: Send + Sync,
     {
-        use smallvec::SmallVec;
-
         unsafe {
             let world = self.world.as_ref();
             let pool = &world.job_system;
-            let root = crate::job_system::InlineJob::new(|| {});
-            let root = pool.enqueue(&root);
-            let f = &f;
-            let _jobs = world
-                .archetypes
-                .iter()
-                .filter(|(_, arch)| F::filter(arch))
-                .map(|(_, arch)| {
-                    // for each archetype create a new job that creates a new job for each window of size
-                    // <= batch_size in the archetype
-                    let job = crate::job_system::InlineJob::new(move || {
-                        let _a = arch;
-                        let _f = f;
-                        // TODO: create jobs for each window size <= batch_size
+            pool.scope(|s| {
+                let f = &f;
+                world
+                    .archetypes
+                    .iter()
+                    .filter(|(_, arch)| F::filter(arch))
+                    .for_each(|(_, arch)| {
+                        // TODO: the job allocator could probably help greatly with these jobs
+                        //
+                        // for each archetype create a new job that creates a new job for each window of size
+                        // <= batch_size in the archetype
+                        s.spawn(move |s|{
+                            let _a = arch;
+                            let _f = f;
+                            // TODO: create jobs for each window size <= batch_size
+                        });
                     });
-                    let mut j = job.as_job();
-                    j.add_child_handle(&root);
-                    pool.enqueue_job(j);
-                    job
-                })
-                .collect::<SmallVec<[_; 8]>>();
+            });
 
-            pool.wait(root);
         }
     }
 }
