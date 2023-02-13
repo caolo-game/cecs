@@ -65,6 +65,7 @@ impl JobPool {
         THREAD_INDEX.with(|id| unsafe {
             let id = *id.get();
             if job.ready() {
+                debug_assert!(id < self.inner.runnable_queues.len(), "`enqueue_job` was called from an uninitialized thread! This is strictly forbidden!");
                 let res = self.inner.runnable_queues[id].push(job);
                 match res {
                     Ok(_) => {}
