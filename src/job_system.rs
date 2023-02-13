@@ -1,4 +1,3 @@
-use smallvec::SmallVec;
 use std::{
     cell::UnsafeCell,
     marker::PhantomData,
@@ -354,7 +353,7 @@ pub trait AsJob: Sync {
 #[derive(Debug)]
 pub(crate) struct Job {
     tasks_left: Todos,
-    children: SmallVec<[Todos; 4]>,
+    children: Vec<Todos>,
     func: unsafe fn(*const ()),
     data: *const (),
 }
@@ -369,7 +368,7 @@ impl Job {
         let data = (data as *const T).cast();
         Self {
             tasks_left: Todos::new(1.into()),
-            children: SmallVec::new(),
+            children: Vec::new(),
             func: T::execute,
             data,
         }
