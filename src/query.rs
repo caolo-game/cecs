@@ -329,7 +329,7 @@ where
                         let _f = f;
                         // TODO: create jobs for each window size <= batch_size
                     });
-                    let mut j = crate::job_system::Job::new(&job);
+                    let mut j = job.as_job();
                     j.add_child_handle(&root);
                     pool.enqueue_job(j);
                     job

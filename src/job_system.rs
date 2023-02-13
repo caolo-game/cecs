@@ -32,11 +32,11 @@ impl JobPool {
         let c = InlineJob::new(|| {});
 
         unsafe {
-            let c = Job::new(&c);
-            let mut a = Job::new(&a);
+            let c = c.as_job();
+            let mut a = a.as_job();
             a.add_child(&c);
             self.enqueue_job(a);
-            let mut b = Job::new(&b);
+            let mut b = b.as_job();
             b.add_child(&c);
             self.enqueue_job(b);
             let handle = self.enqueue_job(c);
@@ -364,13 +364,12 @@ impl Job {
     /// # Safety
     ///
     /// Caller must ensure that `data` outlives the Job
-    pub unsafe fn new<T: AsJob>(data: &T) -> Self {
-        let data = (data as *const T).cast();
+    unsafe fn new<T: AsJob>(data: *const T) -> Self {
         Self {
             tasks_left: Todos::new(1.into()),
             children: Vec::new(),
             func: T::execute,
-            data,
+            data: data.cast(),
         }
     }
 
@@ -430,6 +429,14 @@ impl<F> InlineJob<F> {
         Self {
             inner: UnsafeCell::new(Some(inner)),
         }
+    }
+
+    /// # Safety caller must ensure that the instance outlives the job
+    pub(crate) unsafe fn as_job(&self) -> Job
+    where
+        F: FnOnce() + Send,
+    {
+        Job::new(self)
     }
 }
 
