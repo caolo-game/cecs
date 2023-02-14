@@ -197,8 +197,6 @@ fn optional_query_test() {
 #[test]
 #[cfg(feature = "parallel")]
 fn test_parallel() {
-    use rayon::prelude::*;
-
     let mut world = World::new(500);
 
     for i in 0..4 {
@@ -210,7 +208,7 @@ fn test_parallel() {
     }
 
     fn par_sys(mut q: Query<(&mut Foo, &String)>) {
-        q.iter_mut().par_bridge().for_each(|(foo, _)| {
+        q.par_for_each_mut(1, |(foo, _)| {
             foo.value += 1;
         });
     }

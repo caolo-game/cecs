@@ -24,7 +24,6 @@ thiserror = "1"
 tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]
-rayon = { version = "1" }
 bincode = "1"
 serde_json = { version = "1" }
 tracing-test = "0.2"
