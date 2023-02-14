@@ -61,6 +61,7 @@ pub enum PopError {
 
 #[derive(Debug, Clone)]
 pub enum StealError {
+    Noop,
     Empty,
     Busy,
 }
@@ -141,7 +142,7 @@ impl<T> Queue<T> {
     /// `self` will try to steal half of `other`'s items
     pub fn steal(&self, victim: &Self) -> Result<(), StealError> {
         if self.items == victim.items {
-            return Ok(());
+            return Err(StealError::Noop);
         }
 
         // capacity may increase during the steal, due to other threads stealing from `self`
@@ -162,7 +163,7 @@ impl<T> Queue<T> {
                 // victim is locked by a third thread
                 return Err(StealError::Busy);
             }
-            let victim_tail = victim.tail.load(Ordering::Acquire);
+            let victim_tail = victim.tail.load(Ordering::Relaxed);
             let target_tail = victim_tail + desired as isize;
 
             // copy the items
@@ -174,7 +175,7 @@ impl<T> Queue<T> {
             for t in victim_tail..target_tail {
                 unsafe {
                     // TSAN complains about the read if it's not marked volatile
-                    let stolen_goods =
+                    let stolen_goods: MaybeUninit<T> =
                         ptr::read_volatile(victim.items.as_ptr().add(victim.index(t)));
                     let slot = self.items.as_ptr().add(self.index(h));
                     ptr::write(slot, stolen_goods);
