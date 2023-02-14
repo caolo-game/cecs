@@ -219,15 +219,21 @@ impl Executor {
         #[cfg(feature = "tracing")]
         tracing::debug!(id = id, "Pop failed");
         // if pop fails try to steal from another thread
+        let next_steal = |i: &mut Self| {
+            i.steal_id = (i.steal_id + 1) % queues.len();
+        };
         loop {
             let mut retry = false;
             for _ in 0..queues.len() {
-                self.steal_id = (self.steal_id + 1) % queues.len();
+                // TODO: retain the stealer?
                 if self.steal_id == id {
+                    next_steal(self);
                     continue;
                 }
                 match queues[id].steal(&queues[self.steal_id]) {
                     Ok(_) => {
+                        // on success leave the steal_id where it is
+                        // so the next time we run out of jobs we'll retry the same queue first
                         return Ok(());
                     }
                     Err(err) => match err {
@@ -237,6 +243,7 @@ impl Executor {
                         queue::StealError::Busy => retry = true,
                     },
                 }
+                next_steal(self);
             }
             if !retry {
                 break;
