@@ -144,9 +144,11 @@ impl<T> Queue<T> {
             return Ok(());
         }
 
+        // capacity may increase during the steal, due to other threads stealing from `self`
+        // but this should be infrequent enough that we'll ignore it
+        let head = self.head.load(Ordering::Relaxed);
+        let capacity = self.capacity_mask - self.len();
         'retry: loop {
-            let head = self.head.load(Ordering::Relaxed);
-            let capacity = self.capacity_mask - self.len();
             let desired = (victim.len() / 2).min(capacity);
             std::sync::atomic::fence(Ordering::Acquire);
             if desired == 0 {
