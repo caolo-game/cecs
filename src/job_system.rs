@@ -27,9 +27,9 @@ pub struct JobPool {
 
 impl JobPool {
     pub fn join(&self, a: impl FnOnce() + Send, b: impl FnOnce() + Send) {
+        let c = InlineJob::new(|| {});
         let a = InlineJob::new(a);
         let b = InlineJob::new(b);
-        let c = InlineJob::new(|| {});
 
         unsafe {
             let c = c.as_job();
@@ -53,9 +53,9 @@ impl JobPool {
     }
 
     pub(crate) fn enqueue_job(&self, job: Job) -> JobHandle {
-        let res = job.as_handle();
-        THREAD_INDEX.with(|id| unsafe {
-            let id = *id.get();
+        unsafe {
+            let res = job.as_handle();
+            let id = THREAD_INDEX.with(|id| *id.get());
             if job.ready() {
                 debug_assert!(id < self.inner.runnable_queues.len(), "`enqueue_job` was called from an uninitialized thread! This is strictly forbidden!");
                 let res = self.inner.runnable_queues[id].push(job);
@@ -81,7 +81,7 @@ impl JobPool {
             // wake up a worker
             self.inner.sleep.1.notify_one();
             res
-        })
+        }
     }
 
     pub fn execute_graph<T>(&self, mut graph: JobGraph<T>) {
@@ -100,8 +100,8 @@ impl JobPool {
     }
 
     pub fn wait(&self, job: JobHandle) {
-        THREAD_INDEX.with(|id| unsafe {
-            let id = *id.get();
+        unsafe {
+            let id = THREAD_INDEX.with(|id| *id.get());
             let q = &*self.inner.runnable_queues as *const _;
             let wait_list = NonNull::new(self.inner.wait_lists[id].get()).unwrap();
             let mut tmp_exec =
@@ -114,7 +114,7 @@ impl JobPool {
                     std::thread::yield_now();
                 }
             }
-        });
+        }
     }
 }
 
