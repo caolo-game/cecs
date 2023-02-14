@@ -196,8 +196,8 @@ impl<T> Queue<T> {
             // commit changes
             self.head.store(h, Ordering::Relaxed);
             victim.tail.store(target_tail, Ordering::Release);
-            std::sync::atomic::fence(Ordering::Release);
             victim.steal_lock.store(false, Ordering::Release);
+            std::sync::atomic::fence(Ordering::Release);
             return Ok(());
         }
     }
