@@ -769,3 +769,32 @@ fn unsafe_partition_test() {
     world.run_system(unsafe_iter_sys);
     world.run_system(asserts);
 }
+
+#[cfg(feature = "parallel")]
+#[test]
+fn test_par_foreach() {
+    let mut world = World::new(128);
+
+    {
+        for _ in 0..128 {
+            let a = world.insert_entity();
+            world.set_component(a, 0u32).unwrap();
+        }
+    }
+
+    fn update_sys(mut q: Query<&mut u32>) {
+        q.par_for_each_mut(1, |i| {
+            *i += 1;
+        });
+    }
+
+    fn asserts(q0: Query<&u32>) {
+        for i in q0.iter().copied() {
+            assert_eq!(i, 1);
+        }
+        assert_eq!(q0.count(), 128);
+    }
+
+    world.run_system(update_sys);
+    world.run_system(asserts);
+}

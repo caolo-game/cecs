@@ -11,7 +11,7 @@ use crate::{
     RowIndex, World,
 };
 use filters::Filter;
-use std::{any::TypeId, collections::HashSet, marker::PhantomData};
+use std::{any::TypeId, collections::HashSet, marker::PhantomData, ops::RangeBounds, slice};
 
 pub(crate) trait WorldQuery<'a> {
     fn new(db: &'a World, commands_index: usize) -> Self;
@@ -315,20 +315,39 @@ where
                 world
                     .archetypes
                     .iter()
+                    // TODO: should filters run inside the jobs instead?
+                    // currently I anticipate that filters are inexpensive, so it seems cheaper to
+                    // filter ahead of job creation
                     .filter(|(_, arch)| F::filter(arch))
                     .for_each(|(_, arch)| {
                         // TODO: the job allocator could probably help greatly with these jobs
                         //
                         // for each archetype create a new job that creates a new job for each window of size
                         // <= batch_size in the archetype
-                        s.spawn(move |s|{
-                            let _a = arch;
-                            let _f = f;
-                            // TODO: create jobs for each window size <= batch_size
+                        s.spawn(move |s| {
+                            let mut p = 0;
+                            let len = arch.len();
+                            while p + batch_size < len {
+                                s.spawn(move |_s| {
+                                    let range = p..(p + batch_size);
+                                    for t in ArchQuery::<T>::iter_range_mut(arch, range) {
+                                        f(t);
+                                    }
+                                });
+                                p += batch_size;
+                            }
+                            if p < len {
+                                let end = (p + batch_size).min(len);
+                                s.spawn(move |_s| {
+                                    let range = p..end;
+                                    for t in ArchQuery::<T>::iter_range_mut(arch, range) {
+                                        f(t);
+                                    }
+                                });
+                            }
                         });
                     });
             });
-
         }
     }
 }
@@ -358,6 +377,10 @@ pub trait QueryFragment {
     fn types_const(set: &mut HashSet<TypeId>);
     fn contains(archetype: &ArchetypeStorage) -> bool;
     fn read_only() -> bool;
+    fn iter_range_mut(
+        archetype: &ArchetypeStorage,
+        range: impl RangeBounds<usize> + Clone,
+    ) -> Self::ItMut<'_>;
 }
 
 pub trait QueryPrimitive {
@@ -381,6 +404,10 @@ pub trait QueryPrimitive {
     fn types_mut(set: &mut HashSet<TypeId>);
     fn types_const(set: &mut HashSet<TypeId>);
     fn read_only() -> bool;
+    fn iter_range_prim_mut(
+        archetype: &ArchetypeStorage,
+        range: impl RangeBounds<usize>,
+    ) -> Self::ItMut<'_>;
 }
 
 impl QueryPrimitive for ArchQuery<EntityId> {
@@ -434,6 +461,15 @@ impl QueryPrimitive for ArchQuery<EntityId> {
     fn read_only() -> bool {
         true
     }
+
+    fn iter_range_prim_mut(
+        archetype: &ArchetypeStorage,
+        range: impl RangeBounds<usize>,
+    ) -> Self::ItMut<'_> {
+        let len = archetype.entities.len();
+        let range = slice::range(range, ..len);
+        archetype.entities[range].iter().copied()
+    }
 }
 
 // Optional query fetch functions return Option<Option<T>> where the outer optional is always Some.
@@ -449,7 +485,9 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<Option<&'a T>> {
 
     fn iter_prim(archetype: &ArchetypeStorage) -> Self::It<'_> {
         match archetype.components.get(&TypeId::of::<T>()) {
-            Some(columns) => Box::new(unsafe { (*columns.get()).as_slice::<T>().iter() }.map(Some)),
+            Some(columns) => {
+                Box::new(unsafe { (&*columns.get()).as_slice::<T>().iter() }.map(Some))
+            }
             None => Box::new((0..archetype.rows).map(|_| None)),
         }
     }
@@ -461,7 +499,7 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<Option<&'a T>> {
     unsafe fn iter_prim_unsafe(archetype: &ArchetypeStorage) -> Self::ItUnsafe<'_> {
         match archetype.components.get(&TypeId::of::<T>()) {
             Some(columns) => Box::new(
-                unsafe { (*columns.get()).as_slice_mut::<T>().iter_mut() }
+                unsafe { (&mut *columns.get()).as_slice_mut::<T>().iter_mut() }
                     .map(|x| x as *mut _)
                     .map(Some),
             ),
@@ -499,6 +537,21 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<Option<&'a T>> {
     fn read_only() -> bool {
         true
     }
+
+    fn iter_range_prim_mut(
+        archetype: &ArchetypeStorage,
+        range: impl RangeBounds<usize>,
+    ) -> Self::ItMut<'_> {
+        match archetype.components.get(&TypeId::of::<T>()) {
+            Some(columns) => unsafe {
+                let col = (&*columns.get()).as_slice::<T>();
+                let len = col.len();
+                let range = slice::range(range, ..len);
+                Box::new(col[range].iter().map(Some))
+            },
+            None => Box::new((0..archetype.rows).map(|_| None)),
+        }
+    }
 }
 
 impl<'a, T: Component> QueryPrimitive for ArchQuery<Option<&'a mut T>> {
@@ -511,7 +564,9 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<Option<&'a mut T>> {
 
     fn iter_prim(archetype: &ArchetypeStorage) -> Self::It<'_> {
         match archetype.components.get(&TypeId::of::<T>()) {
-            Some(columns) => Box::new(unsafe { (*columns.get()).as_slice::<T>().iter() }.map(Some)),
+            Some(columns) => {
+                Box::new(unsafe { (&*columns.get()).as_slice::<T>().iter() }.map(Some))
+            }
             None => Box::new((0..archetype.rows).map(|_| None)),
         }
     }
@@ -519,7 +574,7 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<Option<&'a mut T>> {
     fn iter_prim_mut(archetype: &ArchetypeStorage) -> Self::ItMut<'_> {
         match archetype.components.get(&TypeId::of::<T>()) {
             Some(columns) => {
-                Box::new(unsafe { (*columns.get()).as_slice_mut::<T>().iter_mut() }.map(Some))
+                Box::new(unsafe { (&mut *columns.get()).as_slice_mut::<T>().iter_mut() }.map(Some))
             }
             None => Box::new((0..archetype.rows).map(|_| None)),
         }
@@ -528,7 +583,7 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<Option<&'a mut T>> {
     unsafe fn iter_prim_unsafe(archetype: &ArchetypeStorage) -> Self::ItUnsafe<'_> {
         match archetype.components.get(&TypeId::of::<T>()) {
             Some(columns) => Box::new(
-                unsafe { (*columns.get()).as_slice_mut::<T>().iter_mut() }
+                unsafe { (&mut *columns.get()).as_slice_mut::<T>().iter_mut() }
                     .map(|x| x as *mut _)
                     .map(Some),
             ),
@@ -565,6 +620,21 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<Option<&'a mut T>> {
 
     fn read_only() -> bool {
         false
+    }
+
+    fn iter_range_prim_mut(
+        archetype: &ArchetypeStorage,
+        range: impl RangeBounds<usize>,
+    ) -> Self::ItMut<'_> {
+        match archetype.components.get(&TypeId::of::<T>()) {
+            Some(columns) => unsafe {
+                let col = (&mut *columns.get()).as_slice_mut::<T>();
+                let len = col.len();
+                let range = slice::range(range, ..len);
+                Box::new(col[range].iter_mut().map(Some))
+            },
+            None => Box::new((0..archetype.rows).map(|_| None)),
+        }
     }
 }
 
@@ -607,7 +677,7 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<&'a T> {
         archetype
             .components
             .get(&TypeId::of::<T>())
-            .map(|columns| unsafe { (*columns.get()).as_slice::<T>().iter() })
+            .map(|columns| unsafe { (&*columns.get()).as_slice::<T>().iter() })
             .into_iter()
             .flatten()
     }
@@ -622,7 +692,7 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<&'a T> {
                 .components
                 .get(&TypeId::of::<T>())
                 .map(|columns| unsafe {
-                    let slice = (*columns.get()).as_slice_mut::<T>();
+                    let slice = (&mut *columns.get()).as_slice_mut::<T>();
                     let ptr = slice.as_mut_ptr();
                     let len = slice.len();
                     (0..len).map(move |i| ptr.add(i))
@@ -634,6 +704,23 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<&'a T> {
 
     fn read_only() -> bool {
         true
+    }
+
+    fn iter_range_prim_mut(
+        archetype: &ArchetypeStorage,
+        range: impl RangeBounds<usize>,
+    ) -> Self::ItMut<'_> {
+        archetype
+            .components
+            .get(&TypeId::of::<T>())
+            .map(|columns| unsafe {
+                let col = (&*columns.get()).as_slice::<T>();
+                let len = col.len();
+                let range = slice::range(range, ..len);
+                col[range].iter()
+            })
+            .into_iter()
+            .flatten()
     }
 }
 
@@ -649,7 +736,7 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<&'a mut T> {
         archetype
             .components
             .get(&TypeId::of::<T>())
-            .map(|columns| unsafe { (*columns.get()).as_slice::<T>().iter() })
+            .map(|columns| unsafe { (&*columns.get()).as_slice::<T>().iter() })
             .into_iter()
             .flatten()
     }
@@ -658,7 +745,7 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<&'a mut T> {
         archetype
             .components
             .get(&TypeId::of::<T>())
-            .map(|columns| unsafe { (*columns.get()).as_slice_mut::<T>().iter_mut() })
+            .map(|columns| unsafe { (&mut *columns.get()).as_slice_mut::<T>().iter_mut() })
             .into_iter()
             .flatten()
     }
@@ -669,7 +756,7 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<&'a mut T> {
                 .components
                 .get(&TypeId::of::<T>())
                 .map(|columns| unsafe {
-                    let slice = (*columns.get()).as_slice_mut::<T>();
+                    let slice = (&mut *columns.get()).as_slice_mut::<T>();
                     let ptr = slice.as_mut_ptr();
                     let len = slice.len();
                     (0..len).map(move |i| ptr.add(i))
@@ -710,6 +797,23 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<&'a mut T> {
 
     fn read_only() -> bool {
         false
+    }
+
+    fn iter_range_prim_mut(
+        archetype: &ArchetypeStorage,
+        range: impl RangeBounds<usize>,
+    ) -> Self::ItMut<'_> {
+        archetype
+            .components
+            .get(&TypeId::of::<T>())
+            .map(|columns| unsafe {
+                let col = (&mut *columns.get()).as_slice_mut::<T>();
+                let len = col.len();
+                let range = slice::range(range, ..len);
+                col[range].iter_mut()
+            })
+            .into_iter()
+            .flatten()
     }
 }
 
@@ -766,6 +870,13 @@ where
     fn read_only() -> bool {
         <Self as QueryPrimitive>::read_only()
     }
+
+    fn iter_range_mut(
+        archetype: &ArchetypeStorage,
+        range: impl RangeBounds<usize> + Clone,
+    ) -> Self::ItMut<'_> {
+        <Self as QueryPrimitive>::iter_range_prim_mut(archetype, range)
+    }
 }
 
 // macro implementing more combinations
@@ -818,6 +929,13 @@ macro_rules! impl_tuple {
             fn iter_mut(archetype: &ArchetypeStorage) -> Self::ItMut<'_>
             {
                 TupleIterator(($( ArchQuery::<$t>::iter_mut(archetype) ),+))
+            }
+
+            fn iter_range_mut(
+                archetype: &ArchetypeStorage,
+                range: impl RangeBounds<usize> + Clone,
+            ) -> Self::ItMut<'_> {
+                TupleIterator(($( ArchQuery::<$t>::iter_range_mut(archetype, range.clone()) ),+))
             }
 
             unsafe fn iter_unsafe(archetype: &ArchetypeStorage) -> Self::ItUnsafe<'_>
