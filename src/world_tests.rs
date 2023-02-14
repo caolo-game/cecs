@@ -201,7 +201,7 @@ fn test_parallel() {
 
     for i in 0..4 {
         let id = world.insert_entity();
-        world.set_component(id, Foo { value: i }).unwrap();
+        world.set_component(id, Foo { value: 0 }).unwrap();
         if i % 2 == 0 {
             world.set_component(id, "poggers".to_string()).unwrap();
         }
@@ -213,7 +213,18 @@ fn test_parallel() {
         });
     }
 
+    fn asserts(q: Query<(&Foo, Option<&String>)>) {
+        q.iter().for_each(|(f, s)| {
+            if s.is_some() {
+                assert_eq!(f.value, 1);
+            } else {
+                assert_eq!(f.value, 0);
+            }
+        })
+    }
+
     world.run_system(par_sys);
+    world.run_system(asserts);
 }
 
 #[test]
