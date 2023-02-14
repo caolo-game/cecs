@@ -199,7 +199,7 @@ fn optional_query_test() {
 fn test_parallel() {
     let mut world = World::new(500);
 
-    for i in 0..4 {
+    for i in 0..500 {
         let id = world.insert_entity();
         world.set_component(id, Foo { value: 0 }).unwrap();
         if i % 2 == 0 {

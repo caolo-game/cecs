@@ -149,8 +149,8 @@ impl<T> Queue<T> {
         let head = self.head.load(Ordering::Relaxed);
         let capacity = self.capacity_mask - self.len();
         'retry: loop {
-            let desired = (victim.len() / 2).min(capacity);
             std::sync::atomic::fence(Ordering::Acquire);
+            let desired = (victim.len() / 2).min(capacity);
             if desired == 0 {
                 return Err(StealError::Empty);
             }
@@ -184,19 +184,20 @@ impl<T> Queue<T> {
             let victim_head = victim.head.load(Ordering::Acquire);
             // unlikely, but the producer thread might pop into the part of the queue
             // we're stealing
+            //
+            // TODO: instead of undoing the whole insertion it's enough that we undo only the items
+            // the producer has popped
             if victim_head <= target_tail {
                 // undo the insertion
-                self.head.store(head, Ordering::Relaxed);
                 victim.steal_lock.store(false, Ordering::Release);
-                std::sync::atomic::fence(Ordering::Release);
                 std::thread::yield_now();
                 continue 'retry;
             }
             // commit changes
             self.head.store(h, Ordering::Relaxed);
             victim.tail.store(target_tail, Ordering::Release);
-            victim.steal_lock.store(false, Ordering::Relaxed);
             std::sync::atomic::fence(Ordering::Release);
+            victim.steal_lock.store(false, Ordering::Release);
             return Ok(());
         }
     }
