@@ -52,14 +52,6 @@ impl JobPool {
         f(scope);
     }
 
-    /// # Safety
-    ///
-    /// Caller must ensure that `job` outlives the job completion
-    pub unsafe fn enqueue(&self, job: &impl AsJob) -> JobHandle {
-        let job = Job::new(job);
-        self.enqueue_job(job)
-    }
-
     pub(crate) fn enqueue_job(&self, job: Job) -> JobHandle {
         let res = job.as_handle();
         THREAD_INDEX.with(|id| unsafe {
@@ -491,9 +483,8 @@ pub struct Scope<'a> {
 
 impl<'a> Drop for Scope<'a> {
     fn drop(&mut self) {
-        let handle = std::mem::take(&mut self.root);
-        if !handle.done() {
-            self.pool.wait(handle);
+        if !self.root.done() {
+            self.pool.wait(self.root.clone());
         }
     }
 }
@@ -507,12 +498,12 @@ impl<'a> Scope<'a> {
     }
 
     pub fn spawn(&self, task: impl FnOnce(Scope<'a>) + Send) {
-        let child = Scope {
+        let child_scope = Scope {
             pool: self.pool,
             root: Default::default(),
         };
         let job = BoxedJob::new(move || {
-            task(child);
+            task(child_scope);
         });
         unsafe {
             let mut job = job.into_job();
@@ -579,19 +570,19 @@ mod tests {
     fn scope_test() {
         let pool = JobPool::default();
 
-        let mut a = 0;
-        let mut b = 0;
+        let a = AtomicIsize::new(0);
+        let b = AtomicIsize::new(0);
 
         pool.scope(|s| {
             s.spawn(|_s| {
-                a += 1;
+                a.fetch_add(1, Ordering::Relaxed);
             });
             s.spawn(|_s| {
-                b += 1;
+                b.fetch_add(1, Ordering::Relaxed);
             });
         });
 
-        assert_eq!(a, 1);
-        assert_eq!(b, 1);
+        assert_eq!(a.load(Ordering::Relaxed), 1);
+        assert_eq!(b.load(Ordering::Relaxed), 1);
     }
 }
