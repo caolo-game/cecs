@@ -12,12 +12,8 @@ use std::{
     time::Duration,
 };
 
-use self::queue::PushError;
-
-mod queue;
-
 // TODO: Job Allocator
-type WorkerQueue = queue::Queue<Job>;
+type WorkerQueue = crossbeam_deque::Worker<Job>;
 type Sleep = Arc<(Mutex<bool>, Condvar)>;
 
 #[derive(Clone)]
@@ -64,21 +60,7 @@ impl JobPool {
             );
             if job.ready() {
                 debug_assert!(id < self.inner.runnable_queues.len(), "`enqueue_job` was called from an uninitialized thread! This is strictly forbidden!");
-                let res = self.inner.runnable_queues[id].push(job);
-                match res {
-                    Ok(_) => {}
-                    Err(err) => match err {
-                        PushError::Full(job) => {
-                            #[cfg(feature = "tracing")]
-                            tracing::debug!(
-                                id = id,
-                                data = tracing::field::debug(job.data),
-                                "Job queue is full, pushing job into the waiting list"
-                            );
-                            (&mut *self.inner.wait_lists[id].get()).push(job);
-                        }
-                    },
-                }
+                self.inner.runnable_queues[id].push(job);
                 // wake up a worker
                 self.inner.sleep.1.notify_one();
             } else {
@@ -214,7 +196,7 @@ impl Executor {
         let id = self.id;
         #[cfg(feature = "tracing")]
         tracing::trace!(id = id, "Running executor");
-        if let Ok(mut job) = queues[id].pop() {
+        if let Some(mut job) = queues[id].pop() {
             #[cfg(feature = "tracing")]
             tracing::debug!(
                 id = id,
@@ -228,23 +210,31 @@ impl Executor {
         tracing::debug!(id = id, "Pop failed");
         // if pop fails try to steal from another thread
         let qlen = queues.len();
+        let next_id = move |i: &mut Self| {
+            i.steal_id = (i.steal_id + 1) % qlen;
+        };
         loop {
             let mut retry = false;
-            for _ in 0..qlen {
-                match queues[id].steal(&queues[self.steal_id]) {
-                    Ok(_) => {
-                        // on success leave the steal_id where it is
-                        // so the next time we run out of jobs we'll retry the same queue first
+            for _ in 0..queues.len() {
+                if self.steal_id == id {
+                    next_id(self);
+                    continue;
+                }
+                // TODO: retain the stealer?
+                let stealer = queues[self.steal_id].stealer();
+                match stealer.steal_batch(&queues[self.id]) {
+                    crossbeam_deque::Steal::Success(_) => {
+                        // do not increment the id if steal succeeds
+                        // next time this executor is out of jobs try stealing from the same queue
+                        // first
                         return Ok(());
                     }
-                    Err(err) => match err {
-                        // if the queue is busy then move on immediately
-                        // but do retry if all other queues are empty
-                        queue::StealError::Busy => retry = true,
-                        queue::StealError::Noop | queue::StealError::Empty => {}
-                    },
+                    crossbeam_deque::Steal::Empty => {}
+                    crossbeam_deque::Steal::Retry => {
+                        retry = true;
+                    }
                 }
-                self.steal_id = (self.steal_id + 1) % qlen;
+                next_id(self);
             }
             if !retry {
                 break;
@@ -259,14 +249,7 @@ impl Executor {
                 let job = wait_list.swap_remove(i);
                 #[cfg(feature = "tracing")]
                 let data = job.data;
-                if let Err(err) = queues[id].push(job) {
-                    match err {
-                        PushError::Full(job) => {
-                            wait_list.push(job);
-                            break;
-                        }
-                    }
-                }
+                queues[id].push(job);
                 self.sleep.1.notify_one();
                 promoted = true;
 
@@ -292,11 +275,10 @@ unsafe impl Send for QueueArray {}
 
 impl Inner {
     pub fn new(workers: NonZeroUsize) -> Self {
-        let capacity = NonZeroUsize::new(1 << 16).unwrap();
         let workers = workers.get();
         let mut queues = Vec::with_capacity(workers);
         for _ in 0..workers {
-            queues.push(queue::Queue::new(capacity));
+            queues.push(WorkerQueue::new_fifo());
         }
         let queues = Pin::new(queues.into_boxed_slice());
         let q = &*queues as *const _;
