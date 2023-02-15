@@ -153,6 +153,7 @@ static ZERO_LOCK: ReentrantMutex<()> = ReentrantMutex::new(());
 fn with_thread_index<R>(f: impl FnOnce(usize) -> R) -> R {
     let mut id = unsafe { THREAD_INDEX.with(|id| *id.get()) };
     // unitinialized threads can use the main thread's queue
+    // TODO: create +1 entry for backthreads and don't block the main with a mutex?
     let _lock = if id == 0 {
         id = 0;
         Some(ZERO_LOCK.lock())
