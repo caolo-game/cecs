@@ -300,10 +300,63 @@ where
 
     /// `batch_size` controls how many items are processed by a single job
     #[cfg(feature = "parallel")]
-    pub fn par_for_each_mut<'a>(
-        &mut self,
+    pub fn par_for_each<'a>(
+        &'a mut self,
         batch_size: usize,
-        f: impl Fn(<ArchQuery<T> as QueryFragment>::ItemMut<'a>) + Sync,
+        f: impl Fn(<ArchQuery<T> as QueryFragment>::Item<'a>) + Sync,
+    ) where
+        T: Send + Sync,
+    {
+        unsafe {
+            let world = self.world.as_ref();
+            let pool = &world.job_system;
+            pool.scope(|s| {
+                let f = &f;
+                world
+                    .archetypes
+                    .iter()
+                    // TODO: should filters run inside the jobs instead?
+                    // currently I anticipate that filters are inexpensive, so it seems cheaper to
+                    // filter ahead of job creation
+                    .filter(|(_, arch)| F::filter(arch))
+                    .for_each(|(_, arch)| {
+                        // TODO: the job allocator could probably help greatly with these jobs
+                        //
+                        // for each archetype create a new job that creates a new job for each window of size
+                        // <= batch_size in the archetype
+                        s.spawn(move |s| {
+                            let mut p = 0;
+                            let len = arch.len();
+                            while p + batch_size < len {
+                                s.spawn(move |_s| {
+                                    let range = p..(p + batch_size);
+                                    for t in ArchQuery::<T>::iter_range(arch, range) {
+                                        f(t);
+                                    }
+                                });
+                                p += batch_size;
+                            }
+                            if p < len {
+                                let end = (p + batch_size).min(len);
+                                s.spawn(move |_s| {
+                                    let range = p..end;
+                                    for t in ArchQuery::<T>::iter_range(arch, range) {
+                                        f(t);
+                                    }
+                                });
+                            }
+                        });
+                    });
+            });
+        }
+    }
+
+    /// `batch_size` controls how many items are processed by a single job
+    #[cfg(feature = "parallel")]
+    pub fn par_for_each_mut<'a>(
+        &'a mut self,
+        batch_size: usize,
+        f: impl Fn(<ArchQuery<T> as QueryFragment>::ItemMut<'a>) + Sync + 'a,
     ) where
         T: Send + Sync,
     {
@@ -377,6 +430,10 @@ pub trait QueryFragment {
     fn types_const(set: &mut HashSet<TypeId>);
     fn contains(archetype: &ArchetypeStorage) -> bool;
     fn read_only() -> bool;
+    fn iter_range(
+        archetype: &ArchetypeStorage,
+        range: impl RangeBounds<usize> + Clone,
+    ) -> Self::It<'_>;
     fn iter_range_mut(
         archetype: &ArchetypeStorage,
         range: impl RangeBounds<usize> + Clone,
@@ -404,6 +461,10 @@ pub trait QueryPrimitive {
     fn types_mut(set: &mut HashSet<TypeId>);
     fn types_const(set: &mut HashSet<TypeId>);
     fn read_only() -> bool;
+    fn iter_range_prim(
+        archetype: &ArchetypeStorage,
+        range: impl RangeBounds<usize>,
+    ) -> Self::It<'_>;
     fn iter_range_prim_mut(
         archetype: &ArchetypeStorage,
         range: impl RangeBounds<usize>,
@@ -462,13 +523,20 @@ impl QueryPrimitive for ArchQuery<EntityId> {
         true
     }
 
+    fn iter_range_prim(
+        archetype: &ArchetypeStorage,
+        range: impl RangeBounds<usize>,
+    ) -> Self::It<'_> {
+        let len = archetype.entities.len();
+        let range = slice::range(range, ..len);
+        archetype.entities[range].iter().copied()
+    }
+
     fn iter_range_prim_mut(
         archetype: &ArchetypeStorage,
         range: impl RangeBounds<usize>,
     ) -> Self::ItMut<'_> {
-        let len = archetype.entities.len();
-        let range = slice::range(range, ..len);
-        archetype.entities[range].iter().copied()
+        Self::iter_range_prim(archetype, range)
     }
 }
 
@@ -538,10 +606,10 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<Option<&'a T>> {
         true
     }
 
-    fn iter_range_prim_mut(
+    fn iter_range_prim(
         archetype: &ArchetypeStorage,
         range: impl RangeBounds<usize>,
-    ) -> Self::ItMut<'_> {
+    ) -> Self::It<'_> {
         match archetype.components.get(&TypeId::of::<T>()) {
             Some(columns) => unsafe {
                 let col = (&*columns.get()).as_slice::<T>();
@@ -551,6 +619,13 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<Option<&'a T>> {
             },
             None => Box::new((0..archetype.rows).map(|_| None)),
         }
+    }
+
+    fn iter_range_prim_mut(
+        archetype: &ArchetypeStorage,
+        range: impl RangeBounds<usize>,
+    ) -> Self::ItMut<'_> {
+        Self::iter_range_prim(archetype, range)
     }
 }
 
@@ -620,6 +695,21 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<Option<&'a mut T>> {
 
     fn read_only() -> bool {
         false
+    }
+
+    fn iter_range_prim(
+        archetype: &ArchetypeStorage,
+        range: impl RangeBounds<usize>,
+    ) -> Self::It<'_> {
+        match archetype.components.get(&TypeId::of::<T>()) {
+            Some(columns) => unsafe {
+                let col = (&mut *columns.get()).as_slice::<T>();
+                let len = col.len();
+                let range = slice::range(range, ..len);
+                Box::new(col[range].iter().map(Some))
+            },
+            None => Box::new((0..archetype.rows).map(|_| None)),
+        }
     }
 
     fn iter_range_prim_mut(
@@ -706,7 +796,7 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<&'a T> {
         true
     }
 
-    fn iter_range_prim_mut(
+    fn iter_range_prim(
         archetype: &ArchetypeStorage,
         range: impl RangeBounds<usize>,
     ) -> Self::ItMut<'_> {
@@ -721,6 +811,13 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<&'a T> {
             })
             .into_iter()
             .flatten()
+    }
+
+    fn iter_range_prim_mut(
+        archetype: &ArchetypeStorage,
+        range: impl RangeBounds<usize>,
+    ) -> Self::ItMut<'_> {
+        Self::iter_range_prim(archetype, range)
     }
 }
 
@@ -799,6 +896,23 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<&'a mut T> {
         false
     }
 
+    fn iter_range_prim(
+        archetype: &ArchetypeStorage,
+        range: impl RangeBounds<usize>,
+    ) -> Self::It<'_> {
+        archetype
+            .components
+            .get(&TypeId::of::<T>())
+            .map(|columns| unsafe {
+                let col = (&mut *columns.get()).as_slice::<T>();
+                let len = col.len();
+                let range = slice::range(range, ..len);
+                col[range].iter()
+            })
+            .into_iter()
+            .flatten()
+    }
+
     fn iter_range_prim_mut(
         archetype: &ArchetypeStorage,
         range: impl RangeBounds<usize>,
@@ -871,6 +985,13 @@ where
         <Self as QueryPrimitive>::read_only()
     }
 
+    fn iter_range(
+        archetype: &ArchetypeStorage,
+        range: impl RangeBounds<usize> + Clone,
+    ) -> Self::It<'_> {
+        <Self as QueryPrimitive>::iter_range_prim(archetype, range)
+    }
+
     fn iter_range_mut(
         archetype: &ArchetypeStorage,
         range: impl RangeBounds<usize> + Clone,
@@ -929,6 +1050,13 @@ macro_rules! impl_tuple {
             fn iter_mut(archetype: &ArchetypeStorage) -> Self::ItMut<'_>
             {
                 TupleIterator(($( ArchQuery::<$t>::iter_mut(archetype) ),+))
+            }
+
+            fn iter_range(
+                archetype: &ArchetypeStorage,
+                range: impl RangeBounds<usize> + Clone,
+            ) -> Self::It<'_> {
+                TupleIterator(($( ArchQuery::<$t>::iter_range(archetype, range.clone()) ),+))
             }
 
             fn iter_range_mut(
