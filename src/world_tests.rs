@@ -196,6 +196,7 @@ fn optional_query_test() {
 
 #[test]
 #[cfg(feature = "parallel")]
+#[cfg_attr(feature = "tracing", tracing_test::traced_test)]
 fn test_parallel() {
     let mut world = World::new(500);
 
@@ -293,6 +294,7 @@ fn resource_query_test() {
 }
 
 #[test]
+#[cfg_attr(feature = "tracing", tracing_test::traced_test)]
 fn world_execute_systems_test() {
     let mut world = World::new(400);
 
@@ -779,8 +781,9 @@ fn unsafe_partition_test() {
     world.run_system(asserts);
 }
 
-#[cfg(feature = "parallel")]
 #[test]
+#[cfg(feature = "parallel")]
+#[cfg_attr(feature = "tracing", tracing_test::traced_test)]
 fn test_par_foreach() {
     let mut world = World::new(128);
 

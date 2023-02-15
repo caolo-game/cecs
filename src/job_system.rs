@@ -56,6 +56,12 @@ impl JobPool {
         unsafe {
             let res = job.as_handle();
             let id = THREAD_INDEX.with(|id| *id.get());
+            #[cfg(feature = "tracing")]
+            tracing::trace!(
+                id = id,
+                data = tracing::field::debug(job.data),
+                "Enqueueing job"
+            );
             if job.ready() {
                 debug_assert!(id < self.inner.runnable_queues.len(), "`enqueue_job` was called from an uninitialized thread! This is strictly forbidden!");
                 let res = self.inner.runnable_queues[id].push(job);
@@ -206,6 +212,8 @@ impl Executor {
     unsafe fn run_once(&mut self) -> Result<(), RunError> {
         let queues = &*self.queues.0;
         let id = self.id;
+        #[cfg(feature = "tracing")]
+        tracing::trace!(id = id, "Running executor");
         if let Ok(mut job) = queues[id].pop() {
             #[cfg(feature = "tracing")]
             tracing::debug!(
@@ -549,6 +557,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(feature = "tracing", tracing_test::traced_test)]
     fn join_test() {
         let pool = JobPool::default();
 
@@ -569,6 +578,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "tracing", tracing_test::traced_test)]
     fn scope_test() {
         let pool = JobPool::default();
 
