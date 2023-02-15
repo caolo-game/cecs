@@ -196,26 +196,36 @@ fn optional_query_test() {
 
 #[test]
 #[cfg(feature = "parallel")]
+#[cfg_attr(feature = "tracing", tracing_test::traced_test)]
 fn test_parallel() {
-    use rayon::prelude::*;
-
     let mut world = World::new(500);
 
-    for i in 0..4 {
+    for i in 0..500 {
         let id = world.insert_entity();
-        world.set_component(id, Foo { value: i }).unwrap();
+        world.set_component(id, Foo { value: 0 }).unwrap();
         if i % 2 == 0 {
             world.set_component(id, "poggers".to_string()).unwrap();
         }
     }
 
     fn par_sys(mut q: Query<(&mut Foo, &String)>) {
-        q.iter_mut().par_bridge().for_each(|(foo, _)| {
+        q.par_for_each_mut(1, |(foo, _)| {
             foo.value += 1;
         });
     }
 
+    fn asserts(q: Query<(&Foo, Option<&String>)>) {
+        q.iter().for_each(|(f, s)| {
+            if s.is_some() {
+                assert_eq!(f.value, 1);
+            } else {
+                assert_eq!(f.value, 0);
+            }
+        })
+    }
+
     world.run_system(par_sys);
+    world.run_system(asserts);
 }
 
 #[test]
@@ -284,6 +294,7 @@ fn resource_query_test() {
 }
 
 #[test]
+#[cfg_attr(feature = "tracing", tracing_test::traced_test)]
 fn world_execute_systems_test() {
     let mut world = World::new(400);
 
@@ -496,6 +507,7 @@ fn fetching_same_resource_twice_is_panic_test() {
 }
 
 #[test]
+#[cfg_attr(feature = "tracing", tracing_test::traced_test)]
 fn mutating_world_inside_system_test() {
     fn mutation(mut access: WorldAccess) {
         let w = access.world_mut();
@@ -520,6 +532,7 @@ fn mutating_world_inside_system_test() {
     world.tick();
 }
 
+#[cfg(debug_assertions)]
 #[test]
 #[should_panic]
 fn world_access_is_unique_test() {
@@ -707,6 +720,8 @@ fn unsafe_test() {
 #[cfg(feature = "parallel")]
 #[test]
 fn unsafe_partition_test() {
+    use prelude::JobPool;
+
     use crate::prelude::With;
 
     #[derive(Debug, Clone)]
@@ -739,8 +754,8 @@ fn unsafe_partition_test() {
     ///
     /// Cecs has no way of knowing that no aliasing happens, parents' values are not changed and
     /// all children must be unique. We can, carefully, use unsafe accessors to achieve our goal
-    fn unsafe_iter_sys(q: Query<&u32>, parents: Query<(&u32, &Children)>) {
-        rayon::scope(|s| {
+    fn unsafe_iter_sys(q: Query<&u32>, parents: Query<(&u32, &Children)>, pool: Res<JobPool>) {
+        pool.scope(|s| {
             for (i, children) in parents.iter() {
                 s.spawn(|_| {
                     for child in (*children).0.iter().copied() {
@@ -763,5 +778,35 @@ fn unsafe_partition_test() {
     }
 
     world.run_system(unsafe_iter_sys);
+    world.run_system(asserts);
+}
+
+#[test]
+#[cfg(feature = "parallel")]
+#[cfg_attr(feature = "tracing", tracing_test::traced_test)]
+fn test_par_foreach() {
+    let mut world = World::new(128);
+
+    {
+        for _ in 0..128 {
+            let a = world.insert_entity();
+            world.set_component(a, 0u32).unwrap();
+        }
+    }
+
+    fn update_sys(mut q: Query<&mut u32>) {
+        q.par_for_each_mut(1, |i| {
+            *i += 1;
+        });
+    }
+
+    fn asserts(q0: Query<&u32>) {
+        for i in q0.iter().copied() {
+            assert_eq!(i, 1);
+        }
+        assert_eq!(q0.count(), 128);
+    }
+
+    world.run_system(update_sys);
     world.run_system(asserts);
 }

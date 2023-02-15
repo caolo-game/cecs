@@ -10,14 +10,16 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default=["parallel", "tracing"]
-parallel=["dep:rayon"]
-clone=[]
-serde=["dep:serde"]
+default = ["parallel", "tracing"]
+parallel = ["dep:lazy_static"]
+clone = []
+serde = ["dep:serde"]
 
 [dependencies]
-rayon = {version= "1", optional=true}
-serde = { version = "1", features = ["derive"], optional=true}
+cache-padded = "1.2.0"
+crossbeam-deque = "0.8.2"
+lazy_static = { version = "1.4.0", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
 smallvec = "1"
 thiserror = "1"
 tracing = { version = "0.1", optional = true }

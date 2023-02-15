@@ -1,4 +1,5 @@
 #![feature(const_type_id)]
+#![feature(slice_range)]
 
 use std::{
     any::TypeId, cell::UnsafeCell, collections::BTreeMap, mem::transmute, pin::Pin, ptr::NonNull,
@@ -29,10 +30,10 @@ pub mod persister;
 mod archetype;
 
 #[cfg(feature = "parallel")]
+pub mod job_system;
+#[cfg(feature = "parallel")]
 mod scheduler;
 
-#[cfg(feature = "parallel")]
-pub use rayon;
 use world_access::WorldLock;
 
 #[cfg(test)]
@@ -50,7 +51,9 @@ pub struct World {
     // for each system stage: a group of parallel systems
     //
     #[cfg(feature = "parallel")]
-    pub(crate) schedule: Vec<Vec<Vec<usize>>>,
+    pub(crate) schedule: Vec<scheduler::Schedule>,
+    #[cfg(feature = "parallel")]
+    pub(crate) job_system: job_system::JobPool,
 }
 
 unsafe impl Send for World {}
@@ -80,6 +83,8 @@ impl Clone for World {
 
         #[cfg(feature = "parallel")]
         let schedule = self.schedule.clone();
+        #[cfg(feature = "parallel")]
+        let job_system = self.job_system.clone();
 
         Self {
             this_lock: WorldLock::new(),
@@ -90,6 +95,8 @@ impl Clone for World {
             system_stages: systems,
             #[cfg(feature = "parallel")]
             schedule,
+            #[cfg(feature = "parallel")]
+            job_system,
         }
     }
 }
@@ -154,6 +161,8 @@ impl World {
     pub fn new(initial_capacity: u32) -> Self {
         let entity_ids = EntityIndex::new(initial_capacity);
 
+        #[cfg(feature = "parallel")]
+        let job_system: job_system::JobPool = Default::default();
         let mut result = Self {
             this_lock: WorldLock::new(),
             entity_ids: UnsafeCell::new(entity_ids),
@@ -163,9 +172,13 @@ impl World {
             system_stages: Default::default(),
             #[cfg(feature = "parallel")]
             schedule: Default::default(),
+            #[cfg(feature = "parallel")]
+            job_system: job_system.clone(),
         };
         let void_store = Box::pin(ArchetypeStorage::empty());
         result.archetypes.insert(VOID_TY, void_store);
+        #[cfg(feature = "parallel")]
+        result.insert_resource(job_system);
         result
     }
 
@@ -175,20 +188,6 @@ impl World {
 
     pub fn entity_capacity(&self) -> usize {
         self.entity_ids().capacity()
-    }
-
-    #[cfg(feature = "parallel")]
-    pub fn write_schedule(&self, mut w: impl std::io::Write) -> std::io::Result<()> {
-        for (i, stage) in self.system_stages.iter().enumerate() {
-            writeln!(w, "Stage {}:", stage.name)?;
-            for (j, group) in self.schedule[i].iter().enumerate() {
-                writeln!(w, "\tGroup {}:", j)?;
-                for k in group.iter() {
-                    writeln!(w, "\t\t- {}", stage.systems.as_slice()[*k].descriptor.name)?;
-                }
-            }
-        }
-        Ok(())
     }
 
     /// Writes entity ids and their archetype hash
@@ -428,7 +427,7 @@ impl World {
         let stage = unsafe { transmute(stage) };
         #[cfg(feature = "parallel")]
         {
-            self.schedule.push(scheduler::schedule(&stage));
+            self.schedule.push(scheduler::Schedule::from_stage(&stage));
         }
         self.system_stages.push(stage);
     }
@@ -447,7 +446,7 @@ impl World {
 
         // move stage into the world
         #[cfg(feature = "parallel")]
-        self.schedule.push(crate::scheduler::schedule(&stage));
+        self.schedule.push(scheduler::Schedule::from_stage(&stage));
 
         self.system_stages.push(stage);
 
@@ -526,9 +525,9 @@ impl World {
             #[cfg(feature = "parallel")]
             systems::StageSystems::Parallel(ref systems) => {
                 let schedule = &self.schedule[i];
-                for group in schedule {
-                    self.execute_systems_parallel(group, systems)
-                }
+                let graph = schedule.jobs(systems, self);
+                let handle = self.job_system.enqueue_graph(graph);
+                self.job_system.wait(handle);
             }
         }
         #[cfg(feature = "tracing")]
@@ -541,19 +540,6 @@ impl World {
             self.commands
                 .resize_with(len, std::cell::UnsafeCell::default);
         }
-    }
-
-    #[cfg(feature = "parallel")]
-    fn execute_systems_parallel<'a>(
-        &'a self,
-        group: &[usize],
-        systems: &[systems::ErasedSystem<()>],
-    ) {
-        use rayon::prelude::*;
-
-        group.par_iter().copied().for_each(|i| unsafe {
-            run_system(self, &systems[i]);
-        });
     }
 
     /// Constructs a new [[crate::commands::Commands]] instance with initialized buffers in this world

@@ -1,7 +1,10 @@
 #[cfg(test)]
 mod tests;
 
-use std::{any::TypeId, collections::HashSet, rc::Rc};
+use std::{any::TypeId, collections::HashSet, ptr::NonNull, rc::Rc};
+
+#[cfg(feature = "parallel")]
+use crate::job_system::AsJob;
 
 use crate::{query::WorldQuery, World};
 
@@ -159,6 +162,7 @@ impl<'a> SystemStage<'a> {
 #[allow(unused)] // with no feature=parallel most of this struct is unused
 pub struct SystemDescriptor<'a, R> {
     pub name: String,
+    pub id: TypeId,
     pub components_mut: Box<dyn 'a + Fn() -> HashSet<TypeId>>,
     pub resources_mut: Box<dyn 'a + Fn() -> HashSet<TypeId>>,
     pub components_const: Box<dyn 'a + Fn() -> HashSet<TypeId>>,
@@ -206,7 +210,7 @@ pub struct Piped<'a, R1, R2> {
 
 impl<'a> IntoSystem<'a, (), ()> for Piped<'a, (), ()>
 where
-    Self: 'a,
+    Self: 'static,
 {
     fn descriptor(self) -> SystemDescriptor<'a, ()> {
         let name = format!("{} | {}", self.lhs.name, self.rhs.name);
@@ -270,6 +274,7 @@ where
             })
         };
         SystemDescriptor {
+            id: TypeId::of::<Self>(),
             name,
             factory,
             components_mut,
@@ -306,6 +311,24 @@ where
     }
 }
 
+pub struct SystemJob<'a, R> {
+    pub world: NonNull<World>,
+    pub sys: NonNull<ErasedSystem<'a, R>>,
+}
+
+unsafe impl<'a, R> Send for SystemJob<'a, R> {}
+
+#[cfg(feature = "parallel")]
+impl<'a, R> AsJob for SystemJob<'a, R> {
+    unsafe fn execute(this: *const ()) {
+        let job: *const Self = this.cast();
+        let job = &*job;
+        let sys = job.sys.as_ref();
+        let world = job.world.as_ref();
+        (sys.execute)(world, sys.commands_index);
+    }
+}
+
 macro_rules! impl_intosys_fn {
     ($($t: ident),* $(,)*) => {
         #[allow(unused_parens)]
@@ -336,6 +359,7 @@ macro_rules! impl_intosys_fn {
                         })
                     });
                 SystemDescriptor {
+                    id: TypeId::of::<F>(),
                     name: std::any::type_name::<F>().into(),
                     components_mut:Box::new( || {
                         let mut res = HashSet::new();
