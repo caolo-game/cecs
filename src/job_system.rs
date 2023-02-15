@@ -1,3 +1,4 @@
+use parking_lot::{Condvar, Mutex, ReentrantMutex};
 use std::{
     cell::UnsafeCell,
     marker::PhantomData,
@@ -6,7 +7,7 @@ use std::{
     ptr::NonNull,
     sync::{
         atomic::{AtomicIsize, Ordering},
-        Arc, Condvar, Mutex,
+        Arc,
     },
     thread::JoinHandle,
     time::Duration,
@@ -51,24 +52,24 @@ impl JobPool {
     pub(crate) fn enqueue_job(&self, job: Job) -> JobHandle {
         unsafe {
             let res = job.as_handle();
-            let id = THREAD_INDEX.with(|id| *id.get());
-            #[cfg(feature = "tracing")]
-            tracing::trace!(
-                id = id,
-                data = tracing::field::debug(job.data),
-                "Enqueueing job"
-            );
-            if job.ready() {
-                debug_assert!(id < self.inner.runnable_queues.len(), "`enqueue_job` was called from an uninitialized thread! This is strictly forbidden!");
-                self.inner.runnable_queues[id].push(job);
+            with_thread_index(|id| {
+                #[cfg(feature = "tracing")]
+                tracing::trace!(
+                    id = id,
+                    data = tracing::field::debug(job.data),
+                    "Enqueueing job"
+                );
+                if job.ready() {
+                    self.inner.runnable_queues[id].push(job);
+                    // wake up a worker
+                    self.inner.sleep.1.notify_one();
+                } else {
+                    (&mut *self.inner.wait_lists[id].get()).push(job);
+                }
                 // wake up a worker
                 self.inner.sleep.1.notify_one();
-            } else {
-                (&mut *self.inner.wait_lists[id].get()).push(job);
-            }
-            // wake up a worker
-            self.inner.sleep.1.notify_one();
-            res
+                res
+            })
         }
     }
 
@@ -90,19 +91,20 @@ impl JobPool {
 
     pub fn wait(&self, job: JobHandle) {
         unsafe {
-            let id = THREAD_INDEX.with(|id| *id.get());
-            let q = &*self.inner.runnable_queues as *const _;
-            let wait_list = NonNull::new(self.inner.wait_lists[id].get()).unwrap();
-            let mut tmp_exec =
-                Executor::new(id, QueueArray(q), wait_list, Arc::clone(&self.inner.sleep));
-            while !job.done() {
-                if tmp_exec.run_once().is_err() {
-                    // make sure other threads keep cleaning their wait lists
-                    self.inner.sleep.1.notify_all();
-                    // busy wait so `wait` returns asap
-                    std::thread::yield_now();
+            with_thread_index(|id| {
+                let q = &*self.inner.runnable_queues as *const _;
+                let wait_list = NonNull::new(self.inner.wait_lists[id].get()).unwrap();
+                let mut tmp_exec =
+                    Executor::new(id, QueueArray(q), wait_list, Arc::clone(&self.inner.sleep));
+                while !job.done() {
+                    if tmp_exec.run_once().is_err() {
+                        // make sure other threads keep cleaning their wait lists
+                        self.inner.sleep.1.notify_all();
+                        // busy wait so `wait` returns asap
+                        std::thread::yield_now();
+                    }
                 }
-            }
+            });
         }
     }
 }
@@ -134,7 +136,7 @@ unsafe impl Sync for Inner {}
 impl Drop for Inner {
     fn drop(&mut self) {
         {
-            *self.sleep.0.lock().unwrap() = true;
+            *self.sleep.0.lock() = true;
         }
         for j in self.threads.drain(..) {
             j.join().unwrap_or(());
@@ -143,7 +145,21 @@ impl Drop for Inner {
 }
 
 thread_local! {
-    pub static THREAD_INDEX: UnsafeCell<usize> = UnsafeCell::new(usize::MAX);
+    static THREAD_INDEX: UnsafeCell<usize> = UnsafeCell::new(0);
+}
+
+static ZERO_LOCK: ReentrantMutex<()> = ReentrantMutex::new(());
+
+fn with_thread_index<R>(f: impl FnOnce(usize) -> R) -> R {
+    let mut id = unsafe { THREAD_INDEX.with(|id| *id.get()) };
+    // unitinialized threads can use the main thread's queue
+    let _lock = if id == 0 {
+        id = 0;
+        Some(ZERO_LOCK.lock())
+    } else {
+        None
+    };
+    f(id)
 }
 
 /// Context for a worker thread
@@ -178,10 +194,9 @@ impl Executor {
             loop {
                 if self.run_once().is_err() {
                     let (lock, cv) = &*self.sleep;
-                    let res = cv
-                        .wait_timeout(lock.lock().unwrap(), Duration::from_millis(5))
-                        .unwrap();
-                    if *res.0 {
+                    let mut l = lock.lock();
+                    cv.wait_for(&mut l, Duration::from_millis(5));
+                    if *l {
                         break;
                     }
                 }
@@ -309,10 +324,6 @@ impl Inner {
                     .expect("Failed to create worker thread"),
             );
         }
-        // initialize the current thread as thread 0
-        THREAD_INDEX.with(|tid| unsafe {
-            *tid.get() = 0;
-        });
         result
     }
 }
