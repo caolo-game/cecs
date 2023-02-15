@@ -526,11 +526,8 @@ impl World {
             systems::StageSystems::Parallel(ref systems) => {
                 let schedule = &self.schedule[i];
                 let graph = schedule.jobs(systems, self);
-                self.job_system.execute_graph(graph);
-
-                // for group in schedule {
-                //     self.execute_systems_parallel(group, systems)
-                // }
+                let handle = self.job_system.enqueue_graph(graph);
+                self.job_system.wait(handle);
             }
         }
         #[cfg(feature = "tracing")]

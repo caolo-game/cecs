@@ -72,19 +72,20 @@ impl JobPool {
         }
     }
 
-    pub fn execute_graph<T>(&self, mut graph: JobGraph<T>) {
-        let root = InlineJob::new(|| {});
-        let root = unsafe { Job::new(&root) };
+    pub fn enqueue_graph<T: Send>(&self, mut graph: JobGraph<T>) -> JobHandle {
+        let data = graph._data;
+        let root = BoxedJob::new(move || {
+            // take ownership of the data
+            // dropping it when the final, root, job is executed
+            let _d = data;
+        });
+        let root = unsafe { root.into_job() };
         for job in graph.jobs.drain(..) {
             let mut job = job.into_inner();
             job.add_child(&root);
             self.enqueue_job(job);
         }
-        let handle = self.enqueue_job(root);
-        self.wait(handle);
-        // TODO: return handle?
-        // do consider that graph owns the data used by jobs and must outlive the execution
-        drop(graph);
+        self.enqueue_job(root)
     }
 
     pub fn wait(&self, job: JobHandle) {
