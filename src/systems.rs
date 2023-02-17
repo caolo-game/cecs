@@ -13,6 +13,26 @@ pub type ShouldRunSystem<'a> = InnerSystem<'a, bool>;
 
 type SystemStorage<T> = smallvec::SmallVec<[T; 4]>;
 
+pub fn sort_systems<T>(sys: &mut [ErasedSystem<T>]) {
+    sys.sort_unstable_by(|a, b| {
+        let aid = a.descriptor.id;
+        let bid = b.descriptor.id;
+        assert!(
+            !(a.descriptor.after.contains(&bid) && b.descriptor.after.contains(&aid)),
+            "ambigous ordering between {} {}",
+            a.descriptor.name,
+            b.descriptor.name
+        );
+        if a.descriptor.after.contains(&bid) {
+            std::cmp::Ordering::Greater
+        } else if b.descriptor.after.contains(&aid) {
+            std::cmp::Ordering::Less
+        } else {
+            std::cmp::Ordering::Equal
+        }
+    });
+}
+
 #[derive(Clone)]
 pub struct SystemStage<'a> {
     pub name: String,
@@ -38,6 +58,14 @@ pub enum StageSystems<'a> {
 }
 
 impl<'a> StageSystems<'a> {
+    pub fn sort(&mut self) {
+        match self {
+            StageSystems::Serial(v) => sort_systems(v),
+            #[cfg(feature = "parallel")]
+            StageSystems::Parallel(v) => sort_systems(v),
+        }
+    }
+
     pub fn push(&mut self, sys: ErasedSystem<'a, ()>) {
         match self {
             StageSystems::Serial(v) => v.push(sys),
@@ -88,6 +116,11 @@ impl<'a> StageSystems<'a> {
 }
 
 impl<'a> SystemStage<'a> {
+    pub fn sort(&mut self) {
+        self.systems.sort();
+        sort_systems(&mut self.should_run);
+    }
+
     pub fn serial<N: Into<String>>(name: N) -> Self {
         Self {
             name: name.into(),
@@ -175,6 +208,7 @@ pub struct SystemDescriptor<'a, R> {
     /// produce a system
     pub factory: Box<dyn 'a + Fn() -> Box<InnerSystem<'a, R>>>,
     pub read_only: Box<dyn 'a + Fn() -> bool>,
+    pub after: HashSet<TypeId>,
 }
 
 pub struct ErasedSystem<'a, R> {
@@ -279,21 +313,40 @@ where
             })
         };
         SystemDescriptor {
-            id: TypeId::of::<Self>(),
             name,
-            factory,
+            id: TypeId::of::<Self>(),
             components_mut,
             resources_mut,
             components_const,
             resources_const,
             exclusive,
+            factory,
             read_only,
+            after: HashSet::new(),
         }
     }
 }
 
 pub trait IntoSystem<'a, Param, R> {
     fn descriptor(self) -> SystemDescriptor<'a, R>;
+    /// Order this system after another system
+    fn after<'b, P, R2>(self, rhs: impl IntoSystem<'b, P, R2>) -> SystemDescriptor<'a, R>
+    where
+        Self: Sized,
+    {
+        let mut res = self.descriptor();
+        let desc = rhs.descriptor();
+        let id = desc.id;
+        res.after.insert(id);
+        res
+    }
+}
+
+// helps chaining methods
+impl<'a, R> IntoSystem<'a, (), R> for SystemDescriptor<'a, R> {
+    fn descriptor(self) -> SystemDescriptor<'a, R> {
+        self
+    }
 }
 
 pub trait Pipe<'a, P1, P2, Rhs> {
@@ -395,6 +448,7 @@ macro_rules! impl_intosys_fn {
                         true $(&& <$t>::read_only())*
                     }),
                     factory,
+                    after: HashSet::new(),
                 }
             }
         }

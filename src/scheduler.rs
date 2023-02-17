@@ -1,11 +1,11 @@
-use std::ptr::NonNull;
+use std::{collections::HashMap, ptr::NonNull};
 
 use smallvec::SmallVec;
 
 use crate::{
     job_system::JobGraph,
     query::QueryProperties,
-    systems::{ErasedSystem, SystemJob, SystemStage},
+    systems::{sort_systems, ErasedSystem, SystemJob, SystemStage},
     World,
 };
 
@@ -15,10 +15,11 @@ pub struct Schedule {
 }
 
 impl Schedule {
-    pub fn from_stage(stage: &SystemStage) -> Self {
-        let systems = match &stage.systems {
+    pub fn from_stage(stage: &mut SystemStage) -> Self {
+        let systems = match &mut stage.systems {
             crate::systems::StageSystems::Serial(_v) => {
                 // trivial schedule
+                stage.sort();
                 return Self { parents: vec![] };
             }
             crate::systems::StageSystems::Parallel(s) => s,
@@ -26,20 +27,24 @@ impl Schedule {
         Self::from_systems(systems)
     }
 
-    pub fn from_systems<T>(systems: &[ErasedSystem<T>]) -> Self {
+    pub fn from_systems<T>(systems: &mut [ErasedSystem<T>]) -> Self {
         let mut res = Self {
             parents: Vec::with_capacity(systems.len()),
         };
         if systems.is_empty() {
             return res;
         }
-        // TODO:
-        // - what about explicit ordering?
-        // - forbid circular deps
+        sort_systems(systems);
+        let indices = systems
+            .iter()
+            .enumerate()
+            .map(|(i, sys)| (sys.descriptor.id, i))
+            .collect::<HashMap<_, _>>();
 
         let mut history = vec![QueryProperties::from_system(&systems[0].descriptor)];
         history.reserve(systems.len() - 1);
         res.parents.push(Default::default());
+        debug_assert!(systems[0].descriptor.after.is_empty(), "bad ordering");
         for i in 1..systems.len() {
             let sys = &systems[i];
             let props = QueryProperties::from_system(&sys.descriptor);
@@ -50,6 +55,13 @@ impl Schedule {
                     res.parents[i].push(j);
                 }
             }
+            // explicit orderings
+            for id in sys.descriptor.after.iter() {
+                if let Some(j) = indices.get(id) {
+                    res.parents[i].push(*j);
+                }
+            }
+
             history.push(props);
         }
         res

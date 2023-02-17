@@ -810,3 +810,76 @@ fn test_par_foreach() {
     world.run_system(update_sys);
     world.run_system(asserts);
 }
+
+#[test]
+#[cfg(feature = "parallel")]
+#[cfg_attr(feature = "tracing", tracing_test::traced_test)]
+fn par_ordering_test() {
+    use crate::systems::IntoSystem;
+    use std::sync::{
+        atomic::{AtomicU8, Ordering},
+        Arc,
+    };
+
+    let mut world = World::new(128);
+
+    world.insert_resource(Arc::new(AtomicU8::new(0)));
+
+    fn sys0(i: Res<Arc<AtomicU8>>) {
+        let i = i.fetch_add(1, Ordering::Relaxed);
+        assert_eq!(i, 0);
+    }
+
+    fn sys1(i: Res<Arc<AtomicU8>>) {
+        let i = i.fetch_add(1, Ordering::Relaxed);
+        assert_eq!(i, 1);
+    }
+
+    world
+        .run_stage(
+            SystemStage::parallel("")
+                .with_system(sys1.after(sys0))
+                .with_system(sys0),
+        )
+        .unwrap();
+
+    let i = world.get_resource::<Arc<AtomicU8>>().unwrap();
+
+    assert_eq!(i.load(Ordering::Relaxed), 2);
+}
+
+#[test]
+#[cfg_attr(feature = "tracing", tracing_test::traced_test)]
+fn serial_ordering_test() {
+    use crate::systems::IntoSystem;
+    use std::sync::{
+        atomic::{AtomicU8, Ordering},
+        Arc,
+    };
+
+    let mut world = World::new(128);
+
+    world.insert_resource(Arc::new(AtomicU8::new(0)));
+
+    fn sys0(i: Res<Arc<AtomicU8>>) {
+        let i = i.fetch_add(1, Ordering::Relaxed);
+        assert_eq!(i, 0);
+    }
+
+    fn sys1(i: Res<Arc<AtomicU8>>) {
+        let i = i.fetch_add(1, Ordering::Relaxed);
+        assert_eq!(i, 1);
+    }
+
+    world
+        .run_stage(
+            SystemStage::serial("")
+                .with_system(sys1.after(sys0))
+                .with_system(sys0),
+        )
+        .unwrap();
+
+    let i = world.get_resource::<Arc<AtomicU8>>().unwrap();
+
+    assert_eq!(i.load(Ordering::Relaxed), 2);
+}
