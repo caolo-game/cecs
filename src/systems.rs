@@ -133,7 +133,11 @@ impl<'a> SystemStage<'a> {
         let commands_index;
         #[cfg(feature = "parallel")]
         {
-            commands_index = self.systems.len();
+            if matches!(self.systems, StageSystems::Parallel(_)) {
+                commands_index = self.systems.len();
+            } else {
+                commands_index = 0;
+            }
         }
         #[cfg(not(feature = "parallel"))]
         {
