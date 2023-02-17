@@ -268,6 +268,7 @@ where
                 let lhs = (lfactory)();
                 let rhs = (rfactory)();
                 Box::new(move |world: &'a World, i| {
+                    // TODO: pipe lhs output into rhs
                     (lhs)(world, i);
                     (rhs)(world, i);
                 })
