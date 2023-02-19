@@ -49,15 +49,15 @@ impl JobPool {
         )
     }
 
-    pub fn map_reduce<'a, T, Res>(
-        &'a self,
-        data: impl Iterator<Item = &'a T>,
+    pub fn map_reduce<T, Res>(
+        &self,
+        data: impl Iterator<Item = T>,
         init: impl Fn() -> Res + Send + Sync,
-        map: impl Fn(&'a T) -> Res + Send + Sync,
+        map: impl Fn(T) -> Res + Send + Sync,
         reduce: impl Fn(Res, Res) -> Res + Send + Sync,
     ) -> Res
     where
-        T: Send + Sync + 'a,
+        T: Send + Sync,
         Res: Send,
     {
         let map = &map;
