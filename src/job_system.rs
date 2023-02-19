@@ -49,6 +49,61 @@ impl JobPool {
         )
     }
 
+    pub fn map_reduce<'a, T, Res>(
+        &'a self,
+        data: impl Iterator<Item = &'a T>,
+        init: impl Fn() -> Res + Send + Sync,
+        map: impl Fn(&'a T) -> Res + Send + Sync,
+        reduce: impl Fn(Res, Res) -> Res + Send + Sync,
+    ) -> Res
+    where
+        T: Send + Sync + 'a,
+        Res: Send,
+    {
+        let map = &map;
+        let init = &init;
+        let reduce = &reduce;
+        let jobs = data
+            .map(|t| InlineJob::new(move || map(t)))
+            .collect::<Vec<_>>();
+        let root = InlineJob::new(|| {});
+        unsafe {
+            let root = root.as_job();
+            for j in jobs.iter() {
+                let mut job = j.as_job();
+                job.add_child(&root);
+                self.enqueue_job(job);
+            }
+            self.wait(self.enqueue_job(root));
+        }
+        unsafe fn reduce_recursive<T, Res>(
+            js: &JobPool,
+            a: &[InlineJob<T, Res>],
+            init: &(impl Fn() -> Res + Send + Sync),
+            reduce: &(impl Fn(Res, Res) -> Res + Send + Sync),
+        ) -> Res
+        where
+            T: Send + Sync + FnOnce() -> Res,
+            Res: Send,
+        {
+            if a.len() > 1 {
+                let (lhs, rhs) = a.split_at(a.len() / 2);
+                let (a, b) = js.join(
+                    move || reduce_recursive(js, lhs, init, reduce),
+                    move || reduce_recursive(js, rhs, init, reduce),
+                );
+                reduce(a, b)
+            } else if a.len() == 1 {
+                let res = a[0].result.get();
+                let res = (&mut *res).take().unwrap();
+                res
+            } else {
+                init()
+            }
+        }
+        unsafe { reduce_recursive(self, &jobs, init, reduce) }
+    }
+
     pub fn scope<'a>(&'a self, f: impl FnOnce(Scope<'a>) + Send) {
         let scope = Scope {
             pool: self,
@@ -439,6 +494,9 @@ where
     result: UnsafeCell<Option<R>>,
 }
 
+unsafe impl<F, R> Send for InlineJob<F, R> where F: FnOnce() -> R {}
+unsafe impl<F, R> Sync for InlineJob<F, R> where F: FnOnce() -> R {}
+
 impl<F, R> InlineJob<F, R>
 where
     F: FnOnce() -> R,
@@ -602,5 +660,17 @@ mod tests {
 
         assert_eq!(a.load(Ordering::Relaxed), 1);
         assert_eq!(b.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    #[cfg_attr(feature = "tracing", tracing_test::traced_test)]
+    fn map_reduce_test() {
+        let pool = JobPool::default();
+
+        let range = vec![1i32; 128];
+
+        let result = pool.map_reduce(range.iter(), || 0i32, |i| *i * 2i32, |a, b| a + b);
+
+        assert_eq!(result, 128 * 2);
     }
 }
