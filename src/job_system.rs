@@ -41,7 +41,7 @@ impl JobPool {
         }
     }
 
-    pub fn scope<'a>(&'a self, f: impl FnOnce(Scope<'a>) + 'a + Send) {
+    pub fn scope<'a>(&'a self, f: impl FnOnce(Scope<'a>) + Send) {
         let scope = Scope {
             pool: self,
             root: Default::default(),
