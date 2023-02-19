@@ -23,10 +23,14 @@ pub struct JobPool {
 }
 
 impl JobPool {
-    pub fn join(&self, a: impl FnOnce() + Send, b: impl FnOnce() + Send) {
+    pub fn join<RL: Send, RR: Send>(
+        &self,
+        a: impl FnOnce() -> RL + Send,
+        b: impl FnOnce() -> RR + Send,
+    ) -> (RL, RR) {
         let c = InlineJob::new(|| {});
-        let a = InlineJob::new(a);
-        let b = InlineJob::new(b);
+        let mut a = InlineJob::new(a);
+        let mut b = InlineJob::new(b);
 
         unsafe {
             let c = c.as_job();
@@ -39,6 +43,10 @@ impl JobPool {
             let handle = self.enqueue_job(c);
             self.wait(handle);
         }
+        (
+            a.result.get_mut().take().unwrap(),
+            b.result.get_mut().take().unwrap(),
+        )
     }
 
     pub fn scope<'a>(&'a self, f: impl FnOnce(Scope<'a>) + Send) {
@@ -423,32 +431,42 @@ impl Job {
     }
 }
 
-pub struct InlineJob<F> {
+pub struct InlineJob<F, R>
+where
+    F: FnOnce() -> R,
+{
     inner: UnsafeCell<Option<F>>,
+    result: UnsafeCell<Option<R>>,
 }
 
-impl<F> InlineJob<F> {
+impl<F, R> InlineJob<F, R>
+where
+    F: FnOnce() -> R,
+{
     pub fn new(inner: F) -> Self {
         Self {
             inner: UnsafeCell::new(Some(inner)),
+            result: None.into(),
         }
     }
 
     /// # Safety caller must ensure that the instance outlives the job
     pub(crate) unsafe fn as_job(&self) -> Job
     where
-        F: FnOnce() + Send,
+        F: Send,
+        R: Send,
     {
         Job::new(self)
     }
 }
 
-impl<F: FnOnce() + Send> AsJob for InlineJob<F> {
+impl<F: FnOnce() -> R + Send, R: Send> AsJob for InlineJob<F, R> {
     unsafe fn execute(instance: *const ()) {
         let instance: *const Self = instance.cast();
         let instance = &*instance;
         let inner = (&mut *instance.inner.get()).take();
-        (inner.unwrap())();
+        let res = (inner.unwrap())();
+        *instance.result.get() = Some(res);
     }
 }
 
@@ -556,20 +574,13 @@ mod tests {
     fn join_test() {
         let pool = JobPool::default();
 
-        let mut a = 0;
-        let mut b = 0;
+        let a = 42;
+        let b = 69;
 
-        pool.join(
-            || {
-                a += 1;
-            },
-            || {
-                b += 1;
-            },
-        );
+        let (a, b) = pool.join(move || a + 1, move || b + 1);
 
-        assert_eq!(a, 1);
-        assert_eq!(b, 1);
+        assert_eq!(a, 43);
+        assert_eq!(b, 70);
     }
 
     #[test]
