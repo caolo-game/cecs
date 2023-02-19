@@ -211,6 +211,7 @@ thread_local! {
     static THREAD_INDEX: UnsafeCell<usize> = UnsafeCell::new(0);
 }
 
+// FIXME: should have a ZERO_LOCK per JobPool instead of globally
 static ZERO_LOCK: ReentrantMutex<()> = ReentrantMutex::new(());
 
 fn with_thread_index<R>(f: impl FnOnce(usize) -> R) -> R {
