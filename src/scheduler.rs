@@ -3,7 +3,7 @@ use std::{collections::HashMap, ptr::NonNull};
 use smallvec::SmallVec;
 
 use crate::{
-    job_system::JobGraph,
+    job_system::HomogeneousJobGraph,
     query::QueryProperties,
     systems::{sort_systems, ErasedSystem, SystemJob, SystemStage},
     World,
@@ -71,10 +71,10 @@ impl Schedule {
         &self,
         stage: &[ErasedSystem<'a, T>],
         world: &World,
-    ) -> JobGraph<SystemJob<'a, T>> {
+    ) -> HomogeneousJobGraph<SystemJob<'a, T>> {
         debug_assert_eq!(stage.len(), self.parents.len());
 
-        let mut graph = JobGraph::new(
+        let mut graph = HomogeneousJobGraph::new(
             stage
                 .iter()
                 .map(|s| SystemJob {

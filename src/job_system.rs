@@ -73,7 +73,7 @@ impl JobPool {
         }
     }
 
-    pub fn enqueue_graph<T: Send>(&self, mut graph: JobGraph<T>) -> JobHandle {
+    pub fn enqueue_graph<T: Send>(&self, mut graph: HomogeneousJobGraph<T>) -> JobHandle {
         let data = graph._data;
         let root = BoxedJob::new(move || {
             // take ownership of the data
@@ -518,12 +518,12 @@ impl<'a> Scope<'a> {
     }
 }
 
-pub struct JobGraph<T> {
+pub struct HomogeneousJobGraph<T> {
     jobs: Vec<UnsafeCell<Job>>,
     _data: Vec<T>,
 }
 
-impl<T> JobGraph<T>
+impl<T> HomogeneousJobGraph<T>
 where
     T: AsJob,
 {
