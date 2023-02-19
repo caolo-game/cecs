@@ -215,7 +215,7 @@ impl Executor {
         tracing::trace!(id = id, "Running executor");
         if let Some(mut job) = queues[id].pop() {
             #[cfg(feature = "tracing")]
-            tracing::debug!(
+            tracing::trace!(
                 id = id,
                 data = tracing::field::debug(job.data),
                 "Executing job"
@@ -224,7 +224,7 @@ impl Executor {
             return Ok(());
         }
         #[cfg(feature = "tracing")]
-        tracing::debug!(id = id, "Pop failed");
+        tracing::trace!(id = id, "Pop failed");
         // if pop fails try to steal from another thread
         let qlen = queues.len();
         let next_id = move |i: &mut Self| {
@@ -271,7 +271,7 @@ impl Executor {
                 promoted = true;
 
                 #[cfg(feature = "tracing")]
-                tracing::debug!(
+                tracing::trace!(
                     id = id,
                     data = tracing::field::debug(data),
                     "Promoted job to runnable"
