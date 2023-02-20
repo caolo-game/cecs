@@ -1,4 +1,4 @@
-use std::ptr::NonNull;
+use std::{collections::HashSet, ptr::NonNull};
 
 use crate::{
     entity_id::EntityId, prelude::Bundle, query::WorldQuery, CommandBuffer, Component, World,
@@ -18,19 +18,19 @@ impl<'a> WorldQuery<'a> for Commands<'a> {
         Self::new(w, commands_index)
     }
 
-    fn components_mut(_set: &mut std::collections::HashSet<std::any::TypeId>) {
+    fn components_mut(_set: &mut HashSet<std::any::TypeId>) {
         // noop
     }
 
-    fn resources_mut(_set: &mut std::collections::HashSet<std::any::TypeId>) {
+    fn resources_mut(_set: &mut HashSet<std::any::TypeId>) {
         // noop
     }
 
-    fn components_const(_set: &mut std::collections::HashSet<std::any::TypeId>) {
+    fn components_const(_set: &mut HashSet<std::any::TypeId>) {
         // noop
     }
 
-    fn resources_const(_set: &mut std::collections::HashSet<std::any::TypeId>) {
+    fn resources_const(_set: &mut HashSet<std::any::TypeId>) {
         // noop
     }
 

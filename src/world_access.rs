@@ -1,4 +1,7 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::{
+    collections::HashSet,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 use crate::query::WorldQuery;
 
@@ -89,19 +92,19 @@ impl<'a> WorldQuery<'a> for WorldAccess<'a> {
         }
     }
 
-    fn components_mut(_set: &mut std::collections::HashSet<std::any::TypeId>) {
+    fn components_mut(_set: &mut HashSet<std::any::TypeId>) {
         // noop
     }
 
-    fn components_const(_set: &mut std::collections::HashSet<std::any::TypeId>) {
+    fn components_const(_set: &mut HashSet<std::any::TypeId>) {
         // noop
     }
 
-    fn resources_mut(_set: &mut std::collections::HashSet<std::any::TypeId>) {
+    fn resources_mut(_set: &mut HashSet<std::any::TypeId>) {
         // noop
     }
 
-    fn resources_const(_set: &mut std::collections::HashSet<std::any::TypeId>) {
+    fn resources_const(_set: &mut HashSet<std::any::TypeId>) {
         // noop
     }
 

@@ -1,5 +1,6 @@
 use std::{
     any::TypeId,
+    collections::HashSet,
     marker::PhantomData,
     ops::{Deref, DerefMut},
 };
@@ -16,19 +17,19 @@ impl<'a, T: 'static> WorldQuery<'a> for Res<'a, T> {
         Self::new(db)
     }
 
-    fn components_mut(_set: &mut std::collections::HashSet<TypeId>) {
+    fn components_mut(_set: &mut HashSet<TypeId>) {
         // noop
     }
 
-    fn resources_mut(_set: &mut std::collections::HashSet<TypeId>) {
+    fn resources_mut(_set: &mut HashSet<TypeId>) {
         // noop
     }
 
-    fn components_const(_set: &mut std::collections::HashSet<TypeId>) {
+    fn components_const(_set: &mut HashSet<TypeId>) {
         // noop
     }
 
-    fn resources_const(set: &mut std::collections::HashSet<TypeId>) {
+    fn resources_const(set: &mut HashSet<TypeId>) {
         set.insert(TypeId::of::<T>());
     }
 
@@ -127,19 +128,19 @@ impl<'a, T: 'static> WorldQuery<'a> for ResMut<'a, T> {
         Self::new(db)
     }
 
-    fn components_mut(_set: &mut std::collections::HashSet<TypeId>) {
+    fn components_mut(_set: &mut HashSet<TypeId>) {
         // noop
     }
 
-    fn resources_mut(set: &mut std::collections::HashSet<TypeId>) {
+    fn resources_mut(set: &mut HashSet<TypeId>) {
         set.insert(TypeId::of::<T>());
     }
 
-    fn resources_const(set: &mut std::collections::HashSet<TypeId>) {
+    fn resources_const(set: &mut HashSet<TypeId>) {
         set.insert(TypeId::of::<T>());
     }
 
-    fn components_const(_set: &mut std::collections::HashSet<TypeId>) {
+    fn components_const(_set: &mut HashSet<TypeId>) {
         // noop
     }
 
@@ -161,19 +162,19 @@ impl<'a, T: 'static> WorldQuery<'a> for Option<Res<'a, T>> {
         })
     }
 
-    fn components_mut(_set: &mut std::collections::HashSet<TypeId>) {
+    fn components_mut(_set: &mut HashSet<TypeId>) {
         // noop
     }
 
-    fn resources_mut(_set: &mut std::collections::HashSet<TypeId>) {
+    fn resources_mut(_set: &mut HashSet<TypeId>) {
         // noop
     }
 
-    fn components_const(_set: &mut std::collections::HashSet<TypeId>) {
+    fn components_const(_set: &mut HashSet<TypeId>) {
         // noop
     }
 
-    fn resources_const(set: &mut std::collections::HashSet<TypeId>) {
+    fn resources_const(set: &mut HashSet<TypeId>) {
         set.insert(TypeId::of::<T>());
     }
 
@@ -195,19 +196,19 @@ impl<'a, T: 'static> WorldQuery<'a> for Option<ResMut<'a, T>> {
         })
     }
 
-    fn components_mut(_set: &mut std::collections::HashSet<TypeId>) {
+    fn components_mut(_set: &mut HashSet<TypeId>) {
         // noop
     }
 
-    fn resources_mut(_set: &mut std::collections::HashSet<TypeId>) {
+    fn resources_mut(_set: &mut HashSet<TypeId>) {
         // noop
     }
 
-    fn components_const(_set: &mut std::collections::HashSet<TypeId>) {
+    fn components_const(_set: &mut HashSet<TypeId>) {
         // noop
     }
 
-    fn resources_const(set: &mut std::collections::HashSet<TypeId>) {
+    fn resources_const(set: &mut HashSet<TypeId>) {
         set.insert(TypeId::of::<T>());
     }
 
