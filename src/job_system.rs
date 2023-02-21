@@ -28,20 +28,18 @@ impl JobPool {
         a: impl FnOnce() -> RL + Send,
         b: impl FnOnce() -> RR + Send,
     ) -> (RL, RR) {
-        let c = InlineJob::new(|| {});
+        let c = JobHandle::default();
         let mut a = InlineJob::new(a);
         let mut b = InlineJob::new(b);
 
         unsafe {
-            let c = c.as_job();
             let mut a = a.as_job();
-            a.add_child(&c);
+            a.add_child_handle(&c);
             self.enqueue_job(a);
             let mut b = b.as_job();
-            b.add_child(&c);
+            b.add_child_handle(&c);
             self.enqueue_job(b);
-            let handle = self.enqueue_job(c);
-            self.wait(handle);
+            self.wait(c);
         }
         (
             a.result.get_mut().take().unwrap(),
@@ -66,16 +64,16 @@ impl JobPool {
         let jobs = data
             .map(|t| InlineJob::new(move || map(t)))
             .collect::<Vec<_>>();
-        let root = InlineJob::new(|| {});
+        let root = JobHandle::default();
         unsafe {
-            let root = root.as_job();
             for j in jobs.iter() {
                 let mut job = j.as_job();
-                job.add_child(&root);
+                job.add_child_handle(&root);
                 self.enqueue_job(job);
             }
-            self.wait(self.enqueue_job(root));
+            self.wait(root);
         }
+
         unsafe fn reduce_recursive<T, Res>(
             js: &JobPool,
             a: &[InlineJob<T, Res>],
