@@ -179,6 +179,20 @@ where
         self.count() == 0
     }
 
+    pub fn single<'a>(&self) -> Option<<ArchQuery<T> as QueryFragment>::Item<'a>>
+    where
+        Self: 'a,
+    {
+        self.iter().next()
+    }
+
+    pub fn single_mut<'a>(&mut self) -> Option<<ArchQuery<T> as QueryFragment>::ItemMut<'a>>
+    where
+        Self: 'a,
+    {
+        self.iter_mut().next()
+    }
+
     pub fn iter<'a>(&self) -> impl Iterator<Item = <ArchQuery<T> as QueryFragment>::Item<'a>>
     where
         Self: 'a,
