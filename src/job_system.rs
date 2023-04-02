@@ -159,10 +159,8 @@ impl JobPool {
                     Executor::new(id, QueueArray(q), wait_list, Arc::clone(&self.inner.sleep));
                 while !job.done() {
                     if tmp_exec.run_once().is_err() {
-                        // make sure other threads keep cleaning their wait lists
-                        self.inner.sleep.1.notify_all();
                         // busy wait so `wait` returns asap
-                        std::thread::yield_now();
+                        std::hint::spin_loop();
                     }
                 }
             });
