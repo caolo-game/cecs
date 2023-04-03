@@ -584,7 +584,7 @@ impl World {
             arch.as_ref()
                 .components
                 .values()
-                .map(|t| unsafe { (&*t.get()).ty_name })
+                .map(|t| (&*t.get()).ty_name)
                 .collect()
         })
     }
