@@ -578,6 +578,17 @@ impl World {
         Some(unsafe { arch.as_ref().components.keys().copied().collect() })
     }
 
+    pub fn get_entity_component_names(&self, id: EntityId) -> Option<Vec<&'static str>> {
+        let (arch, _) = self.entity_ids().read(id).ok()?;
+        Some(unsafe {
+            arch.as_ref()
+                .components
+                .values()
+                .map(|t| unsafe { (&*t.get()).ty_name })
+                .collect()
+        })
+    }
+
     /// Compute a checksum of the World
     ///
     /// Note that only entities and their archetypes are considered, the contents of the components

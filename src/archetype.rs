@@ -278,7 +278,7 @@ impl ArchetypeStorage {
 
 /// Type erased Vec
 pub(crate) struct ErasedTable {
-    ty_name: &'static str,
+    pub(crate) ty_name: &'static str,
     // Vec //
     data: *mut u8,
     end: usize,
