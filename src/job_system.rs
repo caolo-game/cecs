@@ -19,6 +19,7 @@ type Sleep = Arc<(Mutex<bool>, Condvar)>;
 
 #[derive(Clone)]
 pub struct JobPool {
+    pub parallelism: NonZeroUsize,
     inner: Arc<Inner>,
 }
 
@@ -174,7 +175,10 @@ impl Default for JobPool {
             let conc =
                 std::thread::available_parallelism().unwrap_or(NonZeroUsize::new_unchecked(1));
             let inner = Arc::new(Inner::new(conc));
-            Self { inner }
+            Self {
+                parallelism: conc,
+                inner,
+            }
         }
     }
 }

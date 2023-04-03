@@ -316,7 +316,6 @@ where
     #[cfg(feature = "parallel")]
     pub fn par_for_each<'a>(
         &'a mut self,
-        batch_size: usize,
         f: impl Fn(<ArchQuery<T> as QueryFragment>::Item<'a>) + Sync,
     ) where
         T: Send + Sync,
@@ -334,6 +333,7 @@ where
                     // filter ahead of job creation
                     .filter(|(_, arch)| F::filter(arch))
                     .for_each(|(_, arch)| {
+                        let batch_size = arch.len() / pool.parallelism + 1;
                         // TODO: the job allocator could probably help greatly with these jobs
                         //
                         // for each archetype create a new job that creates a new job for each window of size
@@ -369,7 +369,6 @@ where
     #[cfg(feature = "parallel")]
     pub fn par_for_each_mut<'a>(
         &'a mut self,
-        batch_size: usize,
         f: impl Fn(<ArchQuery<T> as QueryFragment>::ItemMut<'a>) + Sync + 'a,
     ) where
         T: Send + Sync,
@@ -387,6 +386,7 @@ where
                     // filter ahead of job creation
                     .filter(|(_, arch)| F::filter(arch))
                     .for_each(|(_, arch)| {
+                        let batch_size = arch.len() / pool.parallelism + 1;
                         // TODO: the job allocator could probably help greatly with these jobs
                         //
                         // for each archetype create a new job that creates a new job for each window of size
