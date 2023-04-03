@@ -575,7 +575,14 @@ impl World {
 
     pub fn get_entity_component_types(&self, id: EntityId) -> Option<Vec<TypeId>> {
         let (arch, _) = self.entity_ids().read(id).ok()?;
-        Some(unsafe { arch.as_ref().components.keys().copied().collect() })
+        Some(unsafe {
+            arch.as_ref()
+                .components
+                .keys()
+                .filter(|k| (k != &&TypeId::of::<()>()))
+                .copied()
+                .collect()
+        })
     }
 
     pub fn get_entity_component_names(&self, id: EntityId) -> Option<Vec<&'static str>> {
@@ -583,7 +590,8 @@ impl World {
         Some(unsafe {
             arch.as_ref()
                 .components
-                .values()
+                .iter()
+                .filter_map(|(k, v)| (k != &TypeId::of::<()>()).then_some(v))
                 .map(|t| (&*t.get()).ty_name)
                 .collect()
         })
