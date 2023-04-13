@@ -229,7 +229,17 @@ impl EntityCommands {
                 id
             }
             EntityAction::Insert => world.insert_entity(),
-            EntityAction::Delete(id) => return world.delete_entity(id),
+            EntityAction::Delete(id) => {
+                if let Err(_err) = world.delete_entity(id) {
+                    #[cfg(feature = "tracing")]
+                    tracing::warn!(
+                        id = tracing::field::display(id),
+                        error = tracing::field::display(_err),
+                        "Entity can't be deleted"
+                    );
+                }
+                return Ok(());
+            }
             EntityAction::Merge { src, dst } => {
                 return world.merge_entities(src, dst);
             }
