@@ -365,7 +365,6 @@ where
         }
     }
 
-    /// `batch_size` controls how many items are processed by a single job
     #[cfg(feature = "parallel")]
     pub fn par_for_each_mut<'a>(
         &'a mut self,
@@ -417,6 +416,26 @@ where
                     });
             });
         }
+    }
+
+    #[cfg(not(feature = "parallel"))]
+    pub fn par_for_each<'a>(
+        &'a mut self,
+        f: impl Fn(<ArchQuery<T> as QueryFragment>::Item<'a>) + Sync + 'a,
+    ) where
+        T: Send + Sync,
+    {
+        self.iter().for_each(f);
+    }
+
+    #[cfg(not(feature = "parallel"))]
+    pub fn par_for_each_mut<'a>(
+        &'a mut self,
+        f: impl Fn(<ArchQuery<T> as QueryFragment>::ItemMut<'a>) + Sync + 'a,
+    ) where
+        T: Send + Sync,
+    {
+        self.iter_mut().for_each(f);
     }
 }
 
