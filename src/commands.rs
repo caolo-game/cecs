@@ -232,7 +232,7 @@ impl EntityCommands {
             EntityAction::Delete(id) => {
                 if let Err(_err) = world.delete_entity(id) {
                     #[cfg(feature = "tracing")]
-                    tracing::warn!(
+                    tracing::debug!(
                         id = tracing::field::display(id),
                         error = tracing::field::display(_err),
                         "Entity can't be deleted"
