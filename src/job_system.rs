@@ -128,8 +128,6 @@ impl JobPool {
                 } else {
                     (&mut *self.inner.wait_lists[id].get()).push(job);
                 }
-                // wake up a worker
-                self.inner.sleep.1.notify_one();
                 res
             })
         }
