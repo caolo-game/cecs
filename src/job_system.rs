@@ -596,6 +596,17 @@ impl<'a> Scope<'a> {
 pub struct HomogeneousJobGraph<T> {
     jobs: Vec<UnsafeCell<Job>>,
     _data: Vec<T>,
+    /// debug data
+    _edges: Vec<[usize; 2]>,
+}
+
+impl<T: std::fmt::Debug> std::fmt::Debug for HomogeneousJobGraph<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HomogeneousJobGraph")
+            .field("_data", &self._data)
+            .field("_edges", &self._edges)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<T> HomogeneousJobGraph<T>
@@ -610,7 +621,11 @@ where
                 .map(|d| Job::new(d))
                 .map(UnsafeCell::new)
                 .collect();
-            Self { _data, jobs }
+            Self {
+                _data,
+                jobs,
+                _edges: Default::default(),
+            }
         }
     }
 
@@ -619,6 +634,7 @@ where
         unsafe {
             (&mut *self.jobs[parent].get()).add_child(&*self.jobs[child].get());
         }
+        self._edges.push([parent, child]);
     }
 }
 

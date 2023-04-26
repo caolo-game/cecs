@@ -374,6 +374,13 @@ pub struct SystemJob<'a, R> {
     pub sys: NonNull<ErasedSystem<'a, R>>,
 }
 
+impl<'a, R> std::fmt::Debug for SystemJob<'a, R> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let sys = unsafe { self.sys.as_ref().descriptor.name.as_str() };
+        f.debug_struct("SystemJob").field("sys", &sys).finish()
+    }
+}
+
 unsafe impl<'a, R> Send for SystemJob<'a, R> {}
 
 #[cfg(feature = "parallel")]
