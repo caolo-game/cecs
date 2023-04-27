@@ -15,6 +15,7 @@ use std::{
 
 // TODO: Job Allocator
 type WorkerQueue = crossbeam_deque::Worker<Job>;
+type WorkerStealer = crossbeam_deque::Stealer<Job>;
 type Sleep = Arc<(Mutex<bool>, Condvar)>;
 
 #[derive(Clone)]
@@ -153,9 +154,15 @@ impl JobPool {
         unsafe {
             with_thread_index(|id| {
                 let q = &*self.inner.runnable_queues as *const _;
+                let s = &*self.inner.runnable_stealers as *const _;
                 let wait_list = NonNull::new(self.inner.wait_lists[id].get()).unwrap();
-                let mut tmp_exec =
-                    Executor::new(id, QueueArray(q), wait_list, Arc::clone(&self.inner.sleep));
+                let mut tmp_exec = Executor::new(
+                    id,
+                    QueueArray(q),
+                    StealerArray(s),
+                    wait_list,
+                    Arc::clone(&self.inner.sleep),
+                );
                 while !job.done() {
                     if tmp_exec.run_once().is_err() {
                         // busy wait so `wait` returns asap
@@ -184,6 +191,7 @@ impl Default for JobPool {
 struct Inner {
     threads: Vec<JoinHandle<()>>,
     runnable_queues: Pin<Box<[WorkerQueue]>>,
+    runnable_stealers: Pin<Box<[WorkerStealer]>>,
     /// threads may only access their own waiting_queues
     wait_lists: Pin<Box<[UnsafeCell<Vec<Job>>]>>,
     sleep: Sleep,
@@ -230,6 +238,7 @@ struct Executor {
     id: usize,
     steal_id: usize,
     queues: QueueArray,
+    stealer: StealerArray,
     wait_list: NonNull<Vec<Job>>,
     sleep: Sleep,
 }
@@ -238,11 +247,18 @@ unsafe impl Send for Executor {}
 unsafe impl Sync for Executor {}
 
 impl Executor {
-    fn new(id: usize, queues: QueueArray, wait_list: NonNull<Vec<Job>>, sleep: Sleep) -> Self {
+    fn new(
+        id: usize,
+        queues: QueueArray,
+        stealer: StealerArray,
+        wait_list: NonNull<Vec<Job>>,
+        sleep: Sleep,
+    ) -> Self {
         Self {
             id,
             steal_id: id,
             queues,
+            stealer,
             wait_list,
             sleep,
         }
@@ -272,6 +288,7 @@ impl Executor {
     /// Caller must ensure that the queues outlive run_once
     unsafe fn run_once(&mut self) -> Result<(), RunError> {
         let queues = &*self.queues.0;
+        let stealers = &*self.stealer.0;
         let id = self.id;
         #[cfg(feature = "tracing")]
         tracing::trace!(id = id, "Running executor");
@@ -299,8 +316,7 @@ impl Executor {
                     next_id(self);
                     continue;
                 }
-                // TODO: retain the stealer?
-                let stealer = queues[self.steal_id].stealer();
+                let stealer = &stealers[self.steal_id];
                 match stealer.steal_batch(&queues[self.id]) {
                     crossbeam_deque::Steal::Success(_) => {
                         // do not increment the id if steal succeeds
@@ -350,7 +366,9 @@ enum RunError {
 }
 
 struct QueueArray(*const [WorkerQueue]);
+struct StealerArray(*const [WorkerStealer]);
 unsafe impl Send for QueueArray {}
+unsafe impl Send for StealerArray {}
 
 impl Inner {
     pub fn new(workers: NonZeroUsize) -> Self {
@@ -360,11 +378,20 @@ impl Inner {
             queues.push(WorkerQueue::new_fifo());
         }
         let queues = Pin::new(queues.into_boxed_slice());
+        let stealers = Pin::new(
+            queues
+                .iter()
+                .map(|q| q.stealer())
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        );
         let q = &*queues as *const _;
+        let s = &*stealers as *const _;
         let sleep = Arc::default();
         let mut result = Self {
             sleep: Arc::clone(&sleep),
             runnable_queues: queues,
+            runnable_stealers: stealers,
             threads: Vec::with_capacity(workers),
             wait_lists: Pin::new(
                 (0..workers)
@@ -378,8 +405,9 @@ impl Inner {
         // the index of the main thread is 0
         for i in 1..workers {
             let arr = QueueArray(q);
+            let st = StealerArray(s);
             let wait_list = NonNull::new(result.wait_lists[i].get()).unwrap();
-            let mut worker = Executor::new(i, arr, wait_list, Arc::clone(&sleep));
+            let mut worker = Executor::new(i, arr, st, wait_list, Arc::clone(&sleep));
             result.threads.push(
                 std::thread::Builder::new()
                     .name(format!("cecs worker {i}"))
