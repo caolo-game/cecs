@@ -288,16 +288,16 @@ impl Executor {
     /// Caller must ensure that the queues outlive run_once
     #[cfg_attr(
         feature = "tracing",
-        tracing::instrument(skip_all, level = "trace", fields(id))
+        tracing::instrument(skip_all, level = "trace", fields(executor_id))
     )]
     unsafe fn run_once(&mut self) -> Result<(), RunError> {
         let queues = &*self.queues.0;
         let stealers = &*self.stealer.0;
-        let id = self.id;
-        if let Some(mut job) = queues[id].pop() {
+        let executor_id = self.id;
+        if let Some(mut job) = queues[executor_id].pop() {
             #[cfg(feature = "tracing")]
             tracing::trace!(
-                id = id,
+                executor_id = executor_id,
                 data = tracing::field::debug(job.data),
                 "Executing job"
             );
@@ -312,7 +312,7 @@ impl Executor {
         loop {
             let mut retry = false;
             for _ in 0..queues.len() {
-                if self.steal_id == id {
+                if self.steal_id == executor_id {
                     next_id(self);
                     continue;
                 }
@@ -344,13 +344,13 @@ impl Executor {
                 let job = wait_list.swap_remove(i);
                 #[cfg(feature = "tracing")]
                 let data = job.data;
-                queues[id].push(job);
+                queues[executor_id].push(job);
                 self.sleep.1.notify_one();
                 promoted = true;
 
                 #[cfg(feature = "tracing")]
                 tracing::trace!(
-                    id = id,
+                    executor_id = executor_id,
                     data = tracing::field::debug(data),
                     "Promoted job to runnable"
                 );
