@@ -390,6 +390,10 @@ impl<'a, R> AsJob for SystemJob<'a, R> {
         let job = &*job;
         let sys = job.sys.as_ref();
         let world = job.world.as_ref();
+
+        #[cfg(feature = "tracing")]
+        let _e = tracing::trace_span!("system", name = sys.descriptor.name.as_str()).entered();
+
         (sys.execute)(world, sys.commands_index);
     }
 }
