@@ -286,6 +286,10 @@ impl Executor {
     /// # Safety
     ///
     /// Caller must ensure that the queues outlive run_once
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip_all, level = "trace", fields(id))
+    )]
     unsafe fn run_once(&mut self) -> Result<(), RunError> {
         let queues = &*self.queues.0;
         let stealers = &*self.stealer.0;
