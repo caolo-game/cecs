@@ -290,8 +290,6 @@ impl Executor {
         let queues = &*self.queues.0;
         let stealers = &*self.stealer.0;
         let id = self.id;
-        #[cfg(feature = "tracing")]
-        tracing::trace!(id = id, "Running executor");
         if let Some(mut job) = queues[id].pop() {
             #[cfg(feature = "tracing")]
             tracing::trace!(
@@ -302,8 +300,6 @@ impl Executor {
             job.execute();
             return Ok(());
         }
-        #[cfg(feature = "tracing")]
-        tracing::trace!(id = id, "Pop failed");
         // if pop fails try to steal from another thread
         let qlen = queues.len();
         let next_id = move |i: &mut Self| {
