@@ -883,3 +883,32 @@ fn serial_ordering_test() {
 
     assert_eq!(i.load(Ordering::Relaxed), 2);
 }
+
+#[test]
+fn with_and_without_test() {
+    use crate::prelude::*;
+
+    // the two entities are disjoint
+    //
+    let mut world = World::new(16);
+
+    let a = world.insert_entity();
+    let b = world.insert_entity();
+
+    world.set_component(a, 1u64).unwrap();
+    world.set_component(a, 1u32).unwrap();
+    world.set_component(b, 2i32).unwrap();
+    world.set_component(b, 2i64).unwrap();
+
+    let q = Query::<(EntityId, &u64), (With<u32>, WithOut<String>)>::new(&world);
+
+    let count = q
+        .iter()
+        .inspect(|(id, n)| {
+            assert_eq!(id, &a);
+            assert_eq!(n, &&1);
+        })
+        .count();
+
+    assert_eq!(count, 1);
+}
