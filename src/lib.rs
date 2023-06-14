@@ -101,19 +101,19 @@ impl Clone for World {
     }
 }
 
-type TypeHash = u64;
+type TypeHash = u128;
 
-const fn hash_ty<T: 'static>() -> u64 {
+const fn hash_ty<T: 'static>() -> TypeHash {
     let ty = TypeId::of::<T>();
     hash_type_id(ty)
 }
 
-const fn hash_type_id(ty: TypeId) -> u64 {
+const fn hash_type_id(ty: TypeId) -> TypeHash {
     // FIXME extreme curse
     //
-    debug_assert!(std::mem::size_of::<TypeId>() == std::mem::size_of::<u64>());
-    let ty: u64 = unsafe { transmute(ty) };
-    if ty == unsafe { transmute::<_, u64>(TypeId::of::<()>()) } {
+    debug_assert!(std::mem::size_of::<TypeId>() == std::mem::size_of::<TypeHash>());
+    let ty: TypeHash = unsafe { transmute(ty) };
+    if ty == unsafe { transmute::<_, TypeHash>(TypeId::of::<()>()) } {
         // ensure that unit type has hash=0
         0
     } else {
@@ -614,7 +614,7 @@ impl World {
             let (arch, row_index) = self.entity_ids().read(id).unwrap();
             let ty = unsafe { arch.as_ref().ty() };
             hasher.write_u32(id.into());
-            hasher.write_u64(ty);
+            hasher.write_u128(ty);
             hasher.write_u32(row_index);
         });
 
