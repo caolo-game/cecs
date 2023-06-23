@@ -274,7 +274,8 @@ impl Executor {
                 if self.run_once().is_err() {
                     let (lock, cv) = &*self.sleep;
                     let mut l = lock.lock();
-                    cv.wait_for(&mut l, Duration::from_millis(5));
+                    // TODO: config wait time
+                    cv.wait_for(&mut l, Duration::from_millis(1));
                     if *l {
                         break;
                     }
