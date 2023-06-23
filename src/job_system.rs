@@ -10,7 +10,7 @@ use std::{
         Arc,
     },
     thread::JoinHandle,
-    time::Duration,
+    time::Duration, panic,
 };
 
 // TODO: Job Allocator
@@ -514,12 +514,34 @@ impl Job {
     }
 }
 
+#[derive(Default)]
+pub enum JobResult<R> {
+    Done(R),
+    Panic,
+    #[default]
+    Pending,
+}
+
+impl<R> JobResult<R> {
+    pub fn take(&mut self) -> Self {
+        std::mem::take(self)
+    }
+
+    pub fn unwrap(self) -> R {
+        match self {
+            JobResult::Done(r) => r,
+            JobResult::Panic => panic!("Job paniced"),
+            JobResult::Pending => panic!("Job is pending"),
+        }
+    }
+}
+
 pub struct InlineJob<F, R>
 where
     F: FnOnce() -> R,
 {
     inner: UnsafeCell<Option<F>>,
-    result: UnsafeCell<Option<R>>,
+    result: UnsafeCell<JobResult<R>>,
 }
 
 unsafe impl<F, R> Send for InlineJob<F, R> where F: FnOnce() -> R {}
@@ -532,7 +554,7 @@ where
     pub fn new(inner: F) -> Self {
         Self {
             inner: UnsafeCell::new(Some(inner)),
-            result: None.into(),
+            result: Default::default(),
         }
     }
 
@@ -546,13 +568,31 @@ where
     }
 }
 
+unsafe fn execute_job<R: Send>(f: impl FnOnce() -> R + Send) -> JobResult<R> {
+    match panic::catch_unwind(panic::AssertUnwindSafe(f)) {
+        Ok(res) => JobResult::Done(res),
+        Err(err) => {
+            #[cfg(feature = "tracing")]
+            {
+                tracing::error!("Job panic: {err:?}");
+            }
+            #[cfg(not(feature = "tracing"))]
+            {
+                eprintln!("Job panic: {err:?}");
+            }
+
+            JobResult::Panic
+        }
+    }
+}
+
 impl<F: FnOnce() -> R + Send, R: Send> AsJob for InlineJob<F, R> {
     unsafe fn execute(instance: *const ()) {
         let instance: *const Self = instance.cast();
         let instance = &*instance;
         let inner = (&mut *instance.inner.get()).take();
-        let res = (inner.unwrap())();
-        *instance.result.get() = Some(res);
+        let result = execute_job(inner.unwrap());
+        std::ptr::write(instance.result.get(), result);
     }
 }
 
@@ -566,7 +606,7 @@ where
 {
     unsafe fn execute(instance: *const ()) {
         let instance: Box<Self> = Box::from_raw(instance.cast_mut().cast());
-        (instance.inner)();
+        execute_job(instance.inner);
     }
 }
 
