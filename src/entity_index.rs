@@ -46,7 +46,6 @@ unsafe impl Sync for EntityIndex {}
 const SENTINEL: u32 = !0;
 
 impl EntityIndex {
-
     pub fn new(initial_capacity: u32) -> Self {
         assert!(initial_capacity < ENTITY_INDEX_MASK);
         let entries;

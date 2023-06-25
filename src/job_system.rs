@@ -3,6 +3,7 @@ use std::{
     cell::UnsafeCell,
     marker::PhantomData,
     num::NonZeroUsize,
+    panic,
     pin::Pin,
     ptr::NonNull,
     sync::{
@@ -10,7 +11,7 @@ use std::{
         Arc,
     },
     thread::JoinHandle,
-    time::Duration, panic,
+    time::Duration,
 };
 
 // TODO: Job Allocator
