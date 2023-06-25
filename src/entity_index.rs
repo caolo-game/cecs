@@ -1,6 +1,5 @@
 use std::{
     alloc::{alloc, dealloc, Layout},
-    collections::VecDeque,
     mem::{align_of, size_of},
     ptr::{self, NonNull},
 };
@@ -27,7 +26,7 @@ pub struct EntityIndex {
     count: u32,
     /// deallocated entities
     /// if empty allocate the next entity in the list
-    free_list: VecDeque<u32>,
+    free_list: Vec<u32>,
 }
 
 #[cfg(feature = "clone")]
@@ -46,39 +45,7 @@ unsafe impl Sync for EntityIndex {}
 
 const SENTINEL: u32 = !0;
 
-#[allow(unused)]
-struct FreeListWalker<'a, It> {
-    entries: &'a [Entry],
-    inner: It,
-}
-
-impl<'a, It: Iterator<Item = u32>> Iterator for FreeListWalker<'a, It> {
-    type Item = (u32, u32);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let i = self.inner.next()?;
-        let gen = self.entries[i as usize].gen;
-        Some((gen, i))
-    }
-}
-
 impl EntityIndex {
-    /// # Safety
-    ///
-    /// Overrides the internal free_list, caller must ensure that the free list is valid
-    #[allow(unused)]
-    pub(crate) unsafe fn set_free_list(&mut self, free_list: VecDeque<u32>) {
-        self.free_list = free_list;
-    }
-
-    // return (gen, index) tuples
-    #[allow(unused)]
-    pub(crate) fn walk_free_list(&self) -> impl Iterator<Item = (u32, u32)> + '_ {
-        FreeListWalker {
-            entries: self.entries(),
-            inner: self.free_list.iter().copied(),
-        }
-    }
 
     pub fn new(initial_capacity: u32) -> Self {
         assert!(initial_capacity < ENTITY_INDEX_MASK);
@@ -94,7 +61,7 @@ impl EntityIndex {
                 ptr::write(
                     entries.add(i as usize),
                     Entry {
-                        gen: 1, // 0 IDs can cause problems for clients so start at gen 1
+                        gen: 0,
                         arch: std::ptr::null_mut(),
                         row_index: SENTINEL,
                     },
@@ -104,7 +71,7 @@ impl EntityIndex {
         Self {
             entries,
             cap,
-            free_list: VecDeque::with_capacity(cap as usize),
+            free_list: Vec::with_capacity(cap as usize),
             count: 0,
         }
     }
@@ -126,7 +93,7 @@ impl EntityIndex {
                 ptr::write(
                     new_entries.add(i as usize),
                     Entry {
-                        gen: 1, // 0 IDs can cause problems for clients so start at gen 1
+                        gen: 0,
                         arch: std::ptr::null_mut(),
                         row_index: SENTINEL,
                     },
@@ -169,7 +136,7 @@ impl EntityIndex {
     pub fn allocate(&mut self) -> Result<EntityId, HandleTableError> {
         // pop element off the free list
         //
-        let index = match self.free_list.pop_front() {
+        let index = match self.free_list.pop() {
             Some(i) => i,
             None => {
                 if self.count == self.cap {
@@ -286,10 +253,8 @@ impl EntityIndex {
         debug_assert_eq!(id.gen(), entry.gen);
         entry.arch = std::ptr::null_mut();
         entry.row_index = SENTINEL;
-        // increment gen
-        // 0 IDs can cause problems for clients so start at gen 1
-        entry.gen = ((entry.gen + 1) & ENTITY_GEN_MASK).max(1);
-        self.free_list.push_back(index);
+        entry.gen = (entry.gen + 1) & ENTITY_GEN_MASK;
+        self.free_list.push(index);
     }
 
     pub fn get_at_index(&self, ind: u32) -> EntityId {
@@ -348,10 +313,10 @@ mod tests {
 
         for _ in 0..4 {
             let e = table.allocate().unwrap();
-            assert_eq!(e.gen(), 1); // assert for the next step in the test
+            assert_eq!(e.gen(), 0); // assert for the next step in the test
         }
         for i in 0..4 {
-            let e = EntityId::new(i, 1);
+            let e = EntityId::new(i, 0);
             table.free(e);
             assert!(!table.is_valid(e));
         }

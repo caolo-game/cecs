@@ -1,14 +1,15 @@
+//! Provides utilities to save and load Worlds.
+//! EntityIds are not stable between loads and saves!
+//!
 use serde::{
     de::{DeserializeOwned, Visitor},
     ser::SerializeMap,
     Serialize,
 };
+use std::collections::BTreeMap;
 use std::marker::PhantomData;
 
 use crate::{entity_id::EntityId, prelude::Query, Component, World};
-
-const ENTITY_FREE_LIST_KEY: &str = "entity_index_freelist";
-const ENTITY_IDS_KEY: &str = "entity_ids";
 
 pub struct WorldPersister<T = (), P = ()> {
     next: Option<P>,
@@ -84,6 +85,7 @@ pub trait WorldSerializer: Sized {
         key: &str,
         map: &mut A,
         world: &mut World,
+        id_map: &mut BTreeMap<u32, EntityId>,
     ) -> Result<(), A::Error>
     where
         A: serde::de::MapAccess<'de>;
@@ -126,6 +128,7 @@ impl WorldSerializer for () {
         _key: &str,
         _map: &mut A,
         _world: &mut World,
+        _id_map: &mut BTreeMap<u32, EntityId>,
     ) -> Result<(), A::Error>
     where
         A: serde::de::MapAccess<'de>,
@@ -141,8 +144,7 @@ where
 {
     persist: &'a WorldPersister<T, P>,
     world: World,
-    ids_initialized: bool,
-    index_initialized: bool,
+    id_mapping: BTreeMap<u32, EntityId>,
 }
 
 impl<'a, 'de: 'a, T, P> Visitor<'de> for WorldVisitor<'a, T, P>
@@ -161,53 +163,12 @@ where
         A: serde::de::MapAccess<'de>,
     {
         while let Some(key) = map.next_key::<std::borrow::Cow<'de, str>>()? {
-            match key.as_ref() {
-                ENTITY_FREE_LIST_KEY => {
-                    #[cfg(feature = "tracing")]
-                    tracing::trace!("Deserializing entity_free_list");
-                    let free_list: Vec<(u32, u32)> = map.next_value()?;
-                    unsafe {
-                        let free_list = free_list.iter().map(|(_, i)| *i).collect();
-                        self.world.entity_ids.get_mut().set_free_list(free_list);
-                    }
-                    for (gen, i) in free_list {
-                        unsafe {
-                            self.world.entity_ids.get_mut().set_gen(i as usize, gen);
-                        }
-                    }
-                    self.index_initialized = true;
-                    #[cfg(feature = "tracing")]
-                    tracing::trace!("Deserializing entity_free_list done");
-                }
-                ENTITY_IDS_KEY => {
-                    if !self.index_initialized {
-                        return Err(serde::de::Error::custom(
-                            "Entity index must be initialized before deserializing entity_ids",
-                        ));
-                    }
-                    #[cfg(feature = "tracing")]
-                    tracing::trace!("Deserializing entity_ids");
-                    let entity_ids: Vec<EntityId> = map.next_value()?;
-                    for id in entity_ids {
-                        unsafe {
-                            self.world.entity_ids.get_mut().force_insert_entity(id);
-                            self.world.init_id(id);
-                        }
-                    }
-                    self.ids_initialized = true;
-                    #[cfg(feature = "tracing")]
-                    tracing::trace!("Deserializing entity_ids done");
-                }
-                _ => {
-                    if !self.ids_initialized {
-                        return Err(serde::de::Error::custom(
-                            "Entity IDs must be initialized before deserializing other fields",
-                        ));
-                    }
-                    self.persist
-                        .visit_map_value(key.as_ref(), &mut map, &mut self.world)?;
-                }
-            }
+            self.persist.visit_map_value(
+                key.as_ref(),
+                &mut map,
+                &mut self.world,
+                &mut self.id_mapping,
+            )?;
         }
 
         Ok(self.world)
@@ -229,20 +190,7 @@ where
     }
 
     fn save<S: serde::Serializer>(&self, s: S, world: &World) -> Result<S::Ok, S::Error> {
-        let mut s = s.serialize_map(Some(self.depth + 2))?;
-        #[cfg(feature = "tracing")]
-        tracing::trace!("Serializing entity free_list");
-        let free_list = world.entity_ids().walk_free_list().collect::<Vec<_>>();
-        s.serialize_entry(ENTITY_FREE_LIST_KEY, &free_list)?;
-        #[cfg(feature = "tracing")]
-        tracing::trace!("Serializing entity free_list done");
-        #[cfg(feature = "tracing")]
-        tracing::trace!("Serializing entity_ids");
-        let ids = Query::<EntityId>::new(world).iter().collect::<Vec<_>>();
-        s.serialize_entry(ENTITY_IDS_KEY, &ids)?;
-        #[cfg(feature = "tracing")]
-        tracing::trace!("Serializing entity_ids done");
-
+        let mut s = s.serialize_map(Some(self.depth))?;
         self.save_entry::<S>(&mut s, world)?;
         s.end()
     }
@@ -260,8 +208,10 @@ where
         match self.ty {
             SerTy::Component => {
                 // TODO: save iterator or adapter pls
-                let values: Vec<(EntityId, &T)> =
-                    Query::<(EntityId, &T)>::new(world).iter().collect();
+                let values: Vec<(u32, &T)> = Query::<(EntityId, &T)>::new(world)
+                    .iter()
+                    .map(|(id, t)| (id.index(), t))
+                    .collect();
                 s.serialize_entry(&tname, &values)?;
             }
             SerTy::Resource => {
@@ -284,8 +234,7 @@ where
         let visitor = WorldVisitor {
             persist: self,
             world,
-            ids_initialized: false,
-            index_initialized: false,
+            id_mapping: Default::default(),
         };
         let world = d.deserialize_map(visitor)?;
 
@@ -297,6 +246,7 @@ where
         key: &str,
         map: &mut A,
         world: &mut World,
+        id_map: &mut BTreeMap<u32, EntityId>,
     ) -> Result<(), A::Error>
     where
         A: serde::de::MapAccess<'de>,
@@ -304,7 +254,7 @@ where
         let tname = entry_name::<T>(self.ty);
         if tname != key {
             if let Some(next) = &self.next {
-                next.visit_map_value(key, map, world)?;
+                next.visit_map_value(key, map, world, id_map)?;
             }
             return Ok(());
         }
@@ -312,9 +262,10 @@ where
         tracing::trace!(name = &tname, "Deserializing");
         match self.ty {
             SerTy::Component => {
-                let values: Vec<(EntityId, T)> = map.next_value()?;
+                let values: Vec<(u32, T)> = map.next_value()?;
                 for (id, value) in values {
-                    world.set_component(id, value).unwrap();
+                    let id = id_map.entry(id).or_insert_with(|| world.insert_entity());
+                    world.set_component(*id, value).unwrap();
                 }
             }
             SerTy::Resource => {
@@ -482,70 +433,6 @@ mod tests {
             world1.get_resource::<Foo>().expect("foo not found").value,
             69
         );
-    }
-
-    #[test]
-    fn entity_ids_inserted_are_the_same_after_serde_test() {
-        let mut world0 = World::new(400);
-
-        let mut ids = Vec::with_capacity(100);
-        for i in 0u32..100u32 {
-            let id = world0.insert_entity();
-            world0.set_component(id, 42i32).unwrap();
-            world0.set_component(id, i).unwrap();
-            world0.set_component(id, Foo { value: i }).unwrap();
-            ids.push(id);
-        }
-        // add some entities that are not saved
-        for i in 0u32..100u32 {
-            let id = world0.insert_entity();
-            world0.set_component(id, i).unwrap();
-            ids.push(id);
-        }
-        // delete some entities
-        for id in ids.iter().copied() {
-            if id.index() % 3 == 0 {
-                world0.delete_entity(id).unwrap();
-            }
-        }
-
-        let p = WorldPersister::new()
-            .with_component::<Foo>()
-            .with_component::<i32>();
-
-        let mut pl = Vec::<u8>::new();
-        let mut s = serde_json::Serializer::pretty(&mut pl);
-
-        p.save(&mut s, &world0).unwrap();
-
-        // let pretty = std::str::from_utf8(&pl).unwrap();
-        // println!("{}", pretty);
-
-        let mut world1 = p
-            .load(&mut serde_json::Deserializer::from_reader(pl.as_slice()))
-            .unwrap();
-
-        for i in 0..20 {
-            let id0 = world0.insert_entity();
-            let id1 = world1.insert_entity();
-            ids.push(id0);
-
-            assert_eq!(id0, id1, "#{}: expected: {} actual: {}", i, id0, id1,);
-        }
-
-        // free all ids and then try allocating
-        for id in ids {
-            if id.index() % 3 != 0 {
-                world0.delete_entity(id).unwrap_or_default();
-                world1.delete_entity(id).unwrap_or_default();
-            }
-        }
-        for i in 0..20 {
-            let id0 = world0.insert_entity();
-            let id1 = world1.insert_entity();
-
-            assert_eq!(id0, id1, "#{}: expected: {} actual: {}", i, id0, id1,);
-        }
     }
 
     #[test]
