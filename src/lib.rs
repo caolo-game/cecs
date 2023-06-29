@@ -745,6 +745,11 @@ impl World {
         }
         Ok(())
     }
+
+    #[cfg(feature = "parallel")]
+    pub fn job_system(&self) -> &prelude::JobPool {
+        &self.job_system
+    }
 }
 
 // # SAFETY
