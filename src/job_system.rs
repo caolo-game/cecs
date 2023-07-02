@@ -1,6 +1,7 @@
 use parking_lot::{Condvar, Mutex, ReentrantMutex};
 use std::{
     cell::UnsafeCell,
+    hint::spin_loop,
     marker::PhantomData,
     num::NonZeroUsize,
     panic,
@@ -271,15 +272,26 @@ impl Executor {
     unsafe fn worker_thread(&mut self) {
         THREAD_INDEX.with(move |tid| {
             *tid.get() = self.id;
+            // busy wait for a few iterations in case a new job is enqueued right before this
+            // thread would sleep
+            let mut fails = 0;
             loop {
-                if self.run_once().is_err() {
-                    let (lock, cv) = &*self.sleep;
-                    let mut l = lock.lock();
-                    // TODO: config wait time
-                    cv.wait_for(&mut l, Duration::from_millis(1));
-                    if *l {
-                        break;
+                while fails < 32 {
+                    match self.run_once() {
+                        Err(_) => {
+                            fails += 1;
+                            spin_loop();
+                        }
+                        Ok(_) => fails = 0,
                     }
+                }
+                fails = 0;
+                let (lock, cv) = &*self.sleep;
+                let mut l = lock.lock();
+                // TODO: config wait time
+                cv.wait_for(&mut l, Duration::from_millis(10));
+                if *l {
+                    break;
                 }
             }
         });
