@@ -80,30 +80,44 @@ impl JobPool {
 
         unsafe fn reduce_recursive<T, Res>(
             js: &JobPool,
-            a: &[InlineJob<T, Res>],
+            list: &[InlineJob<T, Res>],
             init: &(impl Fn() -> Res + Send + Sync),
             reduce: &(impl Fn(Res, Res) -> Res + Send + Sync),
+            max_depth: usize,
         ) -> Res
         where
             T: Send + Sync + FnOnce() -> Res,
             Res: Send,
         {
-            if a.len() > 1 {
-                let (lhs, rhs) = a.split_at(a.len() / 2);
-                let (a, b) = js.join(
-                    move || reduce_recursive(js, lhs, init, reduce),
-                    move || reduce_recursive(js, rhs, init, reduce),
-                );
-                reduce(a, b)
-            } else if a.len() == 1 {
-                let res = a[0].result.get();
-                let res = (&mut *res).take().unwrap();
-                res
-            } else {
-                init()
+            match list.len() {
+                0 => init(),
+                1 => {
+                    let res = list[0].result.get();
+                    let res = (&mut *res).take().unwrap();
+                    res
+                }
+                _ => {
+                    if max_depth > 0 {
+                        let (lhs, rhs) = list.split_at(list.len() / 2);
+                        let (a, b) = js.join(
+                            move || reduce_recursive(js, lhs, init, reduce, max_depth - 1),
+                            move || reduce_recursive(js, rhs, init, reduce, max_depth - 1),
+                        );
+                        reduce(a, b)
+                    } else {
+                        let a = list[0].result.get();
+                        let mut result = (&mut *a).take().unwrap();
+                        for job in &list[1..] {
+                            let res = job.result.get();
+                            let res = (&mut *res).take().unwrap();
+                            result = reduce(result, res);
+                        }
+                        result
+                    }
+                }
             }
         }
-        unsafe { reduce_recursive(self, &jobs, init, reduce) }
+        unsafe { reduce_recursive(self, &jobs, init, reduce, self.parallelism.get() * 2) }
     }
 
     pub fn scope<'a>(&'a self, f: impl FnOnce(Scope<'a>) + Send) {
@@ -764,7 +778,7 @@ mod tests {
     fn map_reduce_test() {
         let pool = JobPool::default();
 
-        let range = vec![1i32; 128];
+        let range = vec![1i32; 100_000];
 
         let result = pool.map_reduce(range.iter(), || 0i32, |i| *i * 2i32, |a, b| a + b);
 
