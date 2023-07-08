@@ -232,11 +232,10 @@ impl EntityIndex {
     pub fn is_valid(&self, id: EntityId) -> bool {
         let index = id.index() as usize;
         let gen = id.gen();
-        if index >= self.cap as usize {
-            return false;
+        match self.entries().get(index) {
+            Some(entry) => entry.gen == gen && entry.arch != std::ptr::null_mut(),
+            None => return false,
         }
-        let entry = &self.entries()[index];
-        entry.gen == gen && entry.arch != std::ptr::null_mut()
     }
 
     pub(crate) fn entries(&self) -> &[Entry] {
