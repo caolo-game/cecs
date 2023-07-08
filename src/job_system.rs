@@ -98,12 +98,22 @@ impl JobPool {
                 }
                 _ => {
                     if max_depth > 0 {
+                        // Split the range in two and reduce them in parallel
+                        //
+                        // For some reason using js.join() results in stack-overflow for relatively
+                        // small number of jobs. I failed to find the reason
+                        //
+                        // this "inline-join" has been tested with up to 10 million jobs
+                        //
                         let (lhs, rhs) = list.split_at(list.len() / 2);
-                        let (a, b) = js.join(
-                            move || reduce_recursive(js, lhs, init, reduce, max_depth - 1),
-                            move || reduce_recursive(js, rhs, init, reduce, max_depth - 1),
-                        );
-                        reduce(a, b)
+                        let lhs_job = InlineJob::new(move || {
+                            reduce_recursive(js, lhs, init, reduce, max_depth - 1)
+                        });
+                        let lhs = js.enqueue_job(lhs_job.as_job());
+                        let rhs = reduce_recursive(js, rhs, init, reduce, max_depth - 1);
+                        js.wait(lhs);
+                        let lhs = (&mut *lhs_job.result.get()).take().unwrap();
+                        reduce(lhs, rhs)
                     } else {
                         let a = list[0].result.get();
                         let mut result = (&mut *a).take().unwrap();
@@ -117,7 +127,12 @@ impl JobPool {
                 }
             }
         }
-        unsafe { reduce_recursive(self, &jobs, init, reduce, self.parallelism.get() * 2) }
+        unsafe {
+            reduce_recursive(
+                self, &jobs, init, reduce, 0,
+                //self.parallelism.get() * 2
+            )
+        }
     }
 
     pub fn scope<'a>(&'a self, f: impl FnOnce(Scope<'a>) + Send) {
@@ -782,6 +797,6 @@ mod tests {
 
         let result = pool.map_reduce(range.iter(), || 0i32, |i| *i * 2i32, |a, b| a + b);
 
-        assert_eq!(result, 128 * 2);
+        assert_eq!(result, 100_000 * 2);
     }
 }
