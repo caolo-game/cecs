@@ -191,38 +191,6 @@ impl EntityIndex {
         entry.row_index = row;
     }
 
-    /// # Safety
-    ///
-    /// Caller must ensure that the id is unused
-    #[allow(unused)]
-    pub(crate) unsafe fn set_gen(&mut self, index: usize, gen: u32) {
-        while index >= self.cap as usize {
-            self.grow((self.cap as f32 * 3.0 / 2.0).ceil() as u32);
-        }
-        let entry = &mut self.entries_mut()[index];
-        entry.gen = gen;
-    }
-
-    /// # Safety
-    ///
-    /// Caller must ensure that the entity is not in the free list, nor is is allocated.
-    #[allow(unused)]
-    pub(crate) unsafe fn force_insert_entity(&mut self, id: EntityId) {
-        debug_assert!(!self.is_valid(id));
-
-        let index = id.index();
-        while index >= self.cap {
-            self.grow((self.cap as f32 * 3.0 / 2.0).ceil() as u32);
-        }
-        let entry = &mut *self.entries.add(index as usize);
-
-        entry.gen = id.gen();
-        self.update(id, std::ptr::null_mut(), SENTINEL);
-        self.count += 1;
-        debug_assert!(self.count <= self.cap);
-        debug_assert!(self.count != self.cap || self.free_list.is_empty());
-    }
-
     pub(crate) fn get(&self, id: EntityId) -> Option<&Entry> {
         let index = id.index();
         self.is_valid(id)

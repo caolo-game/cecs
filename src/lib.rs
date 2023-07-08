@@ -553,7 +553,7 @@ impl World {
         }
     }
 
-    /// Constructs a new [[crate::commands::Commands]] instance with initialized buffers in this world
+    /// Constructs a new [crate::commands::Commands] instance with initialized buffers in this world
     pub fn ensure_commands(&mut self) -> prelude::Commands {
         self.resize_commands(1);
         commands::Commands::new(self, 0)
