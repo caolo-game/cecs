@@ -260,10 +260,10 @@ impl EntityCommands {
         self
     }
 
-    pub fn insert_bundle<T: Bundle>(&mut self, component: T) -> &mut Self {
+    pub fn insert_bundle<T: Bundle>(&mut self, bundle: T) -> &mut Self {
         self.payload
             .push(ErasedComponentCommand::from_bundle(BundleCommand::Insert(
-                component,
+                bundle,
             )));
         self
     }
