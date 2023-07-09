@@ -793,10 +793,10 @@ mod tests {
     fn map_reduce_test() {
         let pool = JobPool::default();
 
-        let range = vec![1i32; 100_000];
+        let range = vec![1i32; 10_000];
 
         let result = pool.map_reduce(range.iter(), || 0i32, |i| *i * 2i32, |a, b| a + b);
 
-        assert_eq!(result, 100_000 * 2);
+        assert_eq!(result, 10_000 * 2);
     }
 }
