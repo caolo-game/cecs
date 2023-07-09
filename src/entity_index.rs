@@ -26,7 +26,7 @@ pub(crate) struct EntityIndex {
     count: u32,
     /// deallocated entities
     /// if empty allocate the next entity in the list
-    free_list: Vec<u32>,
+    free_list: u32,
 }
 
 #[cfg(feature = "clone")]
@@ -34,7 +34,7 @@ impl Clone for EntityIndex {
     fn clone(&self) -> Self {
         let mut result = Self::new(self.cap);
         result.entries_mut().copy_from_slice(self.entries());
-        result.free_list = self.free_list.clone();
+        result.free_list = self.free_list;
         result.count = self.count;
         result
     }
@@ -62,17 +62,33 @@ impl EntityIndex {
                     Entry {
                         gen: 0,
                         arch: std::ptr::null_mut(),
-                        row_index: SENTINEL,
+                        row_index: i + 1,
                     },
                 );
             }
+            (&mut *entries.add(cap as usize - 1)).row_index = SENTINEL;
         };
         Self {
             entries,
             cap,
-            free_list: Vec::with_capacity(cap as usize),
+            free_list: 0,
             count: 0,
         }
+    }
+
+    fn free_list_push(&mut self, index: u32) {
+        let next = self.free_list;
+        self.entries_mut()[index as usize].row_index = next;
+        self.free_list = index;
+    }
+
+    fn free_list_pop(&mut self) -> Option<u32> {
+        if self.free_list == SENTINEL {
+            return None;
+        }
+        let result = self.free_list;
+        self.free_list = self.entries()[result as usize].row_index;
+        Some(result)
     }
 
     fn grow(&mut self, new_cap: u32) {
@@ -94,10 +110,12 @@ impl EntityIndex {
                     Entry {
                         gen: 0,
                         arch: std::ptr::null_mut(),
-                        row_index: SENTINEL,
+                        row_index: i + 1,
                     },
                 );
             }
+            (&mut *new_entries.add(new_cap as usize - 1)).row_index = self.free_list;
+            self.free_list = cap;
 
             dealloc(
                 self.entries.cast(),
@@ -126,7 +144,7 @@ impl EntityIndex {
 
     /// Can resize the buffer, if out of capacity
     pub fn allocate_with_resize(&mut self) -> EntityId {
-        if self.free_list.is_empty() && self.count == self.cap {
+        if self.free_list == SENTINEL && self.count == self.cap {
             self.grow((self.cap as f32 * 3.0 / 2.0).ceil() as u32);
         }
         self.allocate().unwrap()
@@ -136,7 +154,7 @@ impl EntityIndex {
     pub fn allocate(&mut self) -> Result<EntityId, HandleTableError> {
         // pop element off the free list
         //
-        let index = match self.free_list.pop() {
+        let index = match self.free_list_pop() {
             Some(i) => i,
             None => {
                 if self.count == self.cap {
@@ -222,7 +240,7 @@ impl EntityIndex {
         entry.arch = std::ptr::null_mut();
         entry.row_index = SENTINEL;
         entry.gen = (entry.gen + 1) & ENTITY_GEN_MASK;
-        self.free_list.push(index);
+        self.free_list_push(index);
     }
 
     pub fn is_valid(&self, id: EntityId) -> bool {
@@ -262,6 +280,8 @@ impl Drop for EntityIndex {
 pub(crate) struct Entry {
     pub gen: u32,
     pub arch: *mut ArchetypeStorage,
+    /// Store the index of the entity in the ArchetypeStorage
+    /// When entity is invalid the row_index stores the position of the next Entry in the free-list
     pub row_index: RowIndex,
 }
 
@@ -306,5 +326,46 @@ mod tests {
         for _ in 0..128 {
             table.allocate().unwrap();
         }
+    }
+
+    #[test]
+    fn reuses_entity_ids_test() {
+        let mut table = EntityIndex::new(0);
+
+        table.reserve(128);
+
+        let mut a = table.allocate_with_resize();
+        for _ in 0..10 {
+            table.free(a);
+            let b = table.allocate_with_resize();
+            assert_eq!(a.index(), b.index());
+            assert_ne!(a.gen(), b.gen());
+            a = b;
+        }
+    }
+
+    #[test]
+    fn walking_the_free_list_terminates_test() {
+        // see if the sentinel value is in the chain after resizing
+        let mut table = EntityIndex::new(0);
+
+        let ids = (0..256)
+            .map(|_| table.allocate_with_resize())
+            .collect::<Vec<_>>();
+        for id in ids {
+            table.free(id);
+        }
+
+        let mut next = table.free_list;
+        let mut cnt = 0;
+        let cap = table.capacity();
+        while next != SENTINEL {
+            cnt += 1;
+            let entry = &table.entries()[next as usize];
+            next = entry.row_index;
+            assert!(entry.arch.is_null());
+            assert!(cnt <= cap);
+        }
+        assert_eq!(cnt, cap);
     }
 }
