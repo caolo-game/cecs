@@ -19,7 +19,7 @@ pub enum HandleTableError {
     Uninitialized,
 }
 
-pub struct EntityIndex {
+pub(crate) struct EntityIndex {
     entries: *mut Entry,
     cap: u32,
     /// Currently allocated entries
@@ -119,6 +119,7 @@ impl EntityIndex {
         self.cap as usize
     }
 
+    #[allow(unused)]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -191,7 +192,7 @@ impl EntityIndex {
         entry.row_index = row;
     }
 
-    pub(crate) fn get(&self, id: EntityId) -> Option<&Entry> {
+    fn get(&self, id: EntityId) -> Option<&Entry> {
         let index = id.index();
         self.is_valid(id)
             .then(|| unsafe { &*self.entries.add(index as usize) })
@@ -222,11 +223,6 @@ impl EntityIndex {
         entry.row_index = SENTINEL;
         entry.gen = (entry.gen + 1) & ENTITY_GEN_MASK;
         self.free_list.push(index);
-    }
-
-    pub fn get_at_index(&self, ind: u32) -> EntityId {
-        let entry = self.entries()[ind as usize];
-        EntityId::new(ind, entry.gen)
     }
 
     pub fn is_valid(&self, id: EntityId) -> bool {
@@ -292,17 +288,14 @@ mod tests {
     }
 
     #[test]
-    fn handle_table_remove_tick_generation_test() {
+    fn dealloc_test() {
         let mut table = EntityIndex::new(512);
 
         let a = table.allocate().unwrap();
 
         table.free(a);
 
-        let b = table.get_at_index(a.index());
-
-        assert_eq!(a.index(), b.index());
-        assert_eq!(a.gen() + 1, b.gen());
+        assert!(!table.is_valid(a));
     }
 
     #[test]
