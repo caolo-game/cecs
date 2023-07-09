@@ -33,6 +33,11 @@ impl EntityId {
     pub fn gen(self) -> u32 {
         self.0 & ENTITY_GEN_MASK
     }
+
+    #[inline]
+    pub fn to_pair(self) -> (Index, u32) {
+        (self.index(), self.gen())
+    }
 }
 
 impl From<u32> for EntityId {
