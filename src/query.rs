@@ -7,8 +7,10 @@ pub mod resource_query;
 mod query_tests;
 
 use crate::{
-    archetype::ArchetypeStorage, entity_id::EntityId, systems::SystemDescriptor, Component,
-    RowIndex, World,
+    archetype::{ArchetypeHash, ArchetypeStorage},
+    entity_id::EntityId,
+    systems::SystemDescriptor,
+    Component, RowIndex, World,
 };
 use filters::Filter;
 use std::{any::TypeId, collections::HashSet, marker::PhantomData, ops::RangeBounds, slice};
@@ -564,6 +566,83 @@ impl QueryPrimitive for ArchQuery<EntityId> {
         let len = archetype.entities.len();
         let range = slice::range(range, ..len);
         archetype.entities[range].iter().copied()
+    }
+
+    fn iter_range_prim_mut(
+        archetype: &ArchetypeStorage,
+        range: impl RangeBounds<usize>,
+    ) -> Self::ItMut<'_> {
+        Self::iter_range_prim(archetype, range)
+    }
+}
+
+impl QueryPrimitive for ArchQuery<ArchetypeHash> {
+    type ItemUnsafe<'a> = ArchetypeHash;
+    type Item<'a> = ArchetypeHash;
+    type ItemMut<'a> = ArchetypeHash;
+    type It<'a> = Box<dyn Iterator<Item = Self::Item<'a>> + 'a>;
+    type ItUnsafe<'a> = Self::It<'a>;
+    type ItMut<'a> = Self::It<'a>;
+
+    unsafe fn iter_prim_unsafe<'a>(archetype: &'a ArchetypeStorage) -> Self::ItUnsafe<'a> {
+        Self::iter_prim(archetype)
+    }
+
+    unsafe fn fetch_prim_unsafe(
+        archetype: &ArchetypeStorage,
+        index: RowIndex,
+    ) -> Option<Self::ItemUnsafe<'_>> {
+        Self::fetch_prim(archetype, index)
+    }
+
+    fn iter_prim<'a>(archetype: &'a ArchetypeStorage) -> Self::It<'a> {
+        let hash = archetype.ty;
+        Box::new((0..archetype.rows).map(move |_| ArchetypeHash(hash)))
+    }
+
+    fn iter_prim_mut<'a>(archetype: &'a ArchetypeStorage) -> Self::ItMut<'a> {
+        Self::iter_prim(archetype)
+    }
+
+    fn fetch_prim(archetype: &ArchetypeStorage, index: RowIndex) -> Option<Self::Item<'_>> {
+        archetype
+            .entities
+            .get(index as usize)
+            .map(|_| ArchetypeHash(archetype.ty))
+    }
+
+    fn fetch_prim_mut(archetype: &ArchetypeStorage, index: RowIndex) -> Option<Self::ItemMut<'_>> {
+        Self::fetch_prim(archetype, index)
+    }
+
+    fn contains_prim(_archetype: &ArchetypeStorage) -> bool {
+        true
+    }
+
+    fn types_mut(_set: &mut HashSet<TypeId>) {
+        // noop
+    }
+
+    fn types_const(_set: &mut HashSet<TypeId>) {
+        // noop
+    }
+
+    fn read_only() -> bool {
+        true
+    }
+
+    fn iter_range_prim(
+        archetype: &ArchetypeStorage,
+        range: impl RangeBounds<usize>,
+    ) -> Self::It<'_> {
+        let len = archetype.entities.len();
+        let range = slice::range(range, ..len);
+        let hash = archetype.ty;
+        Box::new(
+            archetype.entities[range]
+                .iter()
+                .map(move |_| ArchetypeHash(hash)),
+        )
     }
 
     fn iter_range_prim_mut(

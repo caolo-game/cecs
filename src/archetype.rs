@@ -1,9 +1,9 @@
+use crate::{entity_id::EntityId, hash_ty, hash_type_id, Component, RowIndex, TypeHash};
 use std::{alloc::Layout, any::TypeId, cell::UnsafeCell, collections::BTreeMap};
 
-// TODO: use dense storage instead of the Vec because of archetypes
-use crate::{entity_id::EntityId, hash_ty, hash_type_id, Component, RowIndex, TypeHash};
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ArchetypeHash(pub TypeHash);
 
-// TODO: hide from public interface, because it's fairly unsafe
 pub struct ArchetypeStorage {
     pub(crate) ty: TypeHash,
     pub(crate) rows: u32,

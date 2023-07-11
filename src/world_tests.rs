@@ -1,6 +1,7 @@
 use commands::Commands;
 use world_access::WorldAccess;
 
+use crate::archetype::ArchetypeHash;
 use crate::entity_id::EntityId;
 use crate::prelude::ResMut;
 use crate::query::resource_query::Res;
@@ -911,4 +912,26 @@ fn with_and_without_test() {
         .count();
 
     assert_eq!(count, 1);
+}
+
+#[test]
+fn archetype_id_query() {
+    let mut world = World::new(16);
+
+    let a = world.insert_entity();
+    let b = world.insert_entity();
+    let c = world.insert_entity();
+
+    world.set_component(a, 1u64).unwrap();
+    world.set_component(a, 1u32).unwrap();
+
+    world.set_component(b, 2u32).unwrap();
+    world.set_component(b, 2u64).unwrap();
+
+    world.set_component(c, 2i32).unwrap();
+
+    let q = Query::<ArchetypeHash>::new(&world);
+
+    assert_eq!(q.fetch(a).unwrap(), q.fetch(b).unwrap());
+    assert_ne!(q.fetch(a).unwrap(), q.fetch(c).unwrap());
 }
