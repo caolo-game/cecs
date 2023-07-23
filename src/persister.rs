@@ -251,8 +251,12 @@ where
         match self.ty {
             SerTy::Component => {
                 let values: Vec<(EntityId, T)> = map.next_value()?;
+                #[cfg(feature = "tracing")]
+                tracing::trace!("Got {} entries", values.len());
                 for (id, value) in values {
                     if !world.is_id_valid(id) {
+                        #[cfg(feature = "tracing")]
+                        tracing::trace!("Inserting id {id}");
                         world.insert_id(id).unwrap();
                     }
                     world.set_component(id, value).unwrap();
@@ -492,6 +496,11 @@ mod tests {
         let mut world0 = World::new(10);
 
         for i in 0u32..10u32 {
+            // produce some gaps
+            for _ in 0..4 {
+                let _id = world0.insert_entity();
+            }
+            // bump generation
             for _ in 0..4 {
                 let id = world0.insert_entity();
                 world0.delete_entity(id).unwrap();

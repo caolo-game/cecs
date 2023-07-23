@@ -98,7 +98,10 @@ impl EntityIndex {
     }
 
     fn grow(&mut self, new_cap: u32) {
+        #[cfg(feature = "tracing")]
+        tracing::trace!("Growing from {} to {new_cap}", self.cap);
         let cap = self.cap;
+        assert!(new_cap < ENTITY_INDEX_MASK);
         assert!(new_cap > cap);
         assert!(new_cap >= 2);
         let new_entries: *mut Entry;
@@ -174,7 +177,7 @@ impl EntityIndex {
                     self.entries_mut()[needle as usize].gen = id.gen();
                     return Ok(());
                 }
-                free_list = &mut self.entries_mut()[needle as usize].row_index;
+                free_list = &mut self.entries_mut()[*free_list as usize].row_index;
             }
         }
         // not found
@@ -310,7 +313,7 @@ impl Drop for EntityIndex {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct Entry {
     pub gen: u32,
     pub arch: *mut ArchetypeStorage,
