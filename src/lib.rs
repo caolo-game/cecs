@@ -559,15 +559,6 @@ impl World {
         commands::Commands::new(self, 0)
     }
 
-    /// Delete entities with only unit `()` components
-    pub fn gc_empty_entities(&mut self) {
-        let void_store = self.archetypes.get_mut(&VOID_TY).unwrap();
-        let to_delete = void_store.entities.clone();
-        for id in to_delete {
-            self.delete_entity(id).unwrap();
-        }
-    }
-
     /// Return the "type" of the Entity.
     /// Type itself is an opaque hash.
     ///
