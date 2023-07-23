@@ -19,6 +19,12 @@ pub enum HandleTableError {
     Uninitialized,
 }
 
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum InsertError {
+    #[error("Id {0} has already been allocated")]
+    Taken(EntityId),
+}
+
 pub(crate) struct EntityIndex {
     entries: *mut Entry,
     cap: u32,
@@ -150,6 +156,31 @@ impl EntityIndex {
         self.allocate().unwrap()
     }
 
+    /// Insert is an O(n) operation that walks the free-list.
+    /// Definitely avoid
+    pub(crate) fn insert_id(&mut self, id: EntityId) -> Result<(), InsertError> {
+        let needle = id.index();
+        if needle as usize >= self.capacity() {
+            self.grow(needle + 1);
+        }
+        unsafe {
+            let mut free_list: *mut u32 = &mut self.free_list;
+            while *free_list != SENTINEL {
+                if *free_list == needle {
+                    // unlink from the free list
+                    let row = self.entries()[needle as usize].row_index;
+                    *free_list = row;
+                    self.init_allocated_id(needle);
+                    self.entries_mut()[needle as usize].gen = id.gen();
+                    return Ok(());
+                }
+                free_list = &mut self.entries_mut()[needle as usize].row_index;
+            }
+        }
+        // not found
+        Err(InsertError::Taken(id))
+    }
+
     /// Allocate will not grow the buffer, caller must ensure that sufficient capacity is reserved
     pub fn allocate(&mut self) -> Result<EntityId, HandleTableError> {
         // pop element off the free list
@@ -163,6 +194,10 @@ impl EntityIndex {
                 self.count
             }
         };
+        Ok(self.init_allocated_id(index))
+    }
+
+    fn init_allocated_id(&mut self, index: u32) -> EntityId {
         let entries = self.entries;
         self.count += 1;
         let entry;
@@ -171,8 +206,7 @@ impl EntityIndex {
             entry.arch = std::ptr::null_mut();
             entry.row_index = 0;
         }
-        let id = EntityId::new(index as u32, entry.gen);
-        Ok(id)
+        EntityId::new(index as u32, entry.gen)
     }
 
     pub fn reserve(&mut self, additional: u32) {

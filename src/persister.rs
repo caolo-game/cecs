@@ -6,7 +6,6 @@ use serde::{
     ser::SerializeMap,
     Serialize,
 };
-use std::collections::BTreeMap;
 use std::marker::PhantomData;
 
 use crate::{entity_id::EntityId, prelude::Query, Component, World};
@@ -85,7 +84,6 @@ pub trait WorldSerializer: Sized {
         key: &str,
         map: &mut A,
         world: &mut World,
-        id_map: &mut BTreeMap<u32, EntityId>,
     ) -> Result<(), A::Error>
     where
         A: serde::de::MapAccess<'de>;
@@ -128,7 +126,6 @@ impl WorldSerializer for () {
         _key: &str,
         _map: &mut A,
         _world: &mut World,
-        _id_map: &mut BTreeMap<u32, EntityId>,
     ) -> Result<(), A::Error>
     where
         A: serde::de::MapAccess<'de>,
@@ -144,7 +141,6 @@ where
 {
     persist: &'a WorldPersister<T, P>,
     world: World,
-    id_mapping: BTreeMap<u32, EntityId>,
 }
 
 impl<'a, 'de: 'a, T, P> Visitor<'de> for WorldVisitor<'a, T, P>
@@ -163,12 +159,8 @@ where
         A: serde::de::MapAccess<'de>,
     {
         while let Some(key) = map.next_key::<std::borrow::Cow<'de, str>>()? {
-            self.persist.visit_map_value(
-                key.as_ref(),
-                &mut map,
-                &mut self.world,
-                &mut self.id_mapping,
-            )?;
+            self.persist
+                .visit_map_value(key.as_ref(), &mut map, &mut self.world)?;
         }
 
         Ok(self.world)
@@ -208,10 +200,8 @@ where
         match self.ty {
             SerTy::Component => {
                 // TODO: save iterator or adapter pls
-                let values: Vec<(u32, &T)> = Query::<(EntityId, &T)>::new(world)
-                    .iter()
-                    .map(|(id, t)| (id.index(), t))
-                    .collect();
+                let values: Vec<(EntityId, &T)> =
+                    Query::<(EntityId, &T)>::new(world).iter().collect();
                 s.serialize_entry(&tname, &values)?;
             }
             SerTy::Resource => {
@@ -234,7 +224,6 @@ where
         let visitor = WorldVisitor {
             persist: self,
             world,
-            id_mapping: Default::default(),
         };
         let world = d.deserialize_map(visitor)?;
 
@@ -246,7 +235,6 @@ where
         key: &str,
         map: &mut A,
         world: &mut World,
-        id_map: &mut BTreeMap<u32, EntityId>,
     ) -> Result<(), A::Error>
     where
         A: serde::de::MapAccess<'de>,
@@ -254,7 +242,7 @@ where
         let tname = entry_name::<T>(self.ty);
         if tname != key {
             if let Some(next) = &self.next {
-                next.visit_map_value(key, map, world, id_map)?;
+                next.visit_map_value(key, map, world)?;
             }
             return Ok(());
         }
@@ -262,10 +250,12 @@ where
         tracing::trace!(name = &tname, "Deserializing");
         match self.ty {
             SerTy::Component => {
-                let values: Vec<(u32, T)> = map.next_value()?;
+                let values: Vec<(EntityId, T)> = map.next_value()?;
                 for (id, value) in values {
-                    let id = id_map.entry(id).or_insert_with(|| world.insert_entity());
-                    world.set_component(*id, value).unwrap();
+                    if !world.is_id_valid(id) {
+                        world.insert_id(id).unwrap();
+                    }
+                    world.set_component(id, value).unwrap();
                 }
             }
             SerTy::Resource => {
@@ -494,5 +484,54 @@ mod tests {
             .unwrap();
 
         let _world2 = world1.clone();
+    }
+
+    #[test]
+    #[cfg_attr(feature = "tracing", tracing_test::traced_test)]
+    fn ids_are_stable_test() {
+        let mut world0 = World::new(10);
+
+        for i in 0u32..10u32 {
+            for _ in 0..4 {
+                let id = world0.insert_entity();
+                world0.delete_entity(id).unwrap();
+            }
+            let id = world0.insert_entity();
+            world0.set_component(id, 42i32).unwrap();
+            world0.set_component(id, i).unwrap();
+            world0.set_component(id, Foo { value: i }).unwrap();
+        }
+
+        let p = WorldPersister::new()
+            .with_component::<i32>()
+            .with_component::<Foo>();
+
+        let mut result = Vec::<u8>::new();
+        let mut s = bincode::Serializer::new(&mut result, bincode::config::DefaultOptions::new());
+        p.save(&mut s, &world0).unwrap();
+
+        let world1 = p
+            .load(&mut bincode::de::Deserializer::from_slice(
+                result.as_slice(),
+                bincode::config::DefaultOptions::new(),
+            ))
+            .unwrap();
+
+        type QueryTuple<'a> = (EntityId, &'a i32, &'a Foo);
+
+        for ((id0, i0, f0), (id1, i1, f1)) in Query::<QueryTuple>::new(&world0)
+            .iter()
+            .zip(Query::<QueryTuple>::new(&world1).iter())
+        {
+            assert_eq!(id0, id1);
+            assert_eq!(i0, i1);
+            assert_eq!(f0.value, f1.value);
+        }
+
+        assert_eq!(
+            Query::<&u32>::new(&world1).count(),
+            0,
+            "Assumes that non registered types are not (de)serialized"
+        );
     }
 }

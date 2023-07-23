@@ -741,6 +741,20 @@ impl World {
     pub fn job_system(&self) -> &prelude::JobPool {
         &self.job_system
     }
+
+    #[allow(unused)]
+    pub(crate) fn insert_id(&mut self, id: EntityId) -> Result<(), entity_index::InsertError> {
+        self.entity_ids.get_mut().insert_id(id)?;
+        unsafe {
+            self.init_id(id);
+        }
+        #[cfg(feature = "tracing")]
+        tracing::trace!(
+            id = tracing::field::display(id),
+            "Inserted existing entity id"
+        );
+        Ok(())
+    }
 }
 
 // # SAFETY
