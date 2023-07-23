@@ -279,6 +279,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::prelude::*;
+    use std::collections::HashSet;
 
     #[derive(serde::Serialize, serde::Deserialize, Clone)]
     struct Foo {
@@ -507,7 +509,13 @@ mod tests {
             }
             let id = world0.insert_entity();
             world0.set_component(id, 42i32).unwrap();
-            world0.set_component(id, i).unwrap();
+            // produce multiple archetypes
+            if i % 2 == 0 {
+                world0.set_component(id, i).unwrap();
+            }
+            if i % 3 == 0 {
+                world0.set_component(id, 4.2f32).unwrap();
+            }
             world0.set_component(id, Foo { value: i }).unwrap();
         }
 
@@ -519,22 +527,48 @@ mod tests {
         let mut s = bincode::Serializer::new(&mut result, bincode::config::DefaultOptions::new());
         p.save(&mut s, &world0).unwrap();
 
-        let world1 = p
+        let mut world1 = p
             .load(&mut bincode::de::Deserializer::from_slice(
                 result.as_slice(),
                 bincode::config::DefaultOptions::new(),
             ))
             .unwrap();
 
-        type QueryTuple<'a> = (EntityId, &'a i32, &'a Foo);
+        type Q<'a> = Query<
+            (EntityId, ArchetypeHash, Option<&'a u32>, Option<&'a f32>),
+            (With<i32>, With<Foo>),
+        >;
 
-        for ((id0, i0, f0), (id1, i1, f1)) in Query::<QueryTuple>::new(&world0)
-            .iter()
-            .zip(Query::<QueryTuple>::new(&world1).iter())
+        let u32_hash = crate::hash_ty::<u32>();
+        let f32_hash = crate::hash_ty::<f32>();
+
+        let q0 = Q::new(&world0);
+        let q1 = Q::new(&world1);
+
+        assert_eq!(q0.count(), q1.count());
+
+        for ((id0, mut h0, c, d), (id1, h1, _, _)) in
+            Q::new(&world0).iter().zip(Q::new(&world1).iter())
         {
             assert_eq!(id0, id1);
-            assert_eq!(i0, i1);
-            assert_eq!(f0.value, f1.value);
+            if c.is_some() {
+                // unserialized components will be lost
+                h0.0 ^= u32_hash;
+            }
+            if d.is_some() {
+                // unserialized components will be lost
+                h0.0 ^= f32_hash;
+            }
+            assert_eq!(h0, h1);
+        }
+        let mut ids = Query::<EntityId>::new(&world1)
+            .iter()
+            .collect::<HashSet<_>>();
+
+        for _ in 0..1024 {
+            let id = world1.insert_entity();
+            assert!(!ids.contains(&id));
+            ids.insert(id);
         }
 
         assert_eq!(
