@@ -376,7 +376,7 @@ mod tests {
 
         assert_eq!(
             result, result1,
-            "Re-serializing the deserialized would should yield the same payload"
+            "Re-serializing the deserialized world should yield the same payload"
         );
 
         type QueryTuple<'a> = (EntityId, &'a i32, &'a Foo);
