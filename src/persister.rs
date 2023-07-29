@@ -370,6 +370,15 @@ mod tests {
             ))
             .unwrap();
 
+        let mut result1 = Vec::<u8>::new();
+        let mut s = bincode::Serializer::new(&mut result1, bincode::config::DefaultOptions::new());
+        p.save(&mut s, &world1).unwrap();
+
+        assert_eq!(
+            result, result1,
+            "Re-serializing the deserialized would should yield the same payload"
+        );
+
         type QueryTuple<'a> = (EntityId, &'a i32, &'a Foo);
 
         for ((id0, i0, f0), (id1, i1, f1)) in Query::<QueryTuple>::new(&world0)
