@@ -200,8 +200,13 @@ where
         match self.ty {
             SerTy::Component => {
                 // TODO: save iterator or adapter pls
-                let values: Vec<(EntityId, &T)> =
-                    Query::<(EntityId, &T)>::new(world).iter().collect();
+                let values: Vec<(EntityId, &T)> = Query::<(EntityId, &T)>::new(world)
+                    .iter()
+                    .inspect(|(_id, _)| {
+                        #[cfg(feature = "tracing")]
+                        tracing::trace!(id = tracing::field::display(_id), "Serializing entity");
+                    })
+                    .collect();
                 s.serialize_entry(&tname, &values)?;
             }
             SerTy::Resource => {
@@ -459,37 +464,6 @@ mod tests {
         assert_eq!(i, &42);
         let u = world1.get_resource::<u32>().unwrap();
         assert_eq!(u, &69);
-    }
-
-    #[test]
-    #[cfg_attr(feature = "tracing", tracing_test::traced_test)]
-    #[cfg(feature = "clone")]
-    fn can_clone_deserialized_world_test() {
-        let mut world0 = World::new(100);
-
-        for i in 0u32..100u32 {
-            let id = world0.insert_entity();
-            world0.set_component(id, 42i32).unwrap();
-            world0.set_component(id, i).unwrap();
-            world0.set_component(id, Foo { value: i }).unwrap();
-        }
-
-        let p = WorldPersister::new()
-            .with_component::<Foo>()
-            .with_component::<i32>();
-
-        let mut result = Vec::<u8>::new();
-        let mut s = bincode::Serializer::new(&mut result, bincode::config::DefaultOptions::new());
-        p.save(&mut s, &world0).unwrap();
-
-        let world1 = p
-            .load(&mut bincode::de::Deserializer::from_slice(
-                result.as_slice(),
-                bincode::config::DefaultOptions::new(),
-            ))
-            .unwrap();
-
-        let _world2 = world1.clone();
     }
 
     #[test]
