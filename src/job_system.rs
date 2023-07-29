@@ -237,6 +237,7 @@ impl Drop for Inner {
     fn drop(&mut self) {
         {
             *self.sleep.0.lock() = true;
+            self.sleep.1.notify_all();
         }
         for j in self.threads.drain(..) {
             j.join().unwrap_or(());
