@@ -40,16 +40,6 @@ pub struct SystemStage<'a> {
     pub systems: SystemStorage<ErasedSystem<'a, ()>>,
 }
 
-impl Default for SystemStage<'_> {
-    fn default() -> Self {
-        Self {
-            name: "<default-stage>".into(),
-            should_run: smallvec::smallvec![],
-            systems: smallvec::smallvec![],
-        }
-    }
-}
-
 impl<'a> SystemStage<'a> {
     pub fn sort(&mut self) {
         sort_systems(&mut self.systems);
