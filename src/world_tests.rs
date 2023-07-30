@@ -322,7 +322,7 @@ fn world_execute_systems_test() {
     }
 
     world.add_stage(
-        SystemStage::parallel("many_systems")
+        SystemStage::new("many_systems")
             .with_system(sys0)
             .with_system(assert_sys)
             .with_system(assert_sys)
@@ -343,7 +343,7 @@ fn world_execute_systems_test() {
 
     world
         .run_stage(
-            SystemStage::parallel("")
+            SystemStage::new("")
                 .with_system(assert_sys)
                 .with_system(assert_sys),
         )
@@ -366,14 +366,14 @@ fn can_skip_stage_test() {
 
     world
         .run_stage(
-            SystemStage::parallel("instant-run")
+            SystemStage::new("instant-run")
                 .with_should_run(should_not_run)
                 .with_system(system),
         )
         .unwrap();
 
     world.add_stage(
-        SystemStage::parallel("tick-run")
+        SystemStage::new("tick-run")
             .with_should_run(should_not_run)
             .with_system(system),
     );
@@ -513,7 +513,7 @@ fn mutating_world_inside_system_test() {
     fn mutation(mut access: WorldAccess) {
         let w = access.world_mut();
         for _ in 0..100 {
-            w.add_stage(SystemStage::serial("kekw").with_system(|| {}));
+            w.add_stage(SystemStage::new("kekw").with_system(|| {}));
         }
         for _ in 0..5 {
             let id = w.insert_entity();
@@ -527,7 +527,7 @@ fn mutating_world_inside_system_test() {
     }
 
     let mut world = World::new(100);
-    world.add_stage(SystemStage::parallel("monka").with_system(mutation));
+    world.add_stage(SystemStage::new("monka").with_system(mutation));
 
     world.tick();
     world.tick();
@@ -838,7 +838,7 @@ fn par_ordering_test() {
 
     world
         .run_stage(
-            SystemStage::parallel("")
+            SystemStage::new("")
                 .with_system(sys1.after(sys0))
                 .with_system(sys0),
         )
@@ -874,7 +874,7 @@ fn serial_ordering_test() {
 
     world
         .run_stage(
-            SystemStage::serial("")
+            SystemStage::new("")
                 .with_system(sys1.after(sys0))
                 .with_system(sys0),
         )

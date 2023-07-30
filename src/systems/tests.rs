@@ -15,7 +15,7 @@ fn basic_pipe_test() {
 
     let mut world = World::new(0);
 
-    world.add_stage(SystemStage::parallel("test").with_system(Piped {
+    world.add_stage(SystemStage::new("test").with_system(Piped {
         lhs: sys1.descriptor(),
         rhs: sys2.descriptor(),
     }));
@@ -44,7 +44,7 @@ fn function_can_be_piped_test() {
 
     let mut world = World::new(0);
 
-    world.add_stage(SystemStage::parallel("test").with_system(sys1.pipe(sys2).pipe(sys3)));
+    world.add_stage(SystemStage::new("test").with_system(sys1.pipe(sys2).pipe(sys3)));
 
     world.insert_resource(0i32);
     world.tick();

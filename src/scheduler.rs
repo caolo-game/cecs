@@ -16,15 +16,7 @@ pub struct Schedule {
 
 impl Schedule {
     pub fn from_stage(stage: &mut SystemStage) -> Self {
-        let systems = match &mut stage.systems {
-            crate::systems::StageSystems::Serial(_v) => {
-                // trivial schedule
-                stage.sort();
-                return Self { parents: vec![] };
-            }
-            crate::systems::StageSystems::Parallel(s) => s,
-        };
-        Self::from_systems(systems)
+        Self::from_systems(&mut stage.systems)
     }
 
     pub fn from_systems<T>(systems: &mut [ErasedSystem<T>]) -> Self {

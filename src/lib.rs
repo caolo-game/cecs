@@ -521,25 +521,26 @@ impl World {
             }
         }
 
-        match stage.systems {
-            systems::StageSystems::Serial(ref systems) => {
-                for system in systems.iter() {
-                    unsafe {
-                        run_system(self, system);
-                    }
+        let systems = &stage.systems;
+
+        #[cfg(not(feature = "parallel"))]
+        {
+            for system in systems.iter() {
+                unsafe {
+                    run_system(self, system);
                 }
             }
-            #[cfg(feature = "parallel")]
-            systems::StageSystems::Parallel(ref systems) => {
-                let schedule = &self.schedule[i];
-                let graph = schedule.jobs(systems, self);
+        }
+        #[cfg(feature = "parallel")]
+        {
+            let schedule = &self.schedule[i];
+            let graph = schedule.jobs(systems, self);
 
-                #[cfg(feature = "tracing")]
-                tracing::debug!(graph = tracing::field::debug(&graph), "Running job graph");
+            #[cfg(feature = "tracing")]
+            tracing::debug!(graph = tracing::field::debug(&graph), "Running job graph");
 
-                let handle = self.job_system.enqueue_graph(graph);
-                self.job_system.wait(handle);
-            }
+            let handle = self.job_system.enqueue_graph(graph);
+            self.job_system.wait(handle);
         }
         #[cfg(feature = "tracing")]
         tracing::trace!(stage_name = stage_name.as_str(), "Run stage done");

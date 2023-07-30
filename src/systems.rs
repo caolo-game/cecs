@@ -37,111 +37,35 @@ pub fn sort_systems<T>(sys: &mut [ErasedSystem<T>]) {
 pub struct SystemStage<'a> {
     pub name: String,
     pub should_run: SystemStorage<ErasedSystem<'a, bool>>,
-    pub systems: StageSystems<'a>,
+    pub systems: SystemStorage<ErasedSystem<'a, ()>>,
 }
 
 impl Default for SystemStage<'_> {
     fn default() -> Self {
         Self {
-            name: "<default-empty-stage>".into(),
+            name: "<default-stage>".into(),
             should_run: smallvec::smallvec![],
-            systems: StageSystems::Serial(smallvec::smallvec![]),
+            systems: smallvec::smallvec![],
         }
-    }
-}
-
-#[derive(Clone)]
-pub enum StageSystems<'a> {
-    Serial(SystemStorage<ErasedSystem<'a, ()>>),
-    #[cfg(feature = "parallel")]
-    Parallel(SystemStorage<ErasedSystem<'a, ()>>),
-}
-
-impl<'a> StageSystems<'a> {
-    pub fn sort(&mut self) {
-        match self {
-            StageSystems::Serial(v) => sort_systems(v),
-            #[cfg(feature = "parallel")]
-            StageSystems::Parallel(v) => sort_systems(v),
-        }
-    }
-
-    pub fn push(&mut self, sys: ErasedSystem<'a, ()>) {
-        match self {
-            StageSystems::Serial(v) => v.push(sys),
-            #[cfg(feature = "parallel")]
-            StageSystems::Parallel(v) => v.push(sys),
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        match self {
-            StageSystems::Serial(v) => v.len(),
-            #[cfg(feature = "parallel")]
-            StageSystems::Parallel(v) => v.len(),
-        }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    pub fn as_slice(&self) -> &[ErasedSystem<'a, ()>] {
-        match self {
-            StageSystems::Serial(v) => v.as_slice(),
-            #[cfg(feature = "parallel")]
-            StageSystems::Parallel(v) => v.as_slice(),
-        }
-    }
-
-    /// Returns `true` if the stage systems is [`Serial`].
-    ///
-    /// [`Serial`]: StageSystems::Serial
-    pub fn is_serial(&self) -> bool {
-        matches!(self, Self::Serial(..))
-    }
-
-    /// Returns `true` if the stage systems is [`Parallel`].
-    ///
-    /// [`Parallel`]: StageSystems::Parallel
-    #[cfg(feature = "parallel")]
-    pub fn is_parallel(&self) -> bool {
-        matches!(self, Self::Parallel(..))
-    }
-
-    #[cfg(not(feature = "parallel"))]
-    pub fn is_parallel(&self) -> bool {
-        false
     }
 }
 
 impl<'a> SystemStage<'a> {
     pub fn sort(&mut self) {
-        self.systems.sort();
+        sort_systems(&mut self.systems);
         sort_systems(&mut self.should_run);
     }
 
-    pub fn serial<N: Into<String>>(name: N) -> Self {
+    pub fn new<N: Into<String>>(name: N) -> Self {
         Self {
             name: name.into(),
             should_run: SystemStorage::with_capacity(1),
-            systems: StageSystems::Serial(SystemStorage::with_capacity(4)),
+            systems: SystemStorage::with_capacity(4),
         }
     }
 
-    /// If `feature=parallel` is disabled, then this created a `serial` SystemStage
-    pub fn parallel<N: Into<String>>(name: N) -> Self {
-        Self {
-            name: name.into(),
-            should_run: SystemStorage::with_capacity(1),
-            #[cfg(feature = "parallel")]
-            systems: StageSystems::Parallel(SystemStorage::with_capacity(4)),
-            #[cfg(not(feature = "parallel"))]
-            systems: StageSystems::Serial(SystemStorage::with_capacity(4)),
-        }
-    }
-
-    /// Multiple should_runs will be executed serially, and "and'ed" together
+    /// Multiple should_runs will be executed serially, and "and'ed" together in the same order as
+    /// they were registered.
     pub fn with_should_run<S, P>(mut self, system: S) -> Self
     where
         S: IntoSystem<'a, P, bool>,
@@ -166,11 +90,7 @@ impl<'a> SystemStage<'a> {
         let commands_index;
         #[cfg(feature = "parallel")]
         {
-            if matches!(self.systems, StageSystems::Parallel(_)) {
-                commands_index = self.systems.len();
-            } else {
-                commands_index = 0;
-            }
+            commands_index = self.systems.len();
         }
         #[cfg(not(feature = "parallel"))]
         {
