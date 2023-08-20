@@ -353,19 +353,7 @@ impl World {
             return Err(WorldError::ComponentNotFound);
         }
         let new_ty = archetype.extended_hash::<T>();
-        if !self.archetypes.contains_key(&new_ty) {
-            let (mut res, updated_entity) =
-                self.insert_archetype(archetype, index, archetype.reduce_with_column::<T>());
-            if let Some(updated_entity) = updated_entity {
-                unsafe {
-                    self.entity_ids
-                        .get_mut()
-                        .update_row_index(updated_entity, index);
-                }
-            }
-            arch_ptr = unsafe { res.as_mut() as *mut _ };
-            index = 0;
-        } else {
+        if self.archetypes.contains_key(&new_ty) {
             let new_arch = self.archetypes.get_mut(&new_ty).unwrap();
             let (i, updated_entity) = archetype.move_entity(new_arch, index);
             if let Some(updated_entity) = updated_entity {
@@ -377,6 +365,18 @@ impl World {
             }
             index = i;
             arch_ptr = new_arch.as_mut().get_mut() as *mut _;
+        } else {
+            let (mut res, updated_entity) =
+                self.insert_archetype(archetype, index, archetype.reduce_with_column::<T>());
+            if let Some(updated_entity) = updated_entity {
+                unsafe {
+                    self.entity_ids
+                        .get_mut()
+                        .update_row_index(updated_entity, index);
+                }
+            }
+            arch_ptr = unsafe { res.as_mut() as *mut _ };
+            index = 0;
         }
         unsafe {
             self.entity_ids.get_mut().update(entity_id, arch_ptr, index);
