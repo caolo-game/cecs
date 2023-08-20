@@ -366,8 +366,9 @@ impl World {
             index = i;
             arch_ptr = new_arch.as_mut().get_mut() as *mut _;
         } else {
+            let arch = archetype.clone_empty();
             let (mut res, updated_entity) =
-                self.insert_archetype(archetype, index, archetype.reduce_with_column::<T>());
+                self.insert_archetype(archetype, index, arch.reduce_with_column::<T>());
             if let Some(updated_entity) = updated_entity {
                 unsafe {
                     self.entity_ids

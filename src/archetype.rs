@@ -237,14 +237,13 @@ impl ArchetypeStorage {
         }
     }
 
-    pub fn reduce_with_column<T: Component>(&self) -> Self {
-        assert!(self.contains_column::<T>());
-
-        let mut result = self.clone_empty();
-        let new_ty = self.extended_hash::<T>();
-        result.ty = new_ty;
-        result.components.remove(&TypeId::of::<T>()).unwrap();
-        result
+    pub fn reduce_with_column<T: Component>(mut self) -> Self {
+        if self.contains_column::<T>() {
+            let new_ty = self.extended_hash::<T>();
+            self.ty = new_ty;
+            self.components.remove(&TypeId::of::<T>()).unwrap();
+        }
+        self
     }
 
     pub fn clone_empty(&self) -> Self {
