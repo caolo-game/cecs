@@ -204,16 +204,14 @@ impl ArchetypeStorage {
         self.ty ^ ty
     }
 
-    pub fn extend_with_column<T: Component>(&self) -> Self {
-        assert!(!self.contains_column::<T>());
-
-        let mut result = self.clone_empty();
-        let new_ty = self.extended_hash::<T>();
-        result.ty = new_ty;
-        result
-            .components
-            .insert(TypeId::of::<T>(), UnsafeCell::new(ErasedTable::new::<T>(0)));
-        result
+    pub fn extend_with_column<T: Component>(mut self) -> Self {
+        if !self.contains_column::<T>() {
+            let new_ty = self.extended_hash::<T>();
+            self.ty = new_ty;
+            self.components
+                .insert(TypeId::of::<T>(), UnsafeCell::new(ErasedTable::new::<T>(0)));
+        }
+        self
     }
 
     /// Creates a new archetype that holds tables with both `self` and `rhs` columns

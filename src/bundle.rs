@@ -26,9 +26,7 @@ macro_rules! impl_tuple {
             fn extend(archetype: &ArchetypeStorage) -> ArchetypeStorage {
                 let mut result = archetype.clone_empty();
                 $(
-                if !result.contains_column::<$ty>() {
                     result = result.extend_with_column::<$ty>();
-                }
                 )*
                 result
             }
