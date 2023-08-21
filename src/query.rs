@@ -317,7 +317,7 @@ where
     /// `batch_size` controls how many items are processed by a single job
     #[cfg(feature = "parallel")]
     pub fn par_for_each<'a>(
-        &'a mut self,
+        &'a self,
         f: impl Fn(<ArchQuery<T> as QueryFragment>::Item<'a>) + Sync,
     ) where
         T: Send + Sync,
@@ -422,7 +422,7 @@ where
 
     #[cfg(not(feature = "parallel"))]
     pub fn par_for_each<'a>(
-        &'a mut self,
+        &'a self,
         f: impl Fn(<ArchQuery<T> as QueryFragment>::Item<'a>) + Sync + 'a,
     ) where
         T: Send + Sync,
