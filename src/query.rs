@@ -316,10 +316,8 @@ where
 
     /// `batch_size` controls how many items are processed by a single job
     #[cfg(feature = "parallel")]
-    pub fn par_for_each<'a>(
-        &'a self,
-        f: impl Fn(<ArchQuery<T> as QueryFragment>::Item<'a>) + Sync,
-    ) where
+    pub fn par_for_each<'a>(&'a self, f: impl Fn(<ArchQuery<T> as QueryFragment>::Item<'a>) + Sync)
+    where
         T: Send + Sync,
     {
         unsafe {
@@ -353,9 +351,8 @@ where
                                 p += batch_size;
                             }
                             if p < len {
-                                let end = (p + batch_size).min(len);
                                 s.spawn(move |_s| {
-                                    let range = p..end;
+                                    let range = p..len;
                                     for t in ArchQuery::<T>::iter_range(arch, range) {
                                         f(t);
                                     }
@@ -406,9 +403,8 @@ where
                                 p += batch_size;
                             }
                             if p < len {
-                                let end = (p + batch_size).min(len);
                                 s.spawn(move |_s| {
-                                    let range = p..end;
+                                    let range = p..len;
                                     for t in ArchQuery::<T>::iter_range_mut(arch, range) {
                                         f(t);
                                     }
