@@ -335,30 +335,13 @@ where
                     .for_each(|(_, arch)| {
                         let batch_size = arch.len() / pool.parallelism + 1;
                         // TODO: the job allocator could probably help greatly with these jobs
-                        //
-                        // for each archetype create a new job that creates a new job for each window of size
-                        // <= batch_size in the archetype
-                        s.spawn(move |s| {
-                            let mut p = 0;
-                            let len = arch.len();
-                            while p + batch_size < len {
-                                s.spawn(move |_s| {
-                                    let range = p..(p + batch_size);
-                                    for t in ArchQuery::<T>::iter_range(arch, range) {
-                                        f(t);
-                                    }
-                                });
-                                p += batch_size;
-                            }
-                            if p < len {
-                                s.spawn(move |_s| {
-                                    let range = p..len;
-                                    for t in ArchQuery::<T>::iter_range(arch, range) {
-                                        f(t);
-                                    }
-                                });
-                            }
-                        });
+                        for range in batches(arch.len(), batch_size) {
+                            s.spawn(move |_s| {
+                                for t in ArchQuery::<T>::iter_range(arch, range) {
+                                    f(t);
+                                }
+                            })
+                        }
                     });
             });
         }
@@ -382,35 +365,19 @@ where
                     // TODO: should filters run inside the jobs instead?
                     // currently I anticipate that filters are inexpensive, so it seems cheaper to
                     // filter ahead of job creation
-                    .filter(|(_, arch)| F::filter(arch))
+                    .filter(|(_, arch)| !arch.is_empty() && F::filter(arch))
                     .for_each(|(_, arch)| {
                         // TODO: should take size of queried types into account?
                         let batch_size = arch.len() / pool.parallelism + 1;
+
                         // TODO: the job allocator could probably help greatly with these jobs
-                        //
-                        // for each archetype create a new job that creates a new job for each window of size
-                        // <= batch_size in the archetype
-                        s.spawn(move |s| {
-                            let mut p = 0;
-                            let len = arch.len();
-                            while p + batch_size < len {
-                                s.spawn(move |_s| {
-                                    let range = p..(p + batch_size);
-                                    for t in ArchQuery::<T>::iter_range_mut(arch, range) {
-                                        f(t);
-                                    }
-                                });
-                                p += batch_size;
-                            }
-                            if p < len {
-                                s.spawn(move |_s| {
-                                    let range = p..len;
-                                    for t in ArchQuery::<T>::iter_range_mut(arch, range) {
-                                        f(t);
-                                    }
-                                });
-                            }
-                        });
+                        for range in batches(arch.len(), batch_size) {
+                            s.spawn(move |_s| {
+                                for t in ArchQuery::<T>::iter_range_mut(arch, range) {
+                                    f(t);
+                                }
+                            })
+                        }
                     });
             });
         }
@@ -435,6 +402,18 @@ where
     {
         self.iter_mut().for_each(f);
     }
+}
+
+#[allow(unused)]
+fn batches(len: usize, batch_size: usize) -> impl Iterator<Item = impl RangeBounds<usize> + Clone> {
+    (0..len / batch_size)
+        .map(move |i| {
+            let s = i * batch_size;
+            s..s + batch_size
+        })
+        // last batch if len is not divisible by batch_size
+        // otherwise it's an empty range
+        .chain(std::iter::once((len - (len % batch_size))..len))
 }
 
 pub struct ArchQuery<T> {
