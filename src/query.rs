@@ -331,7 +331,7 @@ where
                     // TODO: should filters run inside the jobs instead?
                     // currently I anticipate that filters are inexpensive, so it seems cheaper to
                     // filter ahead of job creation
-                    .filter(|(_, arch)| F::filter(arch))
+                    .filter(|(_, arch)| !arch.is_empty() && F::filter(arch))
                     .for_each(|(_, arch)| {
                         let batch_size = arch.len() / pool.parallelism + 1;
                         // TODO: the job allocator could probably help greatly with these jobs
