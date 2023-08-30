@@ -332,7 +332,7 @@ where
                     // filter ahead of job creation
                     .filter(|(_, arch)| !arch.is_empty() && F::filter(arch))
                     .for_each(|(_, arch)| {
-                        let batch_size = arch.len() / pool.parallelism + 1;
+                        let batch_size = arch.len() / pool.parallelism() + 1;
                         // TODO: the job allocator could probably help greatly with these jobs
                         for range in batches(arch.len(), batch_size) {
                             s.spawn(move |_s| {
@@ -367,7 +367,7 @@ where
                     .filter(|(_, arch)| !arch.is_empty() && F::filter(arch))
                     .for_each(|(_, arch)| {
                         // TODO: should take size of queried types into account?
-                        let batch_size = arch.len() / pool.parallelism + 1;
+                        let batch_size = arch.len() / pool.parallelism() + 1;
 
                         // TODO: the job allocator could probably help greatly with these jobs
                         for range in batches(arch.len(), batch_size) {

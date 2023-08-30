@@ -22,7 +22,7 @@ type Sleep = Arc<(Mutex<bool>, Condvar)>;
 
 #[derive(Clone)]
 pub struct JobPool {
-    pub parallelism: NonZeroUsize,
+    parallelism: NonZeroUsize,
     inner: Arc<Inner>,
 }
 
@@ -202,6 +202,10 @@ impl JobPool {
                 }
             });
         }
+    }
+
+    pub fn parallelism(&self) -> NonZeroUsize {
+        self.parallelism
     }
 }
 
