@@ -29,7 +29,7 @@ fn pair_query_set_test() {
     world.set_component(e, Foo::default()).unwrap();
     world.set_component(e, Bar).unwrap();
 
-    world.run_system(sys);
+    world.run_system(sys).unwrap();
 }
 
 #[test]
@@ -57,5 +57,5 @@ fn triplet_query_set_test() {
     world.set_component(e, Foo::default()).unwrap();
     world.set_component(e, Bar).unwrap();
 
-    world.run_system(sys);
+    world.run_system(sys).unwrap();
 }

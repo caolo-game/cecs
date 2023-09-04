@@ -17,7 +17,7 @@ use crate::query::WorldQuery;
 /// fn sys(mut access: WorldAccess) {
 ///     let w = access.world_mut();
 ///     // you can use the world as you would normally
-///     w.run_system(||{});
+///     w.run_system(||{}).unwrap();
 /// }
 ///
 /// let mut world = World::new(0);

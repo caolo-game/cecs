@@ -66,7 +66,7 @@ impl<'a> Commands<'a> {
     ///     }
     /// }
     /// # let mut world = World::new(0);
-    /// # world.run_system(sys);
+    /// # world.run_system(sys).unwrap();
     /// ```
     ///
     /// ```should_panic
@@ -79,7 +79,7 @@ impl<'a> Commands<'a> {
     ///     }
     /// }
     /// # let mut world = World::new(0);
-    /// # world.run_system(sys);
+    /// # world.run_system(sys).unwrap();
     /// ```
     pub fn reserve_entities(&mut self, additional: u32) {
         unsafe {

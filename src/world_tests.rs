@@ -225,8 +225,8 @@ fn test_parallel() {
         })
     }
 
-    world.run_system(par_sys);
-    world.run_system(asserts);
+    world.run_system(par_sys).unwrap();
+    world.run_system(asserts).unwrap();
 }
 
 #[test]
@@ -339,7 +339,7 @@ fn world_execute_systems_test() {
 
     world.tick();
 
-    world.run_system(assert_sys);
+    world.run_system(assert_sys).unwrap();
 
     world
         .run_stage(
@@ -389,7 +389,7 @@ fn borrowing_same_type_const_twice_is_ok_test() {
 
     let mut world = World::new(1);
 
-    world.run_system(sys);
+    world.run_system(sys).unwrap();
 }
 
 #[test]
@@ -400,7 +400,7 @@ fn invalid_query_panics_double_mut_test() {
 
     let mut world = World::new(1);
 
-    world.run_system(sys);
+    world.run_system(sys).unwrap();
 }
 
 #[test]
@@ -411,7 +411,7 @@ fn invalid_query_panics_test() {
 
     let mut world = World::new(1);
 
-    world.run_system(sys);
+    world.run_system(sys).unwrap();
 }
 
 #[test]
@@ -422,7 +422,7 @@ fn borrowing_same_type_mutable_twice_panics_test() {
 
     let mut world = World::new(1);
 
-    world.run_system(sys);
+    world.run_system(sys).unwrap();
 }
 
 #[test]
@@ -433,7 +433,7 @@ fn borrowing_same_resource_mutable_twice_panics_test() {
 
     let mut world = World::new(1);
 
-    world.run_system(sys);
+    world.run_system(sys).unwrap();
 }
 
 #[test]
@@ -445,7 +445,7 @@ fn can_iterate_over_immutable_iter_of_refmut_component_test() {
     }
 
     let mut world = World::new(1);
-    world.run_system(sys);
+    world.run_system(sys).unwrap();
 }
 
 #[test]
@@ -475,7 +475,7 @@ fn can_insert_bundle_via_command_test() {
         cmd.spawn().insert_bundle((42i32, 38u32));
     }
 
-    world.run_system(sys);
+    world.run_system(sys).unwrap();
 
     for (a, b) in Query::<(&u32, &i32)>::new(&world).iter() {
         assert_eq!(a, &38);
@@ -492,7 +492,7 @@ fn fetching_same_resource_twice_mutable_is_panic_test() {
 
     fn bad_sys(_r0: ResMut<i32>, _r1: ResMut<i32>) {}
 
-    world.run_system(bad_sys);
+    world.run_system(bad_sys).unwrap();
 }
 
 #[test]
@@ -504,7 +504,7 @@ fn fetching_same_resource_twice_is_panic_test() {
 
     fn bad_sys(_r0: ResMut<i32>, _r1: Res<i32>) {}
 
-    world.run_system(bad_sys);
+    world.run_system(bad_sys).unwrap();
 }
 
 #[test]
@@ -523,7 +523,7 @@ fn mutating_world_inside_system_test() {
 
         w.run_system(|mut cmd: Commands| {
             cmd.spawn().insert(69u64);
-        });
+        }).unwrap();
     }
 
     let mut world = World::new(100);
@@ -540,7 +540,7 @@ fn world_access_is_unique_test() {
     fn bad_sys(_access: WorldAccess, _cmd: Commands) {}
 
     let mut world = World::new(0);
-    world.run_system(bad_sys);
+    world.run_system(bad_sys).unwrap();
 }
 
 #[test]
@@ -549,11 +549,11 @@ fn stacked_world_access_should_panic_test() {
     fn sys(mut access: WorldAccess) {
         let w = access.world_mut();
         // this should panic
-        w.run_system(sys);
+        w.run_system(sys).unwrap();
     }
 
     let mut world = World::new(0);
-    world.run_system(sys);
+    world.run_system(sys).unwrap();
 }
 
 #[test]
@@ -567,8 +567,8 @@ fn optional_resource_test() {
     }
 
     let mut world = World::new(0);
-    world.run_system(sys);
-    world.run_system(mut_sys);
+    world.run_system(sys).unwrap();
+    world.run_system(mut_sys).unwrap();
 }
 
 #[test]
@@ -589,9 +589,8 @@ fn can_fetch_entity_id_in_cmd_test() {
     }
 
     let mut world = World::new(1);
-    world.run_system(sys);
-
-    world.run_system(assert_sys)
+    world.run_system(sys).unwrap();
+    world.run_system(assert_sys).unwrap();
 }
 
 #[test]
@@ -604,7 +603,7 @@ fn can_reserve_and_insert_in_same_system_test() {
     }
 
     let mut world = World::new(0);
-    world.run_system(sys);
+    world.run_system(sys).unwrap();
 }
 
 #[test]
@@ -715,7 +714,7 @@ fn unsafe_test() {
         }
     }
 
-    world.run_system(unsafe_iter_sys);
+    world.run_system(unsafe_iter_sys).unwrap();
 }
 
 #[cfg(feature = "parallel")]
@@ -778,8 +777,8 @@ fn unsafe_partition_test() {
         }
     }
 
-    world.run_system(unsafe_iter_sys);
-    world.run_system(asserts);
+    world.run_system(unsafe_iter_sys).unwrap();
+    world.run_system(asserts).unwrap();
 }
 
 #[test]
@@ -808,8 +807,8 @@ fn test_par_foreach() {
         assert_eq!(q0.count(), 128);
     }
 
-    world.run_system(update_sys);
-    world.run_system(asserts);
+    world.run_system(update_sys).unwrap();
+    world.run_system(asserts).unwrap();
 }
 
 #[test]

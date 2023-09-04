@@ -467,15 +467,17 @@ impl World {
         self.apply_commands()
     }
 
-    pub fn run_system<'a, S, P, R>(&mut self, system: S) -> R
+    /// Run a system and apply any commands before returning
+    ///
+    /// Returns the commands result
+    pub fn run_system<'a, S, P, R>(&mut self, system: S) -> WorldResult<R>
     where
         S: systems::IntoSystem<'a, P, R>,
     {
         self.resize_commands(1);
         let result = unsafe { run_system(self, &system.descriptor().into()) };
         // apply commands immediately
-        self.apply_commands().unwrap();
-        result
+        self.apply_commands().map(|_| result)
     }
 
     /// Run a system that only gets a read-only view of the world.
