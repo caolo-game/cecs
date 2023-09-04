@@ -127,6 +127,9 @@ impl JobPool {
                 }
             }
         }
+        // TODO:
+        // have some sort of gateway setup where we immediately reduce incoming results from the map
+        // operation?
         unsafe {
             reduce_recursive(
                 self, &jobs, init, reduce,
