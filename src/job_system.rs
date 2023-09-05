@@ -216,13 +216,14 @@ impl JobPool {
 impl Default for JobPool {
     fn default() -> Self {
         unsafe {
-            let conc =
+            let parallelism =
                 std::thread::available_parallelism().unwrap_or(NonZeroUsize::new_unchecked(1));
-            let inner = Arc::new(Inner::new(conc));
-            Self {
-                parallelism: conc,
-                inner,
-            }
+
+            #[cfg(feature = "debug")]
+            tracing::debug!(?parallelism, "Initializing default JobPool");
+
+            let inner = Arc::new(Inner::new(parallelism));
+            Self { parallelism, inner }
         }
     }
 }
