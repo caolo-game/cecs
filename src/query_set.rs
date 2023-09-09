@@ -77,14 +77,6 @@ macro_rules! impl_tuple {
                     <ArchQuery<$t> as QueryFragment>::types_const(set);
                 )*
             }
-
-            fn resources_mut(_set: &mut HashSet<TypeId>) {
-                // noop
-            }
-
-            fn resources_const(_set: &mut HashSet<TypeId>) {
-                // noop
-            }
         }
     };
 }

@@ -19,13 +19,13 @@ pub(crate) trait WorldQuery<'a> {
     fn new(db: &'a World, commands_index: usize) -> Self;
 
     /// List of component types this query needs exclusive access to
-    fn components_mut(set: &mut HashSet<TypeId>);
+    fn components_mut(_set: &mut HashSet<TypeId>) {}
     /// List of component types this query needs
-    fn components_const(set: &mut HashSet<TypeId>);
+    fn components_const(_set: &mut HashSet<TypeId>) {}
     /// List of resource types this query needs exclusive access to
-    fn resources_mut(set: &mut HashSet<TypeId>);
+    fn resources_mut(_set: &mut HashSet<TypeId>) {}
     /// List of resource types this query needs
-    fn resources_const(set: &mut HashSet<TypeId>);
+    fn resources_const(_set: &mut HashSet<TypeId>) {}
     /// Return wether this system should run in isolation
     fn exclusive() -> bool {
         false
@@ -136,16 +136,8 @@ where
         <ArchQuery<T> as QueryFragment>::types_mut(set);
     }
 
-    fn resources_mut(_set: &mut HashSet<TypeId>) {
-        // noop
-    }
-
     fn components_const(set: &mut HashSet<TypeId>) {
         <ArchQuery<T> as QueryFragment>::types_const(set);
-    }
-
-    fn resources_const(_set: &mut HashSet<TypeId>) {
-        // noop
     }
 
     fn read_only() -> bool {

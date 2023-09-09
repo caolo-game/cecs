@@ -17,24 +17,8 @@ impl<'a, T: 'static> WorldQuery<'a> for Res<'a, T> {
         Self::new(db)
     }
 
-    fn components_mut(_set: &mut HashSet<TypeId>) {
-        // noop
-    }
-
-    fn resources_mut(_set: &mut HashSet<TypeId>) {
-        // noop
-    }
-
-    fn components_const(_set: &mut HashSet<TypeId>) {
-        // noop
-    }
-
     fn resources_const(set: &mut HashSet<TypeId>) {
         set.insert(TypeId::of::<T>());
-    }
-
-    fn exclusive() -> bool {
-        false
     }
 
     fn read_only() -> bool {
@@ -128,28 +112,12 @@ impl<'a, T: 'static> WorldQuery<'a> for ResMut<'a, T> {
         Self::new(db)
     }
 
-    fn components_mut(_set: &mut HashSet<TypeId>) {
-        // noop
-    }
-
     fn resources_mut(set: &mut HashSet<TypeId>) {
         set.insert(TypeId::of::<T>());
     }
 
     fn resources_const(set: &mut HashSet<TypeId>) {
         set.insert(TypeId::of::<T>());
-    }
-
-    fn components_const(_set: &mut HashSet<TypeId>) {
-        // noop
-    }
-
-    fn exclusive() -> bool {
-        false
-    }
-
-    fn read_only() -> bool {
-        false
     }
 }
 
@@ -162,24 +130,8 @@ impl<'a, T: 'static> WorldQuery<'a> for Option<Res<'a, T>> {
         })
     }
 
-    fn components_mut(_set: &mut HashSet<TypeId>) {
-        // noop
-    }
-
-    fn resources_mut(_set: &mut HashSet<TypeId>) {
-        // noop
-    }
-
-    fn components_const(_set: &mut HashSet<TypeId>) {
-        // noop
-    }
-
     fn resources_const(set: &mut HashSet<TypeId>) {
         set.insert(TypeId::of::<T>());
-    }
-
-    fn exclusive() -> bool {
-        false
     }
 
     fn read_only() -> bool {
@@ -196,27 +148,11 @@ impl<'a, T: 'static> WorldQuery<'a> for Option<ResMut<'a, T>> {
         })
     }
 
-    fn components_mut(_set: &mut HashSet<TypeId>) {
-        // noop
-    }
-
-    fn resources_mut(_set: &mut HashSet<TypeId>) {
-        // noop
-    }
-
-    fn components_const(_set: &mut HashSet<TypeId>) {
-        // noop
+    fn resources_mut(set: &mut HashSet<TypeId>) {
+        set.insert(TypeId::of::<T>());
     }
 
     fn resources_const(set: &mut HashSet<TypeId>) {
         set.insert(TypeId::of::<T>());
-    }
-
-    fn exclusive() -> bool {
-        false
-    }
-
-    fn read_only() -> bool {
-        false
     }
 }
