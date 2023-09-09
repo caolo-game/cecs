@@ -27,8 +27,13 @@ pub(crate) trait WorldQuery<'a> {
     /// List of resource types this query needs
     fn resources_const(set: &mut HashSet<TypeId>);
     /// Return wether this system should run in isolation
-    fn exclusive() -> bool;
-    fn read_only() -> bool;
+    fn exclusive() -> bool {
+        false
+    }
+
+    fn read_only() -> bool {
+        false
+    }
 }
 
 #[derive(Default)]
@@ -125,10 +130,6 @@ where
 {
     fn new(db: &'a World, _commands_index: usize) -> Self {
         Self::new(db)
-    }
-
-    fn exclusive() -> bool {
-        false
     }
 
     fn components_mut(set: &mut HashSet<TypeId>) {
