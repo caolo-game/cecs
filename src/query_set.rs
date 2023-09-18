@@ -8,6 +8,42 @@ use crate::{
     query::{ArchQuery, QueryFragment, WorldQuery},
 };
 
+/// A QuerySet can be used when a system needs multiple, coupled queries.
+///
+/// ## Limitations
+///
+/// Currently if a sub-query needs mutable access to a component, then all sub-queries to the same
+/// component must also be mutable.
+///
+/// ```
+/// use cecs::prelude::*;
+/// #[derive(Default, Clone)]
+/// struct Foo {
+///     value: i32,
+/// }
+///
+/// #[derive(Default, Clone)]
+/// struct Bar;
+///
+/// fn sys(
+///     mut q: QuerySet<(
+///         Query<(&mut Foo, &Bar)>,
+///         Query<&mut Foo>,
+///     )>,
+/// ) {
+///     for foo in q.q1_mut().iter_mut() {
+///         assert_eq!(foo.value, 0);
+///         foo.value = 42;
+///     }
+///
+///     // notice how foo is not changed in this loop, but q0 still has to request mutable access
+///     for (foo, _bar) in q.q0().iter() {
+///         assert_eq!(foo.value, 42);
+///     }
+/// }
+/// let mut world = World::new(4);
+/// world.run_system(sys).unwrap();
+/// ```
 pub struct QuerySet<Inner> {
     inner: Inner,
     _m: PhantomData<Inner>,
