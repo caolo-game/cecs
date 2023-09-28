@@ -15,6 +15,10 @@ use crate::{
 /// Currently if a sub-query needs mutable access to a component, then all sub-queries to the same
 /// component must also be mutable.
 ///
+/// The way we implement fetch can actually break Rust's aliasing semantics. The programmer must
+/// ensure that using different queries does not result in mutable aliasing (fetching the same
+/// component on the same entity twice at the same time). 
+///
 /// ```
 /// use cecs::prelude::*;
 /// #[derive(Default, Clone)]
