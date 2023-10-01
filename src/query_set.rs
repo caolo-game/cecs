@@ -81,7 +81,7 @@ macro_rules! impl_tuple {
             $f: Filter,
             )*
         {
-            fn new(db: &'a crate::World, _commands_index: usize) -> Self {
+            fn new(db: &'a crate::World, _system_id: usize) -> Self {
                 Self {
                     inner: ($(Query::<$t, $f>::new(db)),*),
                     _m: PhantomData,

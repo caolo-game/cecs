@@ -77,20 +77,20 @@ impl<'a> SystemStage<'a> {
     where
         S: IntoSystem<'a, P, ()>,
     {
-        let commands_index;
+        let system_id;
         #[cfg(feature = "parallel")]
         {
-            commands_index = self.systems.len();
+            system_id = self.systems.len();
         }
         #[cfg(not(feature = "parallel"))]
         {
-            commands_index = 0;
+            system_id = 0;
         }
 
         let descriptor = Rc::new(system.descriptor());
         let system = ErasedSystem {
             execute: (descriptor.factory)(),
-            commands_index,
+            system_id,
             descriptor,
         };
         self.systems.push(system);
@@ -122,7 +122,7 @@ pub struct SystemDescriptor<'a, R> {
 }
 
 pub struct ErasedSystem<'a, R> {
-    pub(crate) commands_index: usize,
+    pub(crate) system_id: usize,
     pub(crate) execute: Box<InnerSystem<'a, R>>,
     pub(crate) descriptor: Rc<SystemDescriptor<'a, R>>,
 }
@@ -132,7 +132,7 @@ impl<'a, R> From<SystemDescriptor<'a, R>> for ErasedSystem<'a, R> {
         let descriptor = Rc::new(system);
         ErasedSystem {
             execute: (descriptor.factory)(),
-            commands_index: 0,
+            system_id: 0,
             descriptor,
         }
     }
@@ -144,7 +144,7 @@ unsafe impl<R> Sync for ErasedSystem<'_, R> {}
 impl<'a, R> Clone for ErasedSystem<'a, R> {
     fn clone(&self) -> Self {
         Self {
-            commands_index: self.commands_index,
+            system_id: self.system_id,
             execute: (self.descriptor.factory)(),
             descriptor: self.descriptor.clone(),
         }
@@ -304,7 +304,7 @@ impl<'a, R> AsJob for SystemJob<'a, R> {
         #[cfg(feature = "tracing")]
         let _e = tracing::trace_span!("system", name = sys.descriptor.name.as_str()).entered();
 
-        (sys.execute)(world, sys.commands_index);
+        (sys.execute)(world, sys.system_id);
     }
 }
 
@@ -331,9 +331,9 @@ macro_rules! impl_intosys_fn {
                 }
                 let factory: Box<dyn Fn()-> Box<InnerSystem<'a, R>>>
                     = Box::new(move || {
-                        Box::new(move |_world: &'a World, _commands_index| {
+                        Box::new(move |_world: &'a World, _system_id| {
                             (self)(
-                                $(<$t>::new(_world, _commands_index),)*
+                                $(<$t>::new(_world, _system_id),)*
                             )
                         })
                     });

@@ -13,7 +13,7 @@ pub struct Res<'a, T> {
 }
 
 impl<'a, T: 'static> WorldQuery<'a> for Res<'a, T> {
-    fn new(db: &'a crate::World, _commands_index: usize) -> Self {
+    fn new(db: &'a crate::World, _system_id: usize) -> Self {
         Self::new(db)
     }
 
@@ -108,7 +108,7 @@ impl<'a, T: 'static> AsMut<T> for ResMut<'a, T> {
 }
 
 impl<'a, T: 'static> WorldQuery<'a> for ResMut<'a, T> {
-    fn new(db: &'a crate::World, _commands_index: usize) -> Self {
+    fn new(db: &'a crate::World, _system_id: usize) -> Self {
         Self::new(db)
     }
 
@@ -122,7 +122,7 @@ impl<'a, T: 'static> WorldQuery<'a> for ResMut<'a, T> {
 }
 
 impl<'a, T: 'static> WorldQuery<'a> for Option<Res<'a, T>> {
-    fn new(world: &'a crate::World, _commands_index: usize) -> Self {
+    fn new(world: &'a crate::World, _system_id: usize) -> Self {
         let inner = world.resources.fetch();
         inner.map(|inner| Res {
             inner,
@@ -140,7 +140,7 @@ impl<'a, T: 'static> WorldQuery<'a> for Option<Res<'a, T>> {
 }
 
 impl<'a, T: 'static> WorldQuery<'a> for Option<ResMut<'a, T>> {
-    fn new(world: &'a crate::World, _commands_index: usize) -> Self {
+    fn new(world: &'a crate::World, _system_id: usize) -> Self {
         let inner = world.resources.fetch_mut();
         inner.map(|inner| ResMut {
             inner,

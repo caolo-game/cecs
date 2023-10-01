@@ -84,7 +84,7 @@ unsafe impl Send for WorldAccess<'_> {}
 unsafe impl Sync for WorldAccess<'_> {}
 
 impl<'a> WorldQuery<'a> for WorldAccess<'a> {
-    fn new(db: &'a crate::World, _commands_index: usize) -> Self {
+    fn new(db: &'a crate::World, _system_id: usize) -> Self {
         let _guard = db.this_lock.lock();
         WorldAccess {
             world: db.into(),

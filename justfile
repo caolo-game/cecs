@@ -1,6 +1,8 @@
 build:
     cargo build
 
+alias t := test
+
 test: build
 	cargo nextest run --all-features
 

@@ -1,13 +1,13 @@
 use std::ptr::NonNull;
 
 use crate::{
-    entity_id::EntityId, prelude::Bundle, query::WorldQuery, CommandBuffer, Component, World,
+    entity_id::EntityId, prelude::Bundle, query::WorldQuery, UnsafeBuffer, Component, World,
     WorldError,
 };
 
 pub struct Commands<'a> {
     world: &'a World,
-    cmd: &'a CommandBuffer<CommandPayload>,
+    cmd: &'a UnsafeBuffer<CommandPayload>,
 }
 
 unsafe impl<'a> Send for Commands<'a> {}
@@ -17,8 +17,8 @@ unsafe impl<'a> Sync for Commands<'a> {}
 struct CommandSentinel;
 
 impl<'a> WorldQuery<'a> for Commands<'a> {
-    fn new(w: &'a World, commands_index: usize) -> Self {
-        Self::new(w, commands_index)
+    fn new(w: &'a World, system_id: usize) -> Self {
+        Self::new(w, system_id)
     }
 
     fn resources_mut(set: &mut std::collections::HashSet<std::any::TypeId>) {
@@ -27,10 +27,10 @@ impl<'a> WorldQuery<'a> for Commands<'a> {
 }
 
 impl<'a> Commands<'a> {
-    pub(crate) fn new(w: &'a World, commands_index: usize) -> Self {
+    pub(crate) fn new(w: &'a World, system_id: usize) -> Self {
         Self {
             world: &w,
-            cmd: &w.commands[commands_index],
+            cmd: &w.commands[system_id],
         }
     }
 

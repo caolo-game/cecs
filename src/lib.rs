@@ -39,14 +39,14 @@ use world_access::WorldLock;
 #[cfg(test)]
 mod world_tests;
 
-type CommandBuffer<T> = std::cell::UnsafeCell<Vec<T>>;
+type UnsafeBuffer<T> = std::cell::UnsafeCell<Vec<T>>;
 
 pub struct World {
     pub(crate) this_lock: WorldLock,
     pub(crate) entity_ids: UnsafeCell<EntityIndex>,
     pub(crate) archetypes: BTreeMap<TypeHash, Pin<Box<ArchetypeStorage>>>,
     pub(crate) resources: ResourceStorage,
-    pub(crate) commands: Vec<CommandBuffer<CommandPayload>>,
+    pub(crate) commands: Vec<UnsafeBuffer<CommandPayload>>,
     pub(crate) system_stages: Vec<SystemStage<'static>>,
     // for each system stage: a group of parallel systems
     //
@@ -772,7 +772,7 @@ unsafe fn run_system<'a, R>(world: &'a World, sys: &'a systems::ErasedSystem<'_,
     #[cfg(feature = "tracing")]
     tracing::trace!(system_name = name.as_str(), "Running system");
 
-    let index = sys.commands_index;
+    let index = sys.system_id;
     let execute: &systems::InnerSystem<'_, R> = { transmute(sys.execute.as_ref()) };
 
     let res = (execute)(world, index);
