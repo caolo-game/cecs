@@ -13,9 +13,16 @@ pub struct Commands<'a> {
 unsafe impl<'a> Send for Commands<'a> {}
 unsafe impl<'a> Sync for Commands<'a> {}
 
+// used to ensure no duplicate commands are present on a system
+struct CommandSentinel;
+
 impl<'a> WorldQuery<'a> for Commands<'a> {
     fn new(w: &'a World, commands_index: usize) -> Self {
         Self::new(w, commands_index)
+    }
+
+    fn resources_mut(set: &mut std::collections::HashSet<std::any::TypeId>) {
+        set.insert(std::any::TypeId::of::<CommandSentinel>());
     }
 }
 
@@ -567,5 +574,15 @@ mod tests {
         assert_eq!(c, &2);
         let c = world.get_component::<i32>(b).unwrap();
         assert_eq!(c, &2);
+    }
+
+    #[test]
+    #[should_panic]
+    fn using_multiple_commands_is_a_panic_test() {
+        // TODO: would be nice if the ECS could support this use-case
+        fn sys(_a: Commands, _b: Commands) {}
+
+        let mut w = World::new(1);
+        w.run_system(sys).unwrap_or_default();
     }
 }
