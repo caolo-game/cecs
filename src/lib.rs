@@ -48,8 +48,6 @@ pub struct World {
     pub(crate) resources: ResourceStorage,
     pub(crate) commands: Vec<UnsafeBuffer<CommandPayload>>,
     pub(crate) system_stages: Vec<SystemStage<'static>>,
-    // for each system stage: a group of parallel systems
-    //
     #[cfg(feature = "parallel")]
     pub(crate) schedule: Vec<scheduler::Schedule>,
     #[cfg(feature = "parallel")]
