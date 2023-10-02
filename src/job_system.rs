@@ -2,7 +2,6 @@ use parking_lot::{Condvar, Mutex, ReentrantMutex};
 use std::{
     cell::UnsafeCell,
     hint::spin_loop,
-    marker::PhantomData,
     num::NonZeroUsize,
     panic,
     pin::Pin,
@@ -235,8 +234,6 @@ struct Inner {
     /// threads may only access their own waiting_queues
     wait_lists: Pin<Box<[UnsafeCell<Vec<Job>>]>>,
     sleep: Sleep,
-    /// JobPool must not be `Send` because the owning thread is initialized as thread 0
-    _m: PhantomData<*mut ()>,
 }
 
 unsafe impl Send for Inner {}
@@ -452,7 +449,6 @@ impl Inner {
                     .collect::<Vec<_>>()
                     .into_boxed_slice(),
             ),
-            _m: PhantomData,
         };
         // the main thread is also used a worker on wait points
         // the index of the main thread is 0
