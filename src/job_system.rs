@@ -64,6 +64,8 @@ impl JobPool {
         let map = &map;
         let init = &init;
         let reduce = &reduce;
+        // NOTE: jobs must be pinned before enqueueing them so we must collect them before enqueue
+        //
         let jobs = data
             .map(|t| InlineJob::new(move || map(t)))
             .collect::<Vec<_>>();
