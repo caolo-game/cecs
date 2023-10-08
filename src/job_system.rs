@@ -168,20 +168,39 @@ impl JobPool {
         }
     }
 
-    pub fn enqueue_graph<T: Send>(&self, mut graph: HomogeneousJobGraph<T>) -> JobHandle {
-        let data = graph._data;
-        let root = BoxedJob::new(move || {
-            // take ownership of the data
-            // dropping it when the final, root, job is executed
-            let _d = data;
-        });
-        let root = unsafe { root.into_job() };
-        for job in graph.jobs.drain(..) {
-            let mut job = job.into_inner();
-            job.add_child(&root);
-            self.enqueue_job(job);
+    pub fn enqueue_graph<T: Send + AsJob>(&self, graph: HomogeneousJobGraph<T>) -> JobHandle {
+        unsafe {
+            let jobs = graph.get_jobs();
+            let data = graph._data;
+            let root = BoxedJob::new(move || {
+                // take ownership of the data
+                // dropping it when the final, root, job is executed
+                let _d = data;
+            });
+            let root = root.into_job();
+            for job in jobs {
+                let mut job = job.into_inner();
+                job.add_child(&root);
+                self.enqueue_job(job);
+            }
+
+            self.enqueue_job(root)
         }
-        self.enqueue_job(root)
+    }
+
+    /// Run the provided job graph, blocking until all jobs have finished
+    pub fn run_graph<T: Send + AsJob>(&self, graph: &HomogeneousJobGraph<T>) {
+        unsafe {
+            let jobs = graph.get_jobs();
+            let root = InlineJob::new(|| {});
+            let root = root.as_job();
+            for job in jobs {
+                let mut job = job.into_inner();
+                job.add_child(&root);
+                self.enqueue_job(job);
+            }
+            self.wait(self.enqueue_job(root))
+        }
     }
 
     pub fn wait(&self, job: JobHandle) {
@@ -711,7 +730,6 @@ impl<'a> Scope<'a> {
 }
 
 pub struct HomogeneousJobGraph<T> {
-    jobs: Vec<UnsafeCell<Job>>,
     _data: Vec<T>,
     /// debug data
     _edges: Vec<[usize; 2]>,
@@ -731,27 +749,35 @@ where
     T: AsJob,
 {
     pub fn new(data: impl Into<Vec<T>>) -> Self {
-        unsafe {
-            let _data = data.into();
-            let jobs = _data
-                .iter()
-                .map(|d| Job::new(d))
-                .map(UnsafeCell::new)
-                .collect();
-            Self {
-                _data,
-                jobs,
-                _edges: Default::default(),
-            }
+        let _data = data.into();
+        Self {
+            _data,
+            _edges: Default::default(),
         }
     }
 
     pub fn add_child(&mut self, parent: usize, child: usize) {
         debug_assert_ne!(parent, child);
-        unsafe {
-            (&mut *self.jobs[parent].get()).add_child(&*self.jobs[child].get());
-        }
         self._edges.push([parent, child]);
+    }
+
+    /// # Safety
+    ///
+    /// The jobs are only valid while this graph is not modified or dropped
+    ///
+    unsafe fn get_jobs(&self) -> impl IntoIterator<Item = UnsafeCell<Job>> {
+        let jobs = self
+            ._data
+            .iter()
+            .map(|d| Job::new(d))
+            .map(UnsafeCell::new)
+            .collect::<Vec<_>>();
+        for [parent, child] in self._edges.iter().copied() {
+            unsafe {
+                (&mut *jobs[parent].get()).add_child(&*jobs[child].get());
+            }
+        }
+        jobs
     }
 }
 
