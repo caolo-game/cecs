@@ -736,6 +736,15 @@ pub struct HomogeneousJobGraph<T> {
     edges: Vec<[usize; 2]>,
 }
 
+impl<T: Clone> Clone for HomogeneousJobGraph<T> {
+    fn clone(&self) -> Self {
+        Self {
+            data: self.data.clone(),
+            edges: self.edges.clone(),
+        }
+    }
+}
+
 impl<T: std::fmt::Debug> std::fmt::Debug for HomogeneousJobGraph<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HomogeneousJobGraph")
