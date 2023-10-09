@@ -766,7 +766,7 @@ where
         }
     }
 
-    pub fn add_child(&mut self, parent: usize, child: usize) {
+    pub fn add_dependency(&mut self, parent: usize, child: usize) {
         debug_assert_ne!(parent, child);
         self.edges.push([parent, child]);
     }

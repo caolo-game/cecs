@@ -81,7 +81,7 @@ impl Schedule {
 
         for (i, parents) in self.parents.iter().enumerate() {
             for j in parents {
-                graph.add_child(*j, i);
+                graph.add_dependency(*j, i);
             }
         }
 
