@@ -173,7 +173,7 @@ impl JobPool {
     pub fn enqueue_graph<T: Send + AsJob>(&self, graph: HomogeneousJobGraph<T>) -> JobHandle {
         unsafe {
             let jobs = graph.get_jobs();
-            let data = graph._data;
+            let data = graph.data;
             let root = BoxedJob::new(move || {
                 // take ownership of the data
                 // dropping it when the final, root, job is executed
@@ -732,16 +732,15 @@ impl<'a> Scope<'a> {
 }
 
 pub struct HomogeneousJobGraph<T> {
-    _data: Vec<T>,
-    /// debug data
-    _edges: Vec<[usize; 2]>,
+    data: Vec<T>,
+    edges: Vec<[usize; 2]>,
 }
 
 impl<T: std::fmt::Debug> std::fmt::Debug for HomogeneousJobGraph<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HomogeneousJobGraph")
-            .field("_data", &self._data)
-            .field("_edges", &self._edges)
+            .field("data", &self.data)
+            .field("edges", &self.edges)
             .finish_non_exhaustive()
     }
 }
@@ -751,16 +750,16 @@ where
     T: AsJob,
 {
     pub fn new(data: impl Into<Vec<T>>) -> Self {
-        let _data = data.into();
+        let data = data.into();
         Self {
-            _data,
-            _edges: Default::default(),
+            data,
+            edges: Default::default(),
         }
     }
 
     pub fn add_child(&mut self, parent: usize, child: usize) {
         debug_assert_ne!(parent, child);
-        self._edges.push([parent, child]);
+        self.edges.push([parent, child]);
     }
 
     /// # Safety
@@ -769,12 +768,12 @@ where
     ///
     unsafe fn get_jobs(&self) -> impl IntoIterator<Item = UnsafeCell<Job>> {
         let jobs = self
-            ._data
+            .data
             .iter()
             .map(|d| Job::new(d))
             .map(UnsafeCell::new)
             .collect::<Vec<_>>();
-        for [parent, child] in self._edges.iter().copied() {
+        for [parent, child] in self.edges.iter().copied() {
             unsafe {
                 (&mut *jobs[parent].get()).add_child(&*jobs[child].get());
             }
