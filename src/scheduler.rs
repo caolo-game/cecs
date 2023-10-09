@@ -59,6 +59,7 @@ impl Schedule {
         res
     }
 
+    /// NOTE: `stage` must be the same as the one used to create this schedule
     pub fn jobs<'a, T>(
         &self,
         stage: &[ErasedSystem<'a, T>],
