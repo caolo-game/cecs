@@ -540,8 +540,7 @@ impl World {
             #[cfg(feature = "tracing")]
             tracing::debug!(graph = tracing::field::debug(&graph), "Running job graph");
 
-            let handle = self.job_system.enqueue_graph(graph);
-            self.job_system.wait(handle);
+            self.job_system.run_graph(&graph);
         }
         #[cfg(feature = "tracing")]
         tracing::trace!(stage_name = stage_name.as_str(), "Run stage done");
