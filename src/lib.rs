@@ -160,7 +160,7 @@ impl World {
         let entity_ids = EntityIndex::new(initial_capacity);
 
         #[cfg(feature = "parallel")]
-        let job_system: job_system::JobPool = Default::default();
+        let job_system: job_system::JobPool = job_system::JOB_POOL.clone();
         let mut result = Self {
             this_lock: WorldLock::new(),
             entity_ids: UnsafeCell::new(entity_ids),
