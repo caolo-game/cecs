@@ -51,7 +51,7 @@ pub struct World {
     #[cfg(feature = "parallel")]
     pub(crate) schedule: Vec<scheduler::Schedule>,
     #[cfg(feature = "parallel")]
-    pub(crate) job_system: job_system::JobPool,
+    pub job_system: job_system::JobPool,
 }
 
 unsafe impl Send for World {}
