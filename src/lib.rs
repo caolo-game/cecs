@@ -738,11 +738,6 @@ impl World {
         Ok(())
     }
 
-    #[cfg(feature = "parallel")]
-    pub fn job_system(&self) -> &prelude::JobPool {
-        &self.job_system
-    }
-
     #[allow(unused)]
     pub(crate) fn insert_id(&mut self, id: EntityId) -> Result<(), entity_index::InsertError> {
         self.entity_ids.get_mut().insert_id(id)?;
