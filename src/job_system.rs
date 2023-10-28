@@ -133,9 +133,12 @@ impl JobPool {
         // operation?
         unsafe {
             reduce_recursive(
-                self, &jobs, init, reduce,
+                self,
+                &jobs,
+                init,
+                reduce,
                 // _can_ create up to 2^x recursive jobs, so caution is required
-                3,
+                self.parallelism().get().ilog2() as usize,
             )
         }
     }
@@ -835,10 +838,23 @@ mod tests {
     fn map_reduce_test() {
         let pool = JobPool::default();
 
-        let range = vec![1i32; 10_000];
+        /// make sure that some jobs queue up
+        fn throttle() {
+            std::thread::sleep(Duration::from_micros(1));
+        }
 
-        let result = pool.map_reduce(range.iter(), || 0i32, |i| *i * 2i32, |a, b| a + b);
+        const N_JOBS: i32 = 10_000;
 
-        assert_eq!(result, 10_000 * 2);
+        let result = pool.map_reduce(
+            (0..N_JOBS).map(|_| 1),
+            || 0i32,
+            |i| i * 2i32,
+            |a, b| {
+                throttle();
+                a + b
+            },
+        );
+
+        assert_eq!(result, N_JOBS * 2);
     }
 }
