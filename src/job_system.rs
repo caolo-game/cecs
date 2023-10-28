@@ -134,7 +134,7 @@ impl JobPool {
         unsafe {
             reduce_recursive(
                 self, &jobs, init, reduce,
-                // _can_ create up to 2^x recurisve jobs, so caution is required
+                // _can_ create up to 2^x recursive jobs, so caution is required
                 3,
             )
         }
