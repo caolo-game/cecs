@@ -174,14 +174,14 @@ where
         self.count() == 0
     }
 
-    pub fn single<'a>(&self) -> Option<<ArchQuery<T> as QueryFragment>::Item<'a>>
+    pub fn single<'a>(&'a self) -> Option<<ArchQuery<T> as QueryFragment>::Item<'a>>
     where
         Self: 'a,
     {
         self.iter().next()
     }
 
-    pub fn single_mut<'a>(&mut self) -> Option<<ArchQuery<T> as QueryFragment>::ItemMut<'a>>
+    pub fn single_mut<'a>(&'a mut self) -> Option<<ArchQuery<T> as QueryFragment>::ItemMut<'a>>
     where
         Self: 'a,
     {
@@ -223,7 +223,7 @@ where
     ///
     /// The top-level system still needs &mut access to the components.
     pub unsafe fn iter_unsafe<'a>(
-        &self,
+        &'a self,
     ) -> impl Iterator<Item = <ArchQuery<T> as QueryFragment>::ItemUnsafe<'a>>
     where
         Self: 'a,
@@ -236,7 +236,7 @@ where
             .flat_map(|(_, arch)| ArchQuery::<T>::iter_unsafe(arch))
     }
 
-    pub fn fetch<'a>(&self, id: EntityId) -> Option<<ArchQuery<T> as QueryFragment>::Item<'a>>
+    pub fn fetch<'a>(&'a self, id: EntityId) -> Option<<ArchQuery<T> as QueryFragment>::Item<'a>>
     where
         Self: 'a,
     {
@@ -251,7 +251,7 @@ where
     }
 
     pub fn fetch_mut<'a>(
-        &mut self,
+        &'a mut self,
         id: EntityId,
     ) -> Option<<ArchQuery<T> as QueryFragment>::ItemMut<'a>>
     where
@@ -268,7 +268,7 @@ where
     }
 
     pub unsafe fn fetch_unsafe<'a>(
-        &self,
+        &'a self,
         id: EntityId,
     ) -> Option<<ArchQuery<T> as QueryFragment>::ItemUnsafe<'a>>
     where
@@ -300,7 +300,7 @@ where
 
     /// fetch the first row of the query
     /// panic if no row was found
-    pub fn one<'a>(&self) -> <ArchQuery<T> as QueryFragment>::Item<'a>
+    pub fn one<'a>(&'a self) -> <ArchQuery<T> as QueryFragment>::Item<'a>
     where
         Self: 'a,
     {

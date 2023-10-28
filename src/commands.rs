@@ -1,7 +1,7 @@
 use std::ptr::NonNull;
 
 use crate::{
-    entity_id::EntityId, prelude::Bundle, query::WorldQuery, UnsafeBuffer, Component, World,
+    entity_id::EntityId, prelude::Bundle, query::WorldQuery, Component, UnsafeBuffer, World,
     WorldError,
 };
 
@@ -474,7 +474,8 @@ mod tests {
         drop(cmd);
         world.apply_commands().unwrap();
 
-        let c = Query::<&i32>::new(&world).fetch(id);
+        let q = Query::<&i32>::new(&world);
+        let c = q.fetch(id);
         assert!(c.is_none());
 
         // entity still exists
@@ -495,11 +496,13 @@ mod tests {
         drop(cmd);
         world.apply_commands().unwrap();
 
-        let c = Query::<&i32>::new(&world).fetch(id);
+        let q = Query::<&i32>::new(&world);
+        let c = q.fetch(id);
         assert!(c.is_none());
 
         // entity should not exists
-        let c = Query::<&()>::new(&world).fetch(id);
+        let q = Query::<&()>::new(&world);
+        let c = q.fetch(id);
         assert!(c.is_none());
     }
 
