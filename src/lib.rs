@@ -758,7 +758,8 @@ impl World {
 
     /// Remove empty archetypes
     pub fn vacuum(&mut self) {
-        self.archetypes.retain(|_, a| !a.is_empty());
+        // ensure that the unit archetype stays
+        self.archetypes.retain(|ty, a| ty != &VOID_TY && !a.is_empty());
     }
 }
 
