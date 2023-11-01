@@ -272,14 +272,16 @@ impl ArchetypeStorage {
             .and_then(|columns| unsafe { (*columns.get()).as_slice_mut().get_mut(row as usize) })
     }
 
-    pub fn components(&self) -> impl Iterator<Item = &TypeId> {
-        self.components.iter().map(|(ty, _)| ty)
+    pub fn components(&self) -> impl Iterator<Item = (TypeId, &ErasedTable)> {
+        self.components
+            .iter()
+            .map(|(ty, e)| (*ty, unsafe { &*e.get() }))
     }
 }
 
-/// Type erased Vec
-pub(crate) struct ErasedTable {
-    pub(crate) ty_name: &'static str,
+/// More or less a type erased Vec that holds Components
+pub struct ErasedTable {
+    pub ty_name: &'static str,
     // Vec //
     data: *mut u8,
     end: usize,
