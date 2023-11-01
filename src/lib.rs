@@ -755,6 +755,11 @@ impl World {
     pub fn archetypes(&self) -> &BTreeMap<TypeHash, Pin<Box<ArchetypeStorage>>> {
         &self.archetypes
     }
+
+    /// Remove empty archetypes
+    pub fn vacuum(&mut self) {
+        self.archetypes.retain(|_, a| !a.is_empty());
+    }
 }
 
 // # SAFETY
