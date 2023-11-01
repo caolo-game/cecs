@@ -119,7 +119,7 @@ const fn hash_type_id(ty: TypeId) -> TypeHash {
     }
 }
 
-const VOID_TY: TypeHash = hash_ty::<()>();
+pub const VOID_TY: TypeHash = hash_ty::<()>();
 
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum WorldError {
@@ -759,7 +759,8 @@ impl World {
     /// Remove empty archetypes
     pub fn vacuum(&mut self) {
         // ensure that the unit archetype stays
-        self.archetypes.retain(|ty, a| ty != &VOID_TY && !a.is_empty());
+        self.archetypes
+            .retain(|ty, a| ty != &VOID_TY && !a.is_empty());
     }
 }
 
