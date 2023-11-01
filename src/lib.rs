@@ -751,6 +751,10 @@ impl World {
         );
         Ok(())
     }
+
+    pub fn archetypes(&self) -> &BTreeMap<TypeHash, Pin<Box<ArchetypeStorage>>> {
+        &self.archetypes
+    }
 }
 
 // # SAFETY

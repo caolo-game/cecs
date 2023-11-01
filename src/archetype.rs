@@ -271,6 +271,10 @@ impl ArchetypeStorage {
             .get(&TypeId::of::<T>())
             .and_then(|columns| unsafe { (*columns.get()).as_slice_mut().get_mut(row as usize) })
     }
+
+    pub fn components(&self) -> impl Iterator<Item = &TypeId> {
+        self.components.iter().map(|(ty, _)| ty)
+    }
 }
 
 /// Type erased Vec
