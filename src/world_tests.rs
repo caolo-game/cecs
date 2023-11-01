@@ -523,7 +523,8 @@ fn mutating_world_inside_system_test() {
 
         w.run_system(|mut cmd: Commands| {
             cmd.spawn().insert(69u64);
-        }).unwrap();
+        })
+        .unwrap();
     }
 
     let mut world = World::new(100);
@@ -933,4 +934,31 @@ fn archetype_id_query() {
 
     assert_eq!(q.fetch(a).unwrap(), q.fetch(b).unwrap());
     assert_ne!(q.fetch(a).unwrap(), q.fetch(c).unwrap());
+}
+
+#[test]
+fn vacuum_must_not_collect_void_ty_test() {
+    let mut w = World::new(8);
+
+    w.run_system(|mut cmd: Commands| {
+        cmd.spawn().insert_bundle((1u8, 2u32));
+    })
+    .unwrap();
+
+    w.vacuum();
+
+    let mut found = false;
+    for (x, _a) in w.archetypes().iter() {
+        if x == &VOID_TY {
+            found = true;
+        }
+    }
+
+    assert!(found);
+
+    // try inserting another
+    w.run_system(|mut cmd: Commands| {
+        cmd.spawn().insert_bundle((1u8, 2u32));
+    })
+    .unwrap();
 }

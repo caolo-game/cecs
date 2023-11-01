@@ -760,7 +760,7 @@ impl World {
     pub fn vacuum(&mut self) {
         // ensure that the unit archetype stays
         self.archetypes
-            .retain(|ty, a| ty != &VOID_TY && !a.is_empty());
+            .retain(|ty, a| ty == &VOID_TY || !a.is_empty());
     }
 }
 
