@@ -1,7 +1,4 @@
-use std::{
-    collections::HashSet,
-    sync::atomic::{AtomicBool, Ordering},
-};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::query::WorldQuery;
 
@@ -36,7 +33,7 @@ pub struct WorldAccess<'a> {
 
 // this has nothing World specific in it, I just suck at naming
 //
-// this lock's job is to panic if user's try to stack WorldAccesses
+// this lock's job is to panic if users try to stack WorldAccesses
 pub(crate) struct WorldLock {
     locked: AtomicBool,
 }
@@ -90,22 +87,6 @@ impl<'a> WorldQuery<'a> for WorldAccess<'a> {
             world: db.into(),
             _guard,
         }
-    }
-
-    fn components_mut(_set: &mut HashSet<std::any::TypeId>) {
-        // noop
-    }
-
-    fn components_const(_set: &mut HashSet<std::any::TypeId>) {
-        // noop
-    }
-
-    fn resources_mut(_set: &mut HashSet<std::any::TypeId>) {
-        // noop
-    }
-
-    fn resources_const(_set: &mut HashSet<std::any::TypeId>) {
-        // noop
     }
 
     fn exclusive() -> bool {
