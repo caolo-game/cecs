@@ -282,14 +282,8 @@ impl World {
             let new_hash = T::compute_hash(archetype.ty);
             if !self.archetypes.contains_key(&new_hash) {
                 let new_arch = T::extend(archetype);
-                let (mut res, updated_entity) = self.insert_archetype(archetype, index, new_arch);
-                if let Some(updated_entity) = updated_entity {
-                    unsafe {
-                        self.entity_ids
-                            .get_mut()
-                            .update_row_index(updated_entity, index);
-                    }
-                }
+                let mut res = self.insert_archetype(archetype, index, new_arch);
+
                 archetype = unsafe { res.as_mut() };
                 index = 0;
             } else {
@@ -365,15 +359,8 @@ impl World {
             arch_ptr = new_arch.as_mut().get_mut() as *mut _;
         } else {
             let arch = archetype.clone_empty();
-            let (mut res, updated_entity) =
-                self.insert_archetype(archetype, index, arch.reduce_with_column::<T>());
-            if let Some(updated_entity) = updated_entity {
-                unsafe {
-                    self.entity_ids
-                        .get_mut()
-                        .update_row_index(updated_entity, index);
-                }
-            }
+            let mut res = self.insert_archetype(archetype, index, arch.reduce_with_column::<T>());
+
             arch_ptr = unsafe { res.as_mut() as *mut _ };
             index = 0;
         }
@@ -390,13 +377,21 @@ impl World {
         archetype: &mut ArchetypeStorage,
         row_index: RowIndex,
         new_arch: ArchetypeStorage,
-    ) -> (NonNull<ArchetypeStorage>, Option<EntityId>) {
+    ) -> NonNull<ArchetypeStorage> {
         let mut new_arch = Box::pin(new_arch);
         let (index, moved_entity) = archetype.move_entity(&mut new_arch, row_index);
         debug_assert_eq!(index, 0);
         let res = unsafe { NonNull::new_unchecked(new_arch.as_mut().get_mut() as *mut _) };
         self.archetypes.insert(new_arch.ty(), new_arch);
-        (res, moved_entity)
+
+        if let Some(updated_entity) = moved_entity {
+            unsafe {
+                self.entity_ids
+                    .get_mut()
+                    .update_row_index(updated_entity, index);
+            }
+        }
+        res
     }
 
     pub fn insert_resource<T: Component>(&mut self, value: T) {
