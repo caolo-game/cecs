@@ -289,12 +289,11 @@ impl EntityIndex {
         }
     }
 
-    pub(crate) fn entries(&self) -> &[Entry] {
+    fn entries(&self) -> &[Entry] {
         unsafe { std::slice::from_raw_parts(self.entries, self.cap as usize) }
     }
 
-    #[allow(unused)]
-    pub(crate) fn entries_mut(&mut self) -> &mut [Entry] {
+    fn entries_mut(&mut self) -> &mut [Entry] {
         unsafe { std::slice::from_raw_parts_mut(self.entries, self.cap as usize) }
     }
 }
