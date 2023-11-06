@@ -99,6 +99,7 @@ impl ArchetypeStorage {
         let res = self.rows;
         self.entities.push(id);
         self.rows += 1;
+        debug_assert!(self.rows as usize == self.entities.len());
         res
     }
 
@@ -208,8 +209,10 @@ impl ArchetypeStorage {
         if !self.contains_column::<T>() {
             let new_ty = self.extended_hash::<T>();
             self.ty = new_ty;
-            self.components
-                .insert(TypeId::of::<T>(), UnsafeCell::new(ErasedColumn::new::<T>(0)));
+            self.components.insert(
+                TypeId::of::<T>(),
+                UnsafeCell::new(ErasedColumn::new::<T>(0)),
+            );
         }
         self
     }
