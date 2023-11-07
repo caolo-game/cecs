@@ -127,12 +127,12 @@ impl EntityTable {
             // the removed row was not the last
             moved = Some(self.entities[index as usize]);
         }
-        for (ty, col) in self.components.iter_mut() {
+        for (ty, src) in self.components.iter_mut() {
             if let Some(dst) = dst.components.get_mut(ty) {
-                (col.get_mut().move_row)(col.get_mut(), dst.get_mut(), index);
+                (src.get_mut().move_row)(src.get_mut(), dst.get_mut(), index);
             } else {
                 // destination does not have self column
-                col.get_mut().remove(index);
+                src.get_mut().remove(index);
             }
         }
         (res, moved)
