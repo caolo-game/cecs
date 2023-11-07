@@ -4,6 +4,13 @@ use std::{alloc::Layout, any::TypeId, cell::UnsafeCell, collections::BTreeMap};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ArchetypeHash(pub TypeHash);
 
+// TODO: component allocator
+
+/// An archetype is a database table for entities with the same shape.
+/// Each column of the table stores a specific component, and each row is an entity.
+///
+/// Components are stored in a column-major format, so iterating on the same component for multiple
+/// entities is fast by reducing cache and TLB misses.
 pub struct ArchetypeStorage {
     pub(crate) ty: TypeHash,
     pub(crate) rows: u32,
@@ -58,10 +65,7 @@ impl ArchetypeStorage {
     pub fn empty() -> Self {
         let ty = hash_ty::<()>();
         let mut components = BTreeMap::new();
-        components.insert(
-            TypeId::of::<()>(),
-            UnsafeCell::new(Column::new::<()>(0)),
-        );
+        components.insert(TypeId::of::<()>(), UnsafeCell::new(Column::new::<()>(0)));
         Self {
             ty,
             rows: 0,
@@ -209,10 +213,8 @@ impl ArchetypeStorage {
         if !self.contains_column::<T>() {
             let new_ty = self.extended_hash::<T>();
             self.ty = new_ty;
-            self.components.insert(
-                TypeId::of::<T>(),
-                UnsafeCell::new(Column::new::<T>(0)),
-            );
+            self.components
+                .insert(TypeId::of::<T>(), UnsafeCell::new(Column::new::<T>(0)));
         }
         self
     }
