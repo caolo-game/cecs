@@ -411,7 +411,7 @@ impl World {
             unsafe {
                 self.entity_ids
                     .get_mut()
-                    .update_row_index(updated_entity, index);
+                    .update_row_index(updated_entity, row_index);
             }
         }
         res
