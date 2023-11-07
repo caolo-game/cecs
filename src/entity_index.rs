@@ -207,7 +207,7 @@ impl EntityIndex {
         unsafe {
             entry = &mut *entries.add(index as usize);
             entry.arch = std::ptr::null_mut();
-            entry.row_index = 0;
+            entry.row_index = SENTINEL;
         }
         EntityId::new(index as u32, entry.gen)
     }
