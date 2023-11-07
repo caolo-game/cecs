@@ -1,4 +1,4 @@
-pub use crate::archetype::ArchetypeHash;
+pub use crate::table::ArchetypeHash;
 pub use crate::bundle::Bundle;
 pub use crate::commands::Commands;
 pub use crate::entity_id::EntityId;

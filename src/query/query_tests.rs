@@ -7,7 +7,7 @@ use super::{filters::With, *};
 
 #[test]
 fn iter_query_test() {
-    let mut archetype = ArchetypeStorage::empty()
+    let mut archetype = EntityTable::empty()
         .extend_with_column::<String>()
         .extend_with_column::<u32>();
 
@@ -30,7 +30,7 @@ fn iter_query_test() {
 
 #[test]
 fn joined_iter_test() {
-    let mut archetype = ArchetypeStorage::empty()
+    let mut archetype = EntityTable::empty()
         .extend_with_column::<String>()
         .extend_with_column::<u32>();
 
@@ -56,7 +56,7 @@ fn joined_iter_test() {
 
 #[test]
 fn non_existent_component_iter_is_empty_test() {
-    let mut archetype = ArchetypeStorage::empty()
+    let mut archetype = EntityTable::empty()
         .extend_with_column::<String>()
         .extend_with_column::<u32>();
 
@@ -79,7 +79,7 @@ fn non_existent_component_iter_is_empty_test() {
 
 #[test]
 fn mutable_iterator_test() {
-    let mut archetype = ArchetypeStorage::empty()
+    let mut archetype = EntityTable::empty()
         .extend_with_column::<String>()
         .extend_with_column::<u32>();
 
@@ -106,7 +106,7 @@ fn mutable_iterator_test() {
 
 #[test]
 fn can_mix_mut_ref_test() {
-    let mut archetype = ArchetypeStorage::empty()
+    let mut archetype = EntityTable::empty()
         .extend_with_column::<String>()
         .extend_with_column::<u32>();
 
@@ -145,7 +145,7 @@ fn can_mix_mut_ref_test() {
 
 #[test]
 fn basic_filter_test() {
-    let mut archetype = ArchetypeStorage::empty()
+    let mut archetype = EntityTable::empty()
         .extend_with_column::<String>()
         .extend_with_column::<u32>();
 

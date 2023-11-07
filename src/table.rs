@@ -6,23 +6,25 @@ pub struct ArchetypeHash(pub TypeHash);
 
 // TODO: component allocator
 
-/// An archetype is a database table for entities with the same shape.
+/// A table for entities with the same shape.
 /// Each column of the table stores a specific component, and each row is an entity.
+///
+/// Sometimes called an 'archetype'
 ///
 /// Components are stored in a column-major format, so iterating on the same component for multiple
 /// entities is fast by reducing cache and TLB misses.
-pub struct ArchetypeStorage {
+pub struct EntityTable {
     pub(crate) ty: TypeHash,
     pub(crate) rows: u32,
     pub(crate) entities: Vec<EntityId>,
     pub(crate) components: BTreeMap<TypeId, UnsafeCell<Column>>,
 }
 
-unsafe impl Send for ArchetypeStorage {}
-unsafe impl Sync for ArchetypeStorage {}
+unsafe impl Send for EntityTable {}
+unsafe impl Sync for EntityTable {}
 
 #[cfg(feature = "clone")]
-impl Clone for ArchetypeStorage {
+impl Clone for EntityTable {
     fn clone(&self) -> Self {
         Self {
             ty: self.ty,
@@ -37,9 +39,9 @@ impl Clone for ArchetypeStorage {
     }
 }
 
-impl std::fmt::Debug for ArchetypeStorage {
+impl std::fmt::Debug for EntityTable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ArchetypeStorage")
+        f.debug_struct("EntityTable")
             .field("rows", &self.rows)
             .field(
                 "entities",
@@ -61,7 +63,7 @@ impl std::fmt::Debug for ArchetypeStorage {
     }
 }
 
-impl ArchetypeStorage {
+impl EntityTable {
     pub fn empty() -> Self {
         let ty = hash_ty::<()>();
         let mut components = BTreeMap::new();

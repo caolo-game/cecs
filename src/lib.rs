@@ -5,7 +5,7 @@ use std::{
     any::TypeId, cell::UnsafeCell, collections::BTreeMap, mem::transmute, pin::Pin, ptr::NonNull,
 };
 
-use archetype::ArchetypeStorage;
+use table::EntityTable;
 use commands::CommandPayload;
 use entity_id::EntityId;
 use entity_index::EntityIndex;
@@ -27,7 +27,7 @@ pub mod world_access;
 #[cfg(feature = "serde")]
 pub mod persister;
 
-mod archetype;
+mod table;
 
 #[cfg(feature = "parallel")]
 pub mod job_system;
@@ -44,7 +44,7 @@ type UnsafeBuffer<T> = std::cell::UnsafeCell<Vec<T>>;
 pub struct World {
     pub(crate) this_lock: WorldLock,
     pub(crate) entity_ids: UnsafeCell<EntityIndex>,
-    pub(crate) archetypes: BTreeMap<TypeHash, Pin<Box<ArchetypeStorage>>>,
+    pub(crate) archetypes: BTreeMap<TypeHash, Pin<Box<EntityTable>>>,
     pub(crate) resources: ResourceStorage,
     pub(crate) commands: Vec<UnsafeBuffer<CommandPayload>>,
     pub(crate) system_stages: Vec<SystemStage<'static>>,
@@ -173,7 +173,7 @@ impl World {
             #[cfg(feature = "parallel")]
             job_system: job_system.clone(),
         };
-        let void_store = Box::pin(ArchetypeStorage::empty());
+        let void_store = Box::pin(EntityTable::empty());
         result.archetypes.insert(VOID_TY, void_store);
         #[cfg(feature = "parallel")]
         result.insert_resource(job_system);
@@ -374,10 +374,10 @@ impl World {
     #[must_use]
     fn insert_archetype(
         &mut self,
-        archetype: &mut ArchetypeStorage,
+        archetype: &mut EntityTable,
         row_index: RowIndex,
-        new_arch: ArchetypeStorage,
-    ) -> NonNull<ArchetypeStorage> {
+        new_arch: EntityTable,
+    ) -> NonNull<EntityTable> {
         let mut new_arch = Box::pin(new_arch);
         let (index, moved_entity) = archetype.move_entity(&mut new_arch, row_index);
         debug_assert_eq!(index, 0);
@@ -747,7 +747,7 @@ impl World {
         Ok(())
     }
 
-    pub fn archetypes(&self) -> &BTreeMap<TypeHash, Pin<Box<ArchetypeStorage>>> {
+    pub fn archetypes(&self) -> &BTreeMap<TypeHash, Pin<Box<EntityTable>>> {
         &self.archetypes
     }
 

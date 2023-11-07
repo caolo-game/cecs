@@ -1,10 +1,10 @@
-use crate::{archetype::ArchetypeStorage, hash_ty, Component, RowIndex, TypeHash, WorldResult};
+use crate::{table::EntityTable, hash_ty, Component, RowIndex, TypeHash, WorldResult};
 
 pub trait Bundle {
     fn compute_hash(base: TypeHash) -> TypeHash;
-    fn can_insert(&self, archetype: &ArchetypeStorage) -> bool;
-    fn insert_into(self, archetype: &mut ArchetypeStorage, index: RowIndex) -> WorldResult<()>;
-    fn extend(archetype: &ArchetypeStorage) -> ArchetypeStorage;
+    fn can_insert(&self, archetype: &EntityTable) -> bool;
+    fn insert_into(self, archetype: &mut EntityTable, index: RowIndex) -> WorldResult<()>;
+    fn extend(archetype: &EntityTable) -> EntityTable;
 }
 
 macro_rules! impl_tuple {
@@ -14,16 +14,16 @@ macro_rules! impl_tuple {
                 base $(^hash_ty::<$ty>())*
             }
 
-            fn can_insert(&self, archetype: &ArchetypeStorage) -> bool {
+            fn can_insert(&self, archetype: &EntityTable) -> bool {
                 $(archetype.contains_column::<$ty>())&&*
             }
 
-            fn insert_into(self, archetype: &mut ArchetypeStorage, index: RowIndex) -> WorldResult<()> {
+            fn insert_into(self, archetype: &mut EntityTable, index: RowIndex) -> WorldResult<()> {
                 $(archetype.set_component(index, self.$i);)*
                 Ok(())
             }
 
-            fn extend(archetype: &ArchetypeStorage) -> ArchetypeStorage {
+            fn extend(archetype: &EntityTable) -> EntityTable {
                 let mut result = archetype.clone_empty();
                 $(
                     result = result.extend_with_column::<$ty>();

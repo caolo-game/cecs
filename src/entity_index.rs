@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     entity_id::{EntityId, ENTITY_GEN_MASK, ENTITY_INDEX_MASK},
-    ArchetypeStorage, RowIndex,
+    EntityTable, RowIndex,
 };
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -225,7 +225,7 @@ impl EntityIndex {
     pub(crate) unsafe fn update(
         &mut self,
         id: EntityId,
-        arch: *mut ArchetypeStorage,
+        arch: *mut EntityTable,
         row: RowIndex,
     ) {
         let index = id.index();
@@ -256,7 +256,7 @@ impl EntityIndex {
     pub fn read(
         &self,
         id: EntityId,
-    ) -> Result<(NonNull<ArchetypeStorage>, RowIndex), HandleTableError> {
+    ) -> Result<(NonNull<EntityTable>, RowIndex), HandleTableError> {
         let res = self.get(id).ok_or(HandleTableError::NotFound)?;
         if res.arch.is_null() {
             return Err(HandleTableError::Uninitialized);
@@ -315,8 +315,8 @@ impl Drop for EntityIndex {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Entry {
     pub gen: u32,
-    pub arch: *mut ArchetypeStorage,
-    /// Store the index of the entity in the ArchetypeStorage
+    pub arch: *mut EntityTable,
+    /// Store the index of the entity in the EntityTable
     /// When entity is invalid the row_index stores the position of the next Entry in the free-list
     pub row_index: RowIndex,
 }

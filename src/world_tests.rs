@@ -1,7 +1,7 @@
 use commands::Commands;
 use world_access::WorldAccess;
 
-use crate::archetype::ArchetypeHash;
+use crate::table::ArchetypeHash;
 use crate::entity_id::EntityId;
 use crate::prelude::ResMut;
 use crate::query::resource_query::Res;

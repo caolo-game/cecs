@@ -1,15 +1,15 @@
 use std::marker::PhantomData;
 
-use crate::{archetype::ArchetypeStorage, Component};
+use crate::{table::EntityTable, Component};
 
 pub trait Filter {
-    fn filter(archetype: &ArchetypeStorage) -> bool;
+    fn filter(archetype: &EntityTable) -> bool;
 }
 
 pub struct With<T>(PhantomData<T>);
 
 impl<T: Component> Filter for With<T> {
-    fn filter(archetype: &ArchetypeStorage) -> bool {
+    fn filter(archetype: &EntityTable) -> bool {
         archetype.contains_column::<T>()
     }
 }
@@ -17,7 +17,7 @@ impl<T: Component> Filter for With<T> {
 pub struct WithOut<T>(PhantomData<T>);
 
 impl<T: Component> Filter for WithOut<T> {
-    fn filter(archetype: &ArchetypeStorage) -> bool {
+    fn filter(archetype: &EntityTable) -> bool {
         !archetype.contains_column::<T>()
     }
 }
@@ -25,13 +25,13 @@ impl<T: Component> Filter for WithOut<T> {
 pub struct Or<X, Y>(PhantomData<(X, Y)>);
 
 impl<X: Filter, Y: Filter> Filter for Or<X, Y> {
-    fn filter(archetype: &ArchetypeStorage) -> bool {
+    fn filter(archetype: &EntityTable) -> bool {
         X::filter(archetype) || Y::filter(archetype)
     }
 }
 
 impl Filter for () {
-    fn filter(_archetype: &ArchetypeStorage) -> bool {
+    fn filter(_archetype: &EntityTable) -> bool {
         true
     }
 }
@@ -39,7 +39,7 @@ impl Filter for () {
 macro_rules! impl_tuple {
     ($($t: ident),+ $(,)?) => {
         impl<$($t : Filter,)+> Filter for ($($t,)+) {
-            fn filter(archetype: &ArchetypeStorage) -> bool {
+            fn filter(archetype: &EntityTable) -> bool {
                 $($t::filter(archetype))&&+
             }
         }
