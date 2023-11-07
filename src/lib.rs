@@ -256,10 +256,11 @@ impl World {
             .read(id)
             .map_err(|_| WorldError::EntityNotFound)?;
         unsafe {
-            if let Some(id) = archetype.as_mut().remove(index) {
+            if let Some(updated_entity) = archetype.as_mut().remove(index) {
                 #[cfg(feature = "tracing")]
-                tracing::trace!(?id, index, "Update moved entity index");
-                self.entity_ids.get_mut().update_row_index(id, index);
+                tracing::trace!(?updated_entity, index, "Update moved entity index");
+                debug_assert_ne!(id, updated_entity);
+                self.entity_ids.get_mut().update_row_index(updated_entity, index);
             }
             self.entity_ids.get_mut().free(id);
         }
@@ -346,6 +347,7 @@ impl World {
         unsafe { arch.as_mut().get_component_mut(idx) }
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn remove_component<T: Component>(&mut self, entity_id: EntityId) -> WorldResult<()> {
         #[cfg(feature = "tracing")]
         tracing::trace!(
@@ -370,6 +372,7 @@ impl World {
             if let Some(updated_entity) = updated_entity {
                 #[cfg(feature = "tracing")]
                 tracing::trace!(?updated_entity, index, "Update moved entity index");
+                debug_assert_ne!(updated_entity, entity_id);
                 unsafe {
                     self.entity_ids
                         .get_mut()
