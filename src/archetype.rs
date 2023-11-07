@@ -8,7 +8,7 @@ pub struct ArchetypeStorage {
     pub(crate) ty: TypeHash,
     pub(crate) rows: u32,
     pub(crate) entities: Vec<EntityId>,
-    pub(crate) components: BTreeMap<TypeId, UnsafeCell<ErasedColumn>>,
+    pub(crate) components: BTreeMap<TypeId, UnsafeCell<Column>>,
 }
 
 unsafe impl Send for ArchetypeStorage {}
@@ -60,7 +60,7 @@ impl ArchetypeStorage {
         let mut components = BTreeMap::new();
         components.insert(
             TypeId::of::<()>(),
-            UnsafeCell::new(ErasedColumn::new::<()>(0)),
+            UnsafeCell::new(Column::new::<()>(0)),
         );
         Self {
             ty,
@@ -211,7 +211,7 @@ impl ArchetypeStorage {
             self.ty = new_ty;
             self.components.insert(
                 TypeId::of::<T>(),
-                UnsafeCell::new(ErasedColumn::new::<T>(0)),
+                UnsafeCell::new(Column::new::<T>(0)),
             );
         }
         self
@@ -275,15 +275,15 @@ impl ArchetypeStorage {
             .and_then(|rows| unsafe { (*rows.get()).as_slice_mut().get_mut(row as usize) })
     }
 
-    pub fn components(&self) -> impl Iterator<Item = (TypeId, &ErasedColumn)> {
+    pub fn components(&self) -> impl Iterator<Item = (TypeId, &Column)> {
         self.components
             .iter()
             .map(|(ty, e)| (*ty, unsafe { &*e.get() }))
     }
 }
 
-/// More or less a type erased Vec that holds Components
-pub struct ErasedColumn {
+/// Type erased storage for an Archetype column
+pub struct Column {
     pub ty_name: &'static str,
     // Vec //
     data: *mut u8,
@@ -291,46 +291,46 @@ pub struct ErasedColumn {
     capacity: usize,
     layout: Layout,
     // Type Erased Methods //
-    pub(crate) finalize: fn(&mut ErasedColumn),
+    pub(crate) finalize: fn(&mut Column),
     /// remove is always swap_remove
-    pub(crate) remove: fn(RowIndex, &mut ErasedColumn),
+    pub(crate) remove: fn(RowIndex, &mut Column),
     #[cfg(feature = "clone")]
-    pub(crate) clone: fn(&ErasedColumn) -> ErasedColumn,
-    pub(crate) clone_empty: fn() -> ErasedColumn,
+    pub(crate) clone: fn(&Column) -> Column,
+    pub(crate) clone_empty: fn() -> Column,
     /// src, dst
     ///
     /// if component is not in `src` then this is a noop
     /// Caller must ensure that both tables have the same underlying type
-    pub(crate) move_row: fn(&mut ErasedColumn, &mut ErasedColumn, RowIndex),
+    pub(crate) move_row: fn(&mut Column, &mut Column, RowIndex),
     /// src, dst
     /// Move the row from src to the specified slow in dst
     ///
     /// Caller must ensure that dst is initialized and both tables have the same underlying type
-    pub(crate) move_row_into: fn(&mut ErasedColumn, RowIndex, &mut ErasedColumn, RowIndex),
+    pub(crate) move_row_into: fn(&mut Column, RowIndex, &mut Column, RowIndex),
     /// Swap rows in an entity
-    pub(crate) swap_rows: fn(&mut ErasedColumn, RowIndex, RowIndex),
+    pub(crate) swap_rows: fn(&mut Column, RowIndex, RowIndex),
 }
 
-impl Default for ErasedColumn {
+impl Default for Column {
     fn default() -> Self {
         Self::new::<()>(0)
     }
 }
 
-impl Drop for ErasedColumn {
+impl Drop for Column {
     fn drop(&mut self) {
         (self.finalize)(self);
     }
 }
 
 #[cfg(feature = "clone")]
-impl Clone for ErasedColumn {
+impl Clone for Column {
     fn clone(&self) -> Self {
         (self.clone)(self)
     }
 }
 
-impl std::fmt::Debug for ErasedColumn {
+impl std::fmt::Debug for Column {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ErasedVec")
             .field("ty", &self.ty_name)
@@ -338,7 +338,7 @@ impl std::fmt::Debug for ErasedColumn {
     }
 }
 
-impl ErasedColumn {
+impl Column {
     pub fn new<T: crate::Component>(capacity: usize) -> Self {
         let layout = Self::layout::<T>(capacity);
         Self {
@@ -347,7 +347,7 @@ impl ErasedColumn {
             end: 0,
             data: unsafe { std::alloc::alloc(layout) },
             layout,
-            finalize: |erased_table: &mut ErasedColumn| {
+            finalize: |erased_table: &mut Column| {
                 // drop the inner table
                 unsafe {
                     let data: *mut T = erased_table.data.cast();
@@ -357,12 +357,12 @@ impl ErasedColumn {
                     std::alloc::dealloc(erased_table.data, erased_table.layout);
                 }
             },
-            remove: |entity_id, erased_table: &mut ErasedColumn| unsafe {
+            remove: |entity_id, erased_table: &mut Column| unsafe {
                 erased_table.swap_remove::<T>(entity_id as usize);
             },
             #[cfg(feature = "clone")]
-            clone: |table: &ErasedColumn| {
-                let mut res = ErasedColumn::new::<T>(table.capacity);
+            clone: |table: &Column| {
+                let mut res = Column::new::<T>(table.capacity);
                 res.end = table.end;
                 for i in 0..table.end {
                     unsafe {
@@ -372,7 +372,7 @@ impl ErasedColumn {
                 }
                 res
             },
-            clone_empty: || ErasedColumn::new::<T>(1),
+            clone_empty: || Column::new::<T>(1),
             move_row: |src, dst, index| unsafe {
                 let src = src.swap_remove::<T>(index as usize);
                 dst.push::<T>(src);
