@@ -116,6 +116,8 @@ impl EntityTable {
         debug_assert_eq!(self.rows as usize, self.entities.len());
         debug_assert!(self.rows > 0, "rows={}", self.rows);
         debug_assert!(index < self.rows, "index={} rows={}", index, self.rows);
+        debug_assert_ne!(self as *mut _, dst as *mut _); // sanity check, the World must not allow
+                                                         // this to happen
 
         let entity_id = self.entities.swap_remove(index as usize);
         let res = dst.insert_entity(entity_id);
