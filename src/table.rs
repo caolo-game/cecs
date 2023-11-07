@@ -113,9 +113,26 @@ impl EntityTable {
     /// any
     #[must_use]
     pub fn move_entity(&mut self, dst: &mut Self, index: RowIndex) -> (RowIndex, Option<EntityId>) {
+        debug_assert_eq!(self.rows as usize, self.entities.len());
+        debug_assert!(self.rows > 0, "rows={}", self.rows);
+        debug_assert!(index < self.rows, "index={} rows={}", index, self.rows);
+
         let entity_id = self.entities.swap_remove(index as usize);
         let res = dst.insert_entity(entity_id);
-        let moved = unsafe { self.move_entity_noinsert(dst, index) };
+        self.rows -= 1;
+        let mut moved = None;
+        if index < self.rows {
+            // the removed row was not the last
+            moved = Some(self.entities[index as usize]);
+        }
+        for (ty, col) in self.components.iter_mut() {
+            if let Some(dst) = dst.components.get_mut(ty) {
+                (col.get_mut().move_row)(col.get_mut(), dst.get_mut(), index);
+            } else {
+                // destination does not have self column
+                col.get_mut().remove(index);
+            }
+        }
         (res, moved)
     }
 
@@ -137,36 +154,6 @@ impl EntityTable {
         for (ty, col) in self.components.iter_mut() {
             if let Some(dst) = dst.components.get_mut(ty) {
                 (col.get_mut().move_row_into)(col.get_mut(), src_index, dst.get_mut(), dst_index);
-            } else {
-                // destination does not have this column
-                col.get_mut().remove(src_index);
-            }
-        }
-        moved
-    }
-
-    /// Move components into the last entity of `dst`
-    ///
-    /// # SAFETY
-    ///
-    /// Caller must ensure that an entity is inserted
-    #[must_use]
-    pub unsafe fn move_entity_noinsert(
-        &mut self,
-        dst: &mut Self,
-        src_index: RowIndex,
-    ) -> Option<EntityId> {
-        debug_assert!(self.rows > 0);
-        debug_assert!(src_index < self.rows);
-        self.rows -= 1;
-        let mut moved = None;
-        if src_index < self.rows {
-            // the removed row was not the last
-            moved = Some(self.entities[src_index as usize]);
-        }
-        for (ty, col) in self.components.iter_mut() {
-            if let Some(dst) = dst.components.get_mut(ty) {
-                (col.get_mut().move_row)(col.get_mut(), dst.get_mut(), src_index);
             } else {
                 // destination does not have this column
                 col.get_mut().remove(src_index);

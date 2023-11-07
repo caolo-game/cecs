@@ -5,13 +5,13 @@ use std::{
     any::TypeId, cell::UnsafeCell, collections::BTreeMap, mem::transmute, pin::Pin, ptr::NonNull,
 };
 
-use table::EntityTable;
 use commands::CommandPayload;
 use entity_id::EntityId;
 use entity_index::EntityIndex;
 use prelude::Bundle;
 use resources::ResourceStorage;
 use systems::SystemStage;
+use table::EntityTable;
 
 pub mod bundle;
 pub mod commands;
@@ -257,6 +257,8 @@ impl World {
             .map_err(|_| WorldError::EntityNotFound)?;
         unsafe {
             if let Some(id) = archetype.as_mut().remove(index) {
+                #[cfg(feature = "tracing")]
+                tracing::trace!(?id, index, "Update moved entity index");
                 self.entity_ids.get_mut().update_row_index(id, index);
             }
             self.entity_ids.get_mut().free(id);
@@ -264,6 +266,7 @@ impl World {
         Ok(())
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, bundle)))]
     pub fn set_bundle<T: Bundle>(&mut self, entity_id: EntityId, bundle: T) -> WorldResult<()> {
         #[cfg(feature = "tracing")]
         tracing::trace!(
@@ -278,18 +281,32 @@ impl World {
             .map_err(|_| WorldError::EntityNotFound)?;
         let mut archetype = unsafe { archetype.as_mut() };
 
+        #[cfg(feature = "tracing")]
+        tracing::trace!(index, "Read entity");
+
         if !bundle.can_insert(archetype) {
+            #[cfg(feature = "tracing")]
+            tracing::trace!("Bundle can not be inserted into the current archetype");
+
             let new_hash = T::compute_hash(archetype.ty);
             if !self.archetypes.contains_key(&new_hash) {
+                #[cfg(feature = "tracing")]
+                tracing::trace!(new_hash, "Inserting new archetype");
+
                 let new_arch = T::extend(archetype);
                 let mut res = self.insert_archetype(archetype, index, new_arch);
 
                 archetype = unsafe { res.as_mut() };
                 index = 0;
             } else {
+                #[cfg(feature = "tracing")]
+                tracing::trace!(new_hash, "Moving entity into existing archetype");
+
                 let new_arch = self.archetypes.get_mut(&new_hash).unwrap();
                 let (i, updated_entity) = archetype.move_entity(new_arch, index);
                 if let Some(updated_entity) = updated_entity {
+                    #[cfg(feature = "tracing")]
+                    tracing::trace!(?updated_entity, index, "Update moved entity index");
                     unsafe {
                         self.entity_ids
                             .get_mut()
@@ -302,6 +319,8 @@ impl World {
         }
         bundle.insert_into(archetype, index)?;
         unsafe {
+            #[cfg(feature = "tracing")]
+            tracing::trace!(index, "Update entity index");
             self.entity_ids
                 .get_mut()
                 .update(entity_id, archetype, index);
@@ -349,6 +368,8 @@ impl World {
             let new_arch = self.archetypes.get_mut(&new_ty).unwrap();
             let (i, updated_entity) = archetype.move_entity(new_arch, index);
             if let Some(updated_entity) = updated_entity {
+                #[cfg(feature = "tracing")]
+                tracing::trace!(?updated_entity, index, "Update moved entity index");
                 unsafe {
                     self.entity_ids
                         .get_mut()
@@ -385,6 +406,8 @@ impl World {
         self.archetypes.insert(new_arch.ty(), new_arch);
 
         if let Some(updated_entity) = moved_entity {
+            #[cfg(feature = "tracing")]
+            tracing::trace!(?updated_entity, index, "Update moved entity index");
             unsafe {
                 self.entity_ids
                     .get_mut()
