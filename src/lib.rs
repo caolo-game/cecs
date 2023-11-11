@@ -796,7 +796,7 @@ unsafe fn run_system<'a, R>(world: &'a World, sys: &'a systems::ErasedSystem<'_,
     #[cfg(feature = "tracing")]
     tracing::trace!(system_name = name.as_str(), "Running system");
 
-    let index = sys.system_id;
+    let index = sys.system_idx;
     let execute: &systems::InnerSystem<'_, R> = { transmute(sys.execute.as_ref()) };
 
     let res = (execute)(world, index);

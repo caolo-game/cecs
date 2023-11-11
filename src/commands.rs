@@ -17,8 +17,8 @@ unsafe impl<'a> Sync for Commands<'a> {}
 struct CommandSentinel;
 
 impl<'a> WorldQuery<'a> for Commands<'a> {
-    fn new(w: &'a World, system_id: usize) -> Self {
-        Self::new(w, system_id)
+    fn new(w: &'a World, system_idx: usize) -> Self {
+        Self::new(w, system_idx)
     }
 
     fn resources_mut(set: &mut std::collections::HashSet<std::any::TypeId>) {
@@ -27,10 +27,10 @@ impl<'a> WorldQuery<'a> for Commands<'a> {
 }
 
 impl<'a> Commands<'a> {
-    pub(crate) fn new(w: &'a World, system_id: usize) -> Self {
+    pub(crate) fn new(w: &'a World, system_idx: usize) -> Self {
         Self {
             world: &w,
-            cmd: &w.commands[system_id],
+            cmd: &w.commands[system_idx],
         }
     }
 
