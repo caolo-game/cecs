@@ -1,9 +1,11 @@
-use std::{any::TypeId, cell::UnsafeCell, collections::HashMap};
+use std::{any::TypeId, cell::UnsafeCell};
+
+use rustc_hash::FxHashMap;
 
 use crate::Component;
 
 pub struct ResourceStorage {
-    pub(crate) resources: HashMap<TypeId, UnsafeCell<ErasedResource>>,
+    pub(crate) resources: FxHashMap<TypeId, UnsafeCell<ErasedResource>>,
 }
 
 #[cfg(feature = "clone")]

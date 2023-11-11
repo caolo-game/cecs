@@ -1,4 +1,5 @@
-use std::{collections::HashMap, ptr::NonNull};
+use rustc_hash::FxHashMap;
+use std::ptr::NonNull;
 
 use smallvec::SmallVec;
 
@@ -31,7 +32,7 @@ impl Schedule {
             .iter()
             .enumerate()
             .map(|(i, sys)| (sys.descriptor.id, i))
-            .collect::<HashMap<_, _>>();
+            .collect::<FxHashMap<_, _>>();
 
         let mut history = vec![QueryProperties::from_system(&systems[0].descriptor)];
         history.reserve(systems.len() - 1);
