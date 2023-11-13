@@ -1190,7 +1190,7 @@ macro_rules! impl_tuple {
             }
 
             fn read_only() -> bool {
-                true $(&& <ArchQuery<$t> as QueryPrimitive>::read_only())+
+                false $(|| <ArchQuery<$t> as QueryPrimitive>::read_only())+
             }
         }
     };
