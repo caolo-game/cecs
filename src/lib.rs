@@ -260,7 +260,9 @@ impl World {
                 #[cfg(feature = "tracing")]
                 tracing::trace!(?updated_entity, index, "Update moved entity index");
                 debug_assert_ne!(id, updated_entity);
-                self.entity_ids.get_mut().update_row_index(updated_entity, index);
+                self.entity_ids
+                    .get_mut()
+                    .update_row_index(updated_entity, index);
             }
             self.entity_ids.get_mut().free(id);
         }
@@ -791,18 +793,8 @@ impl World {
 //
 // The system's queries must be disjoint to any other concurrently running system's
 unsafe fn run_system<'a, R>(world: &'a World, sys: &'a systems::ErasedSystem<'_, R>) -> R {
-    #[cfg(feature = "tracing")]
-    let name = sys.descriptor.name.clone();
-    #[cfg(feature = "tracing")]
-    tracing::trace!(system_name = name.as_str(), "Running system");
-
     let index = sys.system_idx;
     let execute: &systems::InnerSystem<'_, R> = { transmute(sys.execute.as_ref()) };
 
-    let res = (execute)(world, index);
-
-    #[cfg(feature = "tracing")]
-    tracing::trace!(system_name = name, "Running system done");
-
-    res
+    (execute)(world, index)
 }
