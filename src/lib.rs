@@ -493,12 +493,18 @@ impl World {
     /// Returns the commands result
     pub fn run_system<'a, S, P, R>(&mut self, system: S) -> WorldResult<R>
     where
-        S: systems::IntoSystem<'a, P, R>,
+        S: systems::IntoOnceSystem<'a, P, R>,
     {
         self.resize_commands(1);
-        let result = unsafe { run_system(self, &system.descriptor().into()) };
+
+        // assert invariants
+        #[cfg(debug_assertions)]
+        let _desc = S::descriptor();
+
+        let func = system.into_once_system();
+        let result = (func)(self, 0);
         // apply commands immediately
-        self.apply_commands().map(|_| result)
+        self.apply_commands().map(move |_| result)
     }
 
     /// Run a system that only gets a read-only view of the world.
@@ -507,11 +513,12 @@ impl World {
     /// Panics if the system does not conform to the requirements
     pub fn run_view_system<'a, S, P, R>(&self, system: S) -> R
     where
-        S: systems::IntoSystem<'a, P, R>,
+        S: systems::IntoOnceSystem<'a, P, R>,
     {
-        let desc = system.descriptor();
+        let desc = S::descriptor();
         assert!((desc.read_only)());
-        unsafe { run_system(self, &desc.into()) }
+        let sys = system.into_once_system();
+        (sys)(self, 0)
     }
 
     pub fn tick(&mut self) {

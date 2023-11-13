@@ -1,11 +1,11 @@
 use commands::Commands;
 use world_access::WorldAccess;
 
-use crate::table::ArchetypeHash;
 use crate::entity_id::EntityId;
 use crate::prelude::ResMut;
 use crate::query::resource_query::Res;
 use crate::query::{filters::WithOut, Query};
+use crate::table::ArchetypeHash;
 
 use super::*;
 
@@ -961,4 +961,19 @@ fn vacuum_must_not_collect_void_ty_test() {
         cmd.spawn().insert_bundle((1u8, 2u32));
     })
     .unwrap();
+}
+
+#[test]
+fn test_fn_once() {
+    let mut w = World::new(4);
+
+    let result = "Delicious".to_string();
+    let result = w
+        .run_system(move || {
+            // this system is FnOnce, it consumes the provided string
+            result
+        })
+        .unwrap();
+
+    assert_eq!(result, "Delicious");
 }

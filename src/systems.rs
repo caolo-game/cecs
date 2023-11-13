@@ -252,6 +252,11 @@ pub trait IntoSystem<'a, Param, R> {
     }
 }
 
+pub trait IntoOnceSystem<'a, Param, R> {
+    fn into_once_system(self) -> impl FnOnce(&World, usize) -> R;
+    fn descriptor() -> SystemDescriptor<'a, R>;
+}
+
 // helps chaining methods
 impl<'a, R> IntoSystem<'a, (), R> for SystemDescriptor<'a, R> {
     fn descriptor(self) -> SystemDescriptor<'a, R> {
@@ -371,6 +376,26 @@ macro_rules! impl_intosys_fn {
                     factory,
                     after: HashSet::new(),
                 }
+            }
+        }
+
+        #[allow(unused_parens)]
+        #[allow(unused_mut)]
+        impl<'a, R: 'static, F, $($t: WorldQuery<'a> + 'static,)*>
+            IntoOnceSystem<'a, ($($t),*), R> for F
+        where
+            F: FnOnce($($t),*) -> R,
+        {
+            fn into_once_system(self) -> impl FnOnce(&World, usize) -> R {
+                move |_world: &World, _system_idx| {
+                    (self)(
+                        $( unsafe { <$t>::new(std::mem::transmute(_world), _system_idx)},)*
+                    )
+                }
+            }
+            fn descriptor() -> SystemDescriptor<'a, R> {
+                let dummy: fn($($t),*) -> R = |$(_:$t),*| unreachable!();
+                dummy.descriptor()
             }
         }
     };
