@@ -183,8 +183,7 @@ impl JobPool {
                 let _d = data;
             });
             let root = root.into_job();
-            for job in jobs {
-                let mut job = job.into_inner();
+            for mut job in jobs {
                 job.add_child(&root);
                 self.enqueue_job(job);
             }
@@ -199,8 +198,7 @@ impl JobPool {
             let jobs = graph.get_jobs();
             let root = InlineJob::new(|| {});
             let root = root.as_job();
-            for job in jobs {
-                let mut job = job.into_inner();
+            for mut job in jobs {
                 job.add_child(&root);
                 self.enqueue_job(job);
             }
@@ -778,16 +776,14 @@ where
     ///
     /// The jobs are only valid while this graph is not modified or dropped
     ///
-    unsafe fn get_jobs(&self) -> impl IntoIterator<Item = UnsafeCell<Job>> {
-        let jobs = self
-            .jobs
-            .iter()
-            .map(|d| Job::new(d))
-            .map(UnsafeCell::new)
-            .collect::<Vec<_>>();
+    unsafe fn get_jobs(&self) -> impl IntoIterator<Item = Job> {
+        let mut jobs = self.jobs.iter().map(|d| Job::new(d)).collect::<Vec<_>>();
         for [parent, child] in self.edges.iter().copied() {
+            debug_assert_ne!(parent, child);
             unsafe {
-                (&mut *jobs[parent].get()).add_child(&*jobs[child].get());
+                let parent = &mut *jobs.as_mut_ptr().add(parent);
+                let child = &*jobs.as_ptr().add(child);
+                parent.add_child(child);
             }
         }
         jobs
