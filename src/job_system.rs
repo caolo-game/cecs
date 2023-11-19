@@ -563,7 +563,7 @@ impl Job {
     pub fn ready(&self) -> bool {
         let left = self.tasks_left.load(Ordering::Relaxed);
         debug_assert!(left >= 0);
-        left <= 1 && !self.data.is_null()
+        left == 1 && !self.data.is_null()
     }
 
     pub fn add_child(&mut self, child: &Job) {
