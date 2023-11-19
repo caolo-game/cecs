@@ -176,7 +176,7 @@ impl JobPool {
     pub fn enqueue_graph<T: Send + AsJob>(&self, graph: HomogeneousJobGraph<T>) -> JobHandle {
         unsafe {
             let jobs = graph.get_jobs();
-            let data = graph.data;
+            let data = graph.jobs;
             let root = BoxedJob::new(move || {
                 // take ownership of the data
                 // dropping it when the final, root, job is executed
@@ -735,14 +735,14 @@ impl<'a> Scope<'a> {
 }
 
 pub struct HomogeneousJobGraph<T> {
-    data: Vec<T>,
+    jobs: Vec<T>,
     edges: Vec<[usize; 2]>,
 }
 
 impl<T: Clone> Clone for HomogeneousJobGraph<T> {
     fn clone(&self) -> Self {
         Self {
-            data: self.data.clone(),
+            jobs: self.jobs.clone(),
             edges: self.edges.clone(),
         }
     }
@@ -751,7 +751,7 @@ impl<T: Clone> Clone for HomogeneousJobGraph<T> {
 impl<T: std::fmt::Debug> std::fmt::Debug for HomogeneousJobGraph<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HomogeneousJobGraph")
-            .field("data", &self.data)
+            .field("data", &self.jobs)
             .field("edges", &self.edges)
             .finish_non_exhaustive()
     }
@@ -764,7 +764,7 @@ where
     pub fn new(data: impl Into<Vec<T>>) -> Self {
         let data = data.into();
         Self {
-            data,
+            jobs: data,
             edges: Default::default(),
         }
     }
@@ -780,7 +780,7 @@ where
     ///
     unsafe fn get_jobs(&self) -> impl IntoIterator<Item = UnsafeCell<Job>> {
         let jobs = self
-            .data
+            .jobs
             .iter()
             .map(|d| Job::new(d))
             .map(UnsafeCell::new)
