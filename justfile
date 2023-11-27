@@ -12,4 +12,7 @@ tsan:
 asan:
 	RUSTFLAGS=-Zsanitizer=address RUSTDOCFLAGS=-Zsanitizer=address cargo test --all-features -Zbuild-std --target x86_64-unknown-linux-gnu
 
+msan:
+	RUSTFLAGS=-Zsanitizer=memory RUSTDOCFLAGS=-Zsanitizer=memory cargo test --all-features -Zbuild-std --target x86_64-unknown-linux-gnu
+
 sanitize: tsan asan
