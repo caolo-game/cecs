@@ -7,9 +7,9 @@ pub mod resource_query;
 mod query_tests;
 
 use crate::{
-    table::{ArchetypeHash, EntityTable},
     entity_id::EntityId,
     systems::SystemDescriptor,
+    table::{ArchetypeHash, EntityTable},
     Component, RowIndex, World,
 };
 use filters::Filter;
@@ -155,6 +155,42 @@ where
             world: std::ptr::NonNull::from(world),
             _m: PhantomData,
         }
+    }
+
+    /// Return a query that is a subset of this query
+    ///
+    /// Subset means that the child query may not have more components than the original query.
+    ///
+    /// Mutable references may be demoted to const references, but const references may not be
+    /// promoted to mutable references.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an invariant no longer holds.
+    ///
+    /// TODO: Filter subset
+    pub fn subset<T1>(&self) -> Query<T1, F>
+    where
+        ArchQuery<T1>: QueryFragment,
+    {
+        #[cfg(debug_assertions)]
+        {
+            let mut rhs = HashSet::new();
+            let p = ensure_query_valid::<Query<T1, F>>();
+            let mut lhs = p.comp_mut;
+
+            Self::components_mut(&mut rhs);
+            Query::<T1, F>::components_mut(&mut lhs);
+
+            assert!(lhs.is_subset(&rhs));
+
+            // T1 const components must be a subset of rhs const+mut
+            Self::components_const(&mut rhs);
+            let lhs = p.comp_const;
+
+            assert!(lhs.is_subset(&rhs));
+        }
+        unsafe { Query::<T1, F>::new(self.world.as_ref()) }
     }
 
     /// Count the number of entities this query spans
@@ -433,10 +469,7 @@ pub trait QueryFragment {
     fn types_const(set: &mut HashSet<TypeId>);
     fn contains(archetype: &EntityTable) -> bool;
     fn read_only() -> bool;
-    fn iter_range(
-        archetype: &EntityTable,
-        range: impl RangeBounds<usize> + Clone,
-    ) -> Self::It<'_>;
+    fn iter_range(archetype: &EntityTable, range: impl RangeBounds<usize> + Clone) -> Self::It<'_>;
     fn iter_range_mut(
         archetype: &EntityTable,
         range: impl RangeBounds<usize> + Clone,
@@ -464,10 +497,7 @@ pub trait QueryPrimitive {
     fn types_mut(set: &mut HashSet<TypeId>);
     fn types_const(set: &mut HashSet<TypeId>);
     fn read_only() -> bool;
-    fn iter_range_prim(
-        archetype: &EntityTable,
-        range: impl RangeBounds<usize>,
-    ) -> Self::It<'_>;
+    fn iter_range_prim(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::It<'_>;
     fn iter_range_prim_mut(
         archetype: &EntityTable,
         range: impl RangeBounds<usize>,
@@ -526,10 +556,7 @@ impl QueryPrimitive for ArchQuery<EntityId> {
         true
     }
 
-    fn iter_range_prim(
-        archetype: &EntityTable,
-        range: impl RangeBounds<usize>,
-    ) -> Self::It<'_> {
+    fn iter_range_prim(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::It<'_> {
         let len = archetype.entities.len();
         let range = slice::range(range, ..len);
         archetype.entities[range].iter().copied()
@@ -598,10 +625,7 @@ impl QueryPrimitive for ArchQuery<ArchetypeHash> {
         true
     }
 
-    fn iter_range_prim(
-        archetype: &EntityTable,
-        range: impl RangeBounds<usize>,
-    ) -> Self::It<'_> {
+    fn iter_range_prim(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::It<'_> {
         let len = archetype.entities.len();
         let range = slice::range(range, ..len);
         let hash = archetype.ty;
@@ -686,10 +710,7 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<Option<&'a T>> {
         true
     }
 
-    fn iter_range_prim(
-        archetype: &EntityTable,
-        range: impl RangeBounds<usize>,
-    ) -> Self::It<'_> {
+    fn iter_range_prim(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::It<'_> {
         match archetype.components.get(&TypeId::of::<T>()) {
             Some(columns) => unsafe {
                 let col = (&*columns.get()).as_slice::<T>();
@@ -777,10 +798,7 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<Option<&'a mut T>> {
         false
     }
 
-    fn iter_range_prim(
-        archetype: &EntityTable,
-        range: impl RangeBounds<usize>,
-    ) -> Self::It<'_> {
+    fn iter_range_prim(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::It<'_> {
         match archetype.components.get(&TypeId::of::<T>()) {
             Some(columns) => unsafe {
                 let col = (&mut *columns.get()).as_slice::<T>();
@@ -876,10 +894,7 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<&'a T> {
         true
     }
 
-    fn iter_range_prim(
-        archetype: &EntityTable,
-        range: impl RangeBounds<usize>,
-    ) -> Self::ItMut<'_> {
+    fn iter_range_prim(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::ItMut<'_> {
         archetype
             .components
             .get(&TypeId::of::<T>())
@@ -976,10 +991,7 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<&'a mut T> {
         false
     }
 
-    fn iter_range_prim(
-        archetype: &EntityTable,
-        range: impl RangeBounds<usize>,
-    ) -> Self::It<'_> {
+    fn iter_range_prim(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::It<'_> {
         archetype
             .components
             .get(&TypeId::of::<T>())
@@ -1065,10 +1077,7 @@ where
         <Self as QueryPrimitive>::read_only()
     }
 
-    fn iter_range(
-        archetype: &EntityTable,
-        range: impl RangeBounds<usize> + Clone,
-    ) -> Self::It<'_> {
+    fn iter_range(archetype: &EntityTable, range: impl RangeBounds<usize> + Clone) -> Self::It<'_> {
         <Self as QueryPrimitive>::iter_range_prim(archetype, range)
     }
 
