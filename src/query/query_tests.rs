@@ -170,3 +170,50 @@ fn basic_filter_test() {
         &archetype
     ));
 }
+
+#[test]
+fn test_subset() {
+    #[derive(Clone, Copy)]
+    struct A;
+    #[derive(Clone, Copy)]
+    struct B;
+    #[derive(Clone, Copy)]
+    struct C;
+
+    let mut world = World::new(4);
+
+    let e = world.insert_entity();
+    world.set_bundle(e, (A, B, C)).unwrap();
+
+    let mut q = Query::<(EntityId, &mut A, &mut B, &C)>::new(&world);
+
+    let sub: Query<(&A, &C, EntityId)> = q.subset();
+
+    let mut count = 0;
+    for (_a, _c, id) in sub.iter() {
+        assert_eq!(id, e);
+        count += 1;
+    }
+    assert_eq!(count, 1);
+}
+
+#[test]
+#[should_panic]
+#[cfg(debug_assertions)]
+fn invalid_subset() {
+    #[derive(Clone, Copy)]
+    struct A;
+    #[derive(Clone, Copy)]
+    struct B;
+    #[derive(Clone, Copy)]
+    struct C;
+
+    let mut world = World::new(4);
+
+    let e = world.insert_entity();
+    world.set_bundle(e, (A, B, C)).unwrap();
+
+    let mut q = Query::<(EntityId, &mut A, &mut B, &C)>::new(&world);
+
+    let _sub: Query<(&A, &mut C, EntityId)> = q.subset();
+}

@@ -518,6 +518,7 @@ mod tests {
             .unwrap();
 
         type Q<'a> = Query<
+            'a,
             (EntityId, ArchetypeHash, Option<&'a u32>, Option<&'a f32>),
             (With<i32>, With<Foo>),
         >;
