@@ -211,19 +211,18 @@ where
     {
         #[cfg(debug_assertions)]
         {
-            let mut rhs = HashSet::new();
             let p = ensure_query_valid::<Query<T1, F>>();
-            let mut lhs = p.comp_mut;
 
+            let mut rhs = HashSet::new();
             Self::components_mut(&mut rhs);
-            Query::<T1, F>::components_mut(&mut lhs);
+            let lhs = p.comp_mut;
 
             assert!(lhs.is_subset(&rhs));
 
             // T1 const components must be a subset of rhs const+mut
             Self::components_const(&mut rhs);
-            let lhs = p.comp_const;
 
+            let lhs = p.comp_const;
             assert!(lhs.is_subset(&rhs));
         }
         unsafe { Query::<T1, F>::new(self.world.as_ref()) }

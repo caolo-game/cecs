@@ -195,6 +195,8 @@ fn test_subset() {
         count += 1;
     }
     assert_eq!(count, 1);
+
+    let _sub: Query<(&mut A, &C, EntityId)> = unsafe { q.subset() };
 }
 
 #[test]
