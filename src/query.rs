@@ -175,6 +175,11 @@ where
     /// TODO: Allow extending filter
     /// TODO: Can we avoid the unique borrow of the parent Query?
     ///
+    /// # Safety
+    ///
+    /// Currently the API allows multiple mutable borrows to the same data. The caller must ensure
+    /// that all mutable data access is unique.
+    ///
     /// ```
     /// use cecs::prelude::*;
     /// # #[derive(Clone, Copy)]
@@ -191,7 +196,7 @@ where
     ///
     /// let mut q = Query::<(EntityId, &mut A, &mut B, &C)>::new(&world);
     ///
-    /// let sub: Query<(&A, &C, EntityId)> = q.subset();
+    /// let sub: Query<(&A, &C, EntityId)> = unsafe { q.subset() };
     ///
     /// let mut count = 0;
     /// for (_a, _c, id) in sub.iter() {
@@ -200,7 +205,7 @@ where
     /// }
     /// assert_eq!(count, 1);
     /// ```
-    pub fn subset<'b, T1>(&'b mut self) -> Query<'b, T1, F>
+    pub unsafe fn subset<'b, T1>(&'b mut self) -> Query<'b, T1, F>
     where
         ArchQuery<T1>: QueryFragment,
     {
@@ -418,8 +423,10 @@ where
     }
 
     #[cfg(not(feature = "parallel"))]
-    pub fn par_for_each<'b>(&'b self, f: impl Fn(<ArchQuery<T> as QueryFragment>::Item<'a>) + Sync + 'b)
-    where
+    pub fn par_for_each<'b>(
+        &'b self,
+        f: impl Fn(<ArchQuery<T> as QueryFragment>::Item<'a>) + Sync + 'b,
+    ) where
         T: Send + Sync,
     {
         self.iter().for_each(f);

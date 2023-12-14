@@ -187,7 +187,7 @@ fn test_subset() {
 
     let mut q = Query::<(EntityId, &mut A, &mut B, &C)>::new(&world);
 
-    let sub: Query<(&A, &C, EntityId)> = q.subset();
+    let sub: Query<(&A, &C, EntityId)> = unsafe { q.subset() };
 
     let mut count = 0;
     for (_a, _c, id) in sub.iter() {
@@ -215,5 +215,5 @@ fn invalid_subset() {
 
     let mut q = Query::<(EntityId, &mut A, &mut B, &C)>::new(&world);
 
-    let _sub: Query<(&A, &mut C, EntityId)> = q.subset();
+    let _sub: Query<(&A, &mut C, EntityId)> = unsafe { q.subset() };
 }
