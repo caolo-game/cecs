@@ -168,7 +168,7 @@ where
     ///
     /// Panics if an invariant no longer holds.
     ///
-    /// TODO: Filter subset
+    /// TODO: Allow extending filter
     pub fn subset<T1>(&self) -> Query<T1, F>
     where
         ArchQuery<T1>: QueryFragment,
