@@ -348,8 +348,10 @@ where
     }
 
     #[cfg(feature = "parallel")]
-    pub fn par_for_each(&self, f: impl Fn(<ArchQuery<T> as QueryFragment>::Item<'a>) + Sync)
-    where
+    pub fn par_for_each<'b>(
+        &'b self,
+        f: impl Fn(<ArchQuery<T> as QueryFragment>::Item<'a>) + Sync + 'b,
+    ) where
         T: Send + Sync,
     {
         unsafe {
@@ -380,9 +382,9 @@ where
     }
 
     #[cfg(feature = "parallel")]
-    pub fn par_for_each_mut(
-        &mut self,
-        f: impl Fn(<ArchQuery<T> as QueryFragment>::ItemMut<'a>) + Sync + 'a,
+    pub fn par_for_each_mut<'b>(
+        &'b mut self,
+        f: impl Fn(<ArchQuery<T> as QueryFragment>::ItemMut<'a>) + Sync + 'b,
     ) where
         T: Send + Sync,
     {
@@ -416,7 +418,7 @@ where
     }
 
     #[cfg(not(feature = "parallel"))]
-    pub fn par_for_each(&self, f: impl Fn(<ArchQuery<T> as QueryFragment>::Item<'a>) + Sync + 'a)
+    pub fn par_for_each<'b>(&'b self, f: impl Fn(<ArchQuery<T> as QueryFragment>::Item<'a>) + Sync + 'b)
     where
         T: Send + Sync,
     {
@@ -424,9 +426,9 @@ where
     }
 
     #[cfg(not(feature = "parallel"))]
-    pub fn par_for_each_mut(
-        &mut self,
-        f: impl Fn(<ArchQuery<T> as QueryFragment>::ItemMut<'a>) + Sync + 'a,
+    pub fn par_for_each_mut<'b>(
+        &'b mut self,
+        f: impl Fn(<ArchQuery<T> as QueryFragment>::ItemMut<'a>) + Sync + 'b,
     ) where
         T: Send + Sync,
     {
