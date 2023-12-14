@@ -175,10 +175,6 @@ where
     /// TODO: Allow extending filter
     /// TODO: Can we avoid the unique borrow of the parent Query?
     ///
-    /// # Safety
-    ///
-    /// Currently the API allows multiple mutable borrows to the same data. The caller must ensure
-    /// that all mutable data access is unique.
     ///
     /// ```
     /// use cecs::prelude::*;
@@ -205,9 +201,10 @@ where
     /// }
     /// assert_eq!(count, 1);
     /// ```
-    pub unsafe fn subset<'b, T1>(&'b mut self) -> Query<'b, T1, F>
+    pub fn subset<'b, T1>(&'b mut self) -> Query<'b, T1, F>
     where
         ArchQuery<T1>: QueryFragment,
+        'a: 'b,
     {
         #[cfg(debug_assertions)]
         {
@@ -225,7 +222,7 @@ where
             let lhs = p.comp_const;
             assert!(lhs.is_subset(&rhs));
         }
-        unsafe { Query::<T1, F>::new(self.world.as_ref()) }
+        unsafe { Query::<'b, T1, F>::new(self.world.as_ref()) }
     }
 
     /// Count the number of entities this query spans
@@ -245,15 +242,17 @@ where
         self.count() == 0
     }
 
-    pub fn single(&self) -> Option<<ArchQuery<T> as QueryFragment>::Item<'a>> {
+    pub fn single(&'a self) -> Option<<ArchQuery<T> as QueryFragment>::Item<'a>> {
         self.iter().next()
     }
 
-    pub fn single_mut(&mut self) -> Option<<ArchQuery<T> as QueryFragment>::ItemMut<'a>> {
+    pub fn single_mut(&'a mut self) -> Option<<ArchQuery<T> as QueryFragment>::ItemMut<'a>> {
         self.iter_mut().next()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = <ArchQuery<T> as QueryFragment>::Item<'a>> {
+    pub fn iter<'b>(
+        &'b self,
+    ) -> impl Iterator<Item = <ArchQuery<T> as QueryFragment>::Item<'a>> + 'b {
         unsafe {
             self.world
                 .as_ref()
@@ -264,9 +263,9 @@ where
         }
     }
 
-    pub fn iter_mut(
-        &mut self,
-    ) -> impl Iterator<Item = <ArchQuery<T> as QueryFragment>::ItemMut<'a>> {
+    pub fn iter_mut<'b>(
+        &'b mut self,
+    ) -> impl Iterator<Item = <ArchQuery<T> as QueryFragment>::ItemMut<'a>> + 'b {
         unsafe {
             self.world
                 .as_ref()
@@ -282,7 +281,7 @@ where
     ///
     /// The top-level system still needs &mut access to the components.
     pub unsafe fn iter_unsafe(
-        &self,
+        &'a self,
     ) -> impl Iterator<Item = <ArchQuery<T> as QueryFragment>::ItemUnsafe<'a>> {
         self.world
             .as_ref()
@@ -292,7 +291,7 @@ where
             .flat_map(|(_, arch)| ArchQuery::<T>::iter_unsafe(arch))
     }
 
-    pub fn fetch(&self, id: EntityId) -> Option<<ArchQuery<T> as QueryFragment>::Item<'a>> {
+    pub fn fetch(&'a self, id: EntityId) -> Option<<ArchQuery<T> as QueryFragment>::Item<'a>> {
         unsafe {
             let (arch, index) = self.world.as_ref().entity_ids().read(id).ok()?;
             if !F::filter(arch.as_ref()) {
@@ -304,7 +303,7 @@ where
     }
 
     pub fn fetch_mut(
-        &mut self,
+        &'a mut self,
         id: EntityId,
     ) -> Option<<ArchQuery<T> as QueryFragment>::ItemMut<'a>> {
         unsafe {
@@ -318,7 +317,7 @@ where
     }
 
     pub unsafe fn fetch_unsafe(
-        &self,
+        &'a self,
         id: EntityId,
     ) -> Option<<ArchQuery<T> as QueryFragment>::ItemUnsafe<'a>> {
         unsafe {
@@ -347,7 +346,7 @@ where
 
     /// fetch the first row of the query
     /// panic if no row was found
-    pub fn one(&self) -> <ArchQuery<T> as QueryFragment>::Item<'a> {
+    pub fn one(&'a self) -> <ArchQuery<T> as QueryFragment>::Item<'a> {
         self.iter().next().unwrap()
     }
 

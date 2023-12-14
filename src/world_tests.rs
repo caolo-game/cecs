@@ -101,10 +101,8 @@ fn can_query_entity_id_test() {
     let mut exp = vec![(id1, "poggers1"), (id2, "poggers2")];
     exp.sort_by_key(|(id, _)| *id);
 
-    let mut act = Query::<(EntityId, &String)>::new(&world)
-        .iter()
-        .map(|(id, s)| (id, s.as_str()))
-        .collect::<Vec<_>>();
+    let q = Query::<(EntityId, &String)>::new(&world);
+    let mut act = q.iter().map(|(id, s)| (id, s.as_str())).collect::<Vec<_>>();
     act.sort_by_key(|(id, _)| *id);
 
     assert_eq!(&exp[..], &act[..]);
@@ -244,10 +242,10 @@ fn world_clone_test() {
 
     let w2 = world.clone();
 
-    let a = Query::<(EntityId, &Foo, Option<&String>)>::new(&world).iter();
-    let b = Query::<(EntityId, &Foo, Option<&String>)>::new(&w2).iter();
+    let a = Query::<(EntityId, &Foo, Option<&String>)>::new(&world);
+    let b = Query::<(EntityId, &Foo, Option<&String>)>::new(&w2);
 
-    for (a, b) in a.zip(b) {
+    for (a, b) in a.iter().zip(b.iter()) {
         assert_eq!(a, b);
     }
 }
