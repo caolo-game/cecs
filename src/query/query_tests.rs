@@ -185,7 +185,7 @@ fn test_subset() {
     let e = world.insert_entity();
     world.set_bundle(e, (A, B, C)).unwrap();
 
-    let q = Query::<(EntityId, &mut A, &mut B, &C)>::new(&world);
+    let mut q = Query::<(EntityId, &mut A, &mut B, &C)>::new(&world);
 
     let sub: Query<(&A, &C, EntityId)> = q.subset();
 
@@ -213,7 +213,7 @@ fn invalid_subset() {
     let e = world.insert_entity();
     world.set_bundle(e, (A, B, C)).unwrap();
 
-    let q = Query::<(EntityId, &mut A, &mut B, &C)>::new(&world);
+    let mut q = Query::<(EntityId, &mut A, &mut B, &C)>::new(&world);
 
     let _sub: Query<(&A, &mut C, EntityId)> = q.subset();
 }

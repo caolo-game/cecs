@@ -17,7 +17,7 @@ use crate::{
 ///
 /// The way we implement fetch can actually break Rust's aliasing semantics. The programmer must
 /// ensure that using different queries does not result in mutable aliasing (fetching the same
-/// component on the same entity twice at the same time). 
+/// component on the same entity twice at the same time).
 ///
 /// ```
 /// use cecs::prelude::*;
@@ -29,10 +29,10 @@ use crate::{
 /// #[derive(Default, Clone)]
 /// struct Bar;
 ///
-/// fn sys(
+/// fn sys<'a>(
 ///     mut q: QuerySet<(
-///         Query<(&mut Foo, &Bar)>,
-///         Query<&mut Foo>,
+///         Query<'a, (&'a mut Foo, &'a Bar)>,
+///         Query<'a, &'a mut Foo>,
 ///     )>,
 /// ) {
 ///     for foo in q.q1_mut().iter_mut() {
@@ -49,13 +49,13 @@ use crate::{
 /// world.run_system(sys).unwrap();
 /// ```
 pub struct QuerySet<Inner> {
-    inner: Inner,
+    world: std::ptr::NonNull<crate::World>,
     _m: PhantomData<Inner>,
 }
 
 macro_rules! impl_tuple {
     ($($idx: tt , $t: ident , $f: ident , $q: ident , $q_mut: ident , $set: ident);+ $(;)?) => {
-        impl<'a, $($t, $f),*> QuerySet<($(Query<$t, $f>),*)>
+        impl<'a, $($t, $f),*> QuerySet<($(Query<'a, $t, $f>),*)>
         where
             $(
             ArchQuery<$t>: QueryFragment,
@@ -63,18 +63,21 @@ macro_rules! impl_tuple {
             )*
         {
             $(
-            pub fn $q(&self) -> &Query<$t, $f> {
-                &self.inner.$idx
-            }
+                pub fn $q<'b>(&'b self) -> Query<'b, $t, $f> 
+                    where 'a: 'b
+                {
+                    unsafe {Query::new(self.world.as_ref())}
+                }
 
-            pub fn $q_mut(&mut self) -> &mut Query<$t, $f> {
-                &mut self.inner.$idx
-            }
-
+                pub fn $q_mut<'b>(&'b mut self) -> Query<'b, $t, $f> 
+                    where 'a: 'b
+                {
+                    unsafe {Query::new(self.world.as_ref())}
+                }
             )*
         }
 
-        impl<'a, $($t, $f),*> WorldQuery<'a> for QuerySet<($(Query<$t, $f>),*)>
+        impl<'a, $($t, $f),*> WorldQuery<'a> for QuerySet<($(Query<'a, $t, $f>),*)>
         where
             $(
             ArchQuery<$t>: QueryFragment,
@@ -83,7 +86,7 @@ macro_rules! impl_tuple {
         {
             fn new(db: &'a crate::World, _system_idx: usize) -> Self {
                 Self {
-                    inner: ($(Query::<$t, $f>::new(db)),*),
+                    world: std::ptr::NonNull::from(db),
                     _m: PhantomData,
                 }
             }

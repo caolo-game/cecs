@@ -115,15 +115,16 @@ pub(crate) fn ensure_query_valid<'a, T: WorldQuery<'a>>() -> QueryProperties {
     }
 }
 
-pub struct Query<T, F = ()> {
+pub struct Query<'a, T, F = ()> {
     world: std::ptr::NonNull<crate::World>,
     _m: PhantomData<(T, F)>,
+    _l: PhantomData<&'a ()>,
 }
 
-unsafe impl<T, F> Send for Query<T, F> {}
-unsafe impl<T, F> Sync for Query<T, F> {}
+unsafe impl<T, F> Send for Query<'_, T, F> {}
+unsafe impl<T, F> Sync for Query<'_, T, F> {}
 
-impl<'a, T, F> WorldQuery<'a> for Query<T, F>
+impl<'a, T, F> WorldQuery<'a> for Query<'a, T, F>
 where
     ArchQuery<T>: QueryFragment,
     F: Filter,
@@ -145,15 +146,16 @@ where
     }
 }
 
-impl<T, F> Query<T, F>
+impl<'a, T, F> Query<'a, T, F>
 where
     ArchQuery<T>: QueryFragment,
     F: Filter,
 {
-    pub fn new(world: &crate::World) -> Self {
+    pub fn new(world: &'a crate::World) -> Self {
         Query {
             world: std::ptr::NonNull::from(world),
             _m: PhantomData,
+            _l: PhantomData,
         }
     }
 
@@ -164,12 +166,41 @@ where
     /// Mutable references may be demoted to const references, but const references may not be
     /// promoted to mutable references.
     ///
+    /// The query has to be uniquely borrowed, because the subquery _may_ mutably borrow the same data as the parent query
+    ///
     /// # Panics
     ///
     /// Panics if an invariant no longer holds.
     ///
     /// TODO: Allow extending filter
-    pub fn subset<T1>(&self) -> Query<T1, F>
+    /// TODO: Can we avoid the unique borrow of the parent Query?
+    ///
+    /// ```
+    /// use cecs::prelude::*;
+    /// # #[derive(Clone, Copy)]
+    /// # struct A;
+    /// # #[derive(Clone, Copy)]
+    /// # struct B;
+    /// # #[derive(Clone, Copy)]
+    /// # struct C;
+    ///
+    /// let mut world = World::new(4);
+    ///
+    /// let e = world.insert_entity();
+    /// world.set_bundle(e, (A, B, C)).unwrap();
+    ///
+    /// let mut q = Query::<(EntityId, &mut A, &mut B, &C)>::new(&world);
+    ///
+    /// let sub: Query<(&A, &C, EntityId)> = q.subset();
+    ///
+    /// let mut count = 0;
+    /// for (_a, _c, id) in sub.iter() {
+    ///     assert_eq!(id, e);
+    ///     count += 1;
+    /// }
+    /// assert_eq!(count, 1);
+    /// ```
+    pub fn subset<'b, T1>(&'b mut self) -> Query<'b, T1, F>
     where
         ArchQuery<T1>: QueryFragment,
     {
@@ -210,24 +241,15 @@ where
         self.count() == 0
     }
 
-    pub fn single<'a>(&'a self) -> Option<<ArchQuery<T> as QueryFragment>::Item<'a>>
-    where
-        Self: 'a,
-    {
+    pub fn single(&self) -> Option<<ArchQuery<T> as QueryFragment>::Item<'a>> {
         self.iter().next()
     }
 
-    pub fn single_mut<'a>(&'a mut self) -> Option<<ArchQuery<T> as QueryFragment>::ItemMut<'a>>
-    where
-        Self: 'a,
-    {
+    pub fn single_mut(&mut self) -> Option<<ArchQuery<T> as QueryFragment>::ItemMut<'a>> {
         self.iter_mut().next()
     }
 
-    pub fn iter<'a>(&self) -> impl Iterator<Item = <ArchQuery<T> as QueryFragment>::Item<'a>>
-    where
-        Self: 'a,
-    {
+    pub fn iter(&self) -> impl Iterator<Item = <ArchQuery<T> as QueryFragment>::Item<'a>> {
         unsafe {
             self.world
                 .as_ref()
@@ -238,12 +260,9 @@ where
         }
     }
 
-    pub fn iter_mut<'a>(
+    pub fn iter_mut(
         &mut self,
-    ) -> impl Iterator<Item = <ArchQuery<T> as QueryFragment>::ItemMut<'a>>
-    where
-        Self: 'a,
-    {
+    ) -> impl Iterator<Item = <ArchQuery<T> as QueryFragment>::ItemMut<'a>> {
         unsafe {
             self.world
                 .as_ref()
@@ -258,12 +277,9 @@ where
     /// on multiple threads.
     ///
     /// The top-level system still needs &mut access to the components.
-    pub unsafe fn iter_unsafe<'a>(
-        &'a self,
-    ) -> impl Iterator<Item = <ArchQuery<T> as QueryFragment>::ItemUnsafe<'a>>
-    where
-        Self: 'a,
-    {
+    pub unsafe fn iter_unsafe(
+        &self,
+    ) -> impl Iterator<Item = <ArchQuery<T> as QueryFragment>::ItemUnsafe<'a>> {
         self.world
             .as_ref()
             .archetypes
@@ -272,10 +288,7 @@ where
             .flat_map(|(_, arch)| ArchQuery::<T>::iter_unsafe(arch))
     }
 
-    pub fn fetch<'a>(&'a self, id: EntityId) -> Option<<ArchQuery<T> as QueryFragment>::Item<'a>>
-    where
-        Self: 'a,
-    {
+    pub fn fetch(&self, id: EntityId) -> Option<<ArchQuery<T> as QueryFragment>::Item<'a>> {
         unsafe {
             let (arch, index) = self.world.as_ref().entity_ids().read(id).ok()?;
             if !F::filter(arch.as_ref()) {
@@ -286,13 +299,10 @@ where
         }
     }
 
-    pub fn fetch_mut<'a>(
-        &'a mut self,
+    pub fn fetch_mut(
+        &mut self,
         id: EntityId,
-    ) -> Option<<ArchQuery<T> as QueryFragment>::ItemMut<'a>>
-    where
-        Self: 'a,
-    {
+    ) -> Option<<ArchQuery<T> as QueryFragment>::ItemMut<'a>> {
         unsafe {
             let (arch, index) = self.world.as_ref().entity_ids().read(id).ok()?;
             if !F::filter(arch.as_ref()) {
@@ -303,13 +313,10 @@ where
         }
     }
 
-    pub unsafe fn fetch_unsafe<'a>(
-        &'a self,
+    pub unsafe fn fetch_unsafe(
+        &self,
         id: EntityId,
-    ) -> Option<<ArchQuery<T> as QueryFragment>::ItemUnsafe<'a>>
-    where
-        Self: 'a,
-    {
+    ) -> Option<<ArchQuery<T> as QueryFragment>::ItemUnsafe<'a>> {
         unsafe {
             let (arch, index) = self.world.as_ref().entity_ids().read(id).ok()?;
             if !F::filter(arch.as_ref()) {
@@ -336,15 +343,12 @@ where
 
     /// fetch the first row of the query
     /// panic if no row was found
-    pub fn one<'a>(&'a self) -> <ArchQuery<T> as QueryFragment>::Item<'a>
-    where
-        Self: 'a,
-    {
+    pub fn one(&self) -> <ArchQuery<T> as QueryFragment>::Item<'a> {
         self.iter().next().unwrap()
     }
 
     #[cfg(feature = "parallel")]
-    pub fn par_for_each<'a>(&'a self, f: impl Fn(<ArchQuery<T> as QueryFragment>::Item<'a>) + Sync)
+    pub fn par_for_each(&self, f: impl Fn(<ArchQuery<T> as QueryFragment>::Item<'a>) + Sync)
     where
         T: Send + Sync,
     {
@@ -376,8 +380,8 @@ where
     }
 
     #[cfg(feature = "parallel")]
-    pub fn par_for_each_mut<'a>(
-        &'a mut self,
+    pub fn par_for_each_mut(
+        &mut self,
         f: impl Fn(<ArchQuery<T> as QueryFragment>::ItemMut<'a>) + Sync + 'a,
     ) where
         T: Send + Sync,
@@ -412,18 +416,16 @@ where
     }
 
     #[cfg(not(feature = "parallel"))]
-    pub fn par_for_each<'a>(
-        &'a self,
-        f: impl Fn(<ArchQuery<T> as QueryFragment>::Item<'a>) + Sync + 'a,
-    ) where
+    pub fn par_for_each(&self, f: impl Fn(<ArchQuery<T> as QueryFragment>::Item<'a>) + Sync + 'a)
+    where
         T: Send + Sync,
     {
         self.iter().for_each(f);
     }
 
     #[cfg(not(feature = "parallel"))]
-    pub fn par_for_each_mut<'a>(
-        &'a mut self,
+    pub fn par_for_each_mut(
+        &mut self,
         f: impl Fn(<ArchQuery<T> as QueryFragment>::ItemMut<'a>) + Sync + 'a,
     ) where
         T: Send + Sync,

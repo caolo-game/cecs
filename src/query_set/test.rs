@@ -12,7 +12,7 @@ struct Bar;
 
 #[test]
 fn pair_query_set_test() {
-    fn sys<'a>(mut q: QuerySet<(Query<&'a mut Foo>, Query<(&'a mut Foo, &'a Bar)>)>) {
+    fn sys<'a>(mut q: QuerySet<(Query<'a, &mut Foo>, Query<'a, (&mut Foo, &Bar)>)>) {
         for foo in q.q0_mut().iter_mut() {
             assert_eq!(foo.value, 0);
             foo.value = 42;
@@ -36,9 +36,9 @@ fn pair_query_set_test() {
 fn triplet_query_set_test() {
     fn sys<'a>(
         mut q: QuerySet<(
-            Query<(&'a mut Foo, &'a Bar)>,
-            Query<(&'a mut Foo, &'a Bar, &'a mut i32)>,
-            Query<&'a mut Foo>,
+            Query<'a, (&'a mut Foo, &'a Bar)>,
+            Query<'a, (&'a mut Foo, &'a Bar, &'a mut i32)>,
+            Query<'a, &'a mut Foo>,
         )>,
     ) {
         for foo in q.q2_mut().iter_mut() {
