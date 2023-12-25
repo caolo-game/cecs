@@ -291,7 +291,7 @@ impl World {
             #[cfg(feature = "tracing")]
             tracing::trace!(?archetype.ty,"Bundle can not be inserted into the current archetype");
 
-            let new_hash = T::compute_hash(archetype.ty);
+            let new_hash = T::compute_hash_from_table(archetype);
             if !self.archetypes.contains_key(&new_hash) {
                 #[cfg(feature = "tracing")]
                 tracing::trace!(new_hash, "Inserting new archetype");

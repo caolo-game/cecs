@@ -1,7 +1,7 @@
-use crate::{table::EntityTable, hash_ty, Component, RowIndex, TypeHash, WorldResult};
+use crate::{hash_ty, table::EntityTable, Component, RowIndex, TypeHash, WorldResult};
 
 pub trait Bundle {
-    fn compute_hash(base: TypeHash) -> TypeHash;
+    fn compute_hash_from_table(archetype: &EntityTable) -> TypeHash;
     fn can_insert(&self, archetype: &EntityTable) -> bool;
     fn insert_into(self, archetype: &mut EntityTable, index: RowIndex) -> WorldResult<()>;
     fn extend(archetype: &EntityTable) -> EntityTable;
@@ -10,9 +10,16 @@ pub trait Bundle {
 macro_rules! impl_tuple {
     ($(($i: tt, $ty: ident)),+ $(,)*) => {
         impl<$($ty: Component),+> Bundle for ($($ty),+,) {
-            fn compute_hash(base: TypeHash) -> TypeHash {
-                base $(^hash_ty::<$ty>())*
+            fn compute_hash_from_table(archetype: &EntityTable) -> TypeHash {
+                let mut ty = archetype.ty();
+                $(
+                   if !archetype.contains_column::<$ty>() {
+                        ty = ty ^hash_ty::<$ty>();
+                   }
+                )*
+                ty
             }
+
 
             fn can_insert(&self, archetype: &EntityTable) -> bool {
                 $(archetype.contains_column::<$ty>())&&*
