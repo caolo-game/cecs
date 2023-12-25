@@ -408,6 +408,7 @@ impl World {
         let (index, moved_entity) = archetype.move_entity(&mut new_arch, row_index);
         debug_assert_eq!(index, 0);
         let res = unsafe { NonNull::new_unchecked(new_arch.as_mut().get_mut() as *mut _) };
+        debug_assert!(!self.archetypes.contains_key(&new_arch.ty()), "Musn't insert the same archetype twice");
         self.archetypes.insert(new_arch.ty(), new_arch);
 
         if let Some(updated_entity) = moved_entity {
