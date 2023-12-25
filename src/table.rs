@@ -205,7 +205,7 @@ impl EntityTable {
             let new_ty = self.extended_hash::<T>();
             self.ty = new_ty;
             self.components
-                .insert(TypeId::of::<T>(), UnsafeCell::new(Column::new::<T>(0)));
+                .insert(TypeId::of::<T>(), UnsafeCell::new(Column::new::<T>(2)));
         }
         self
     }
