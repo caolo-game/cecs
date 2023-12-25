@@ -297,6 +297,7 @@ impl World {
                 tracing::trace!(new_hash, "Inserting new archetype");
 
                 let new_arch = T::extend(archetype);
+                debug_assert_eq!(new_hash, new_arch.ty());
                 let mut res = self.insert_archetype(archetype, index, new_arch);
 
                 archetype = unsafe { res.as_mut() };
