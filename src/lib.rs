@@ -323,7 +323,7 @@ impl World {
         bundle.insert_into(archetype, index)?;
         unsafe {
             #[cfg(feature = "tracing")]
-            tracing::trace!(index, "Update entity index");
+            tracing::trace!(index, ?entity_id, "Update entity index");
             self.entity_ids
                 .get_mut()
                 .update(entity_id, archetype, index);
@@ -408,7 +408,10 @@ impl World {
         let (index, moved_entity) = archetype.move_entity(&mut new_arch, row_index);
         debug_assert_eq!(index, 0);
         let res = unsafe { NonNull::new_unchecked(new_arch.as_mut().get_mut() as *mut _) };
-        debug_assert!(!self.archetypes.contains_key(&new_arch.ty()), "Musn't insert the same archetype twice");
+        debug_assert!(
+            !self.archetypes.contains_key(&new_arch.ty()),
+            "Musn't insert the same archetype twice"
+        );
         self.archetypes.insert(new_arch.ty(), new_arch);
 
         if let Some(updated_entity) = moved_entity {
