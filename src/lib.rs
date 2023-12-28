@@ -1,5 +1,6 @@
 #![feature(const_type_id)]
 #![feature(slice_range)]
+#![feature(slice_group_by)]
 
 use std::{
     any::TypeId, cell::UnsafeCell, collections::BTreeMap, mem::transmute, pin::Pin, ptr::NonNull,
@@ -35,6 +36,8 @@ pub mod job_system;
 mod scheduler;
 
 use world_access::WorldLock;
+
+use crate::commands::sort_commands;
 
 #[cfg(test)]
 mod world_tests;
@@ -209,13 +212,17 @@ impl World {
     pub fn apply_commands(&mut self) -> WorldResult<()> {
         #[cfg(feature = "tracing")]
         tracing::trace!("Running commands");
-        let mut commands = std::mem::take(&mut self.commands);
-        for commands in commands.iter_mut() {
-            for cmd in commands.get_mut().drain(0..) {
-                cmd.apply(self)?;
-            }
+
+        // TODO: retain this buffer?
+        let mut commands: Vec<_> = self
+            .commands
+            .iter_mut()
+            .flat_map(|cmd| cmd.get_mut().drain(..))
+            .collect();
+        sort_commands(&mut commands);
+        for cmd in commands {
+            cmd.apply(self)?;
         }
-        self.commands = commands;
 
         #[cfg(feature = "tracing")]
         tracing::trace!("Running commands done");

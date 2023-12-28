@@ -142,6 +142,44 @@ pub(crate) enum CommandPayload {
     World(WorldCommands),
 }
 
+/// Sort actions by type, then entity commands as well.
+///
+/// Entity Commands ordering:
+/// - insert actions
+/// - update actions
+/// - delete actions
+///
+/// This way deleting and updating in the same tick is handled as one might expect
+///
+/// TODO: possible improvements:
+/// - perform insert actions
+/// - sort by entity ids
+/// - merge updates
+/// - if theres a delete action, then discard the other updates
+pub(crate) fn sort_commands(cmd: &mut [CommandPayload]) {
+    let cmd_ty = |c: &CommandPayload| match c {
+        CommandPayload::Entity(_) => 0,
+        CommandPayload::Resource(_) => 1,
+        CommandPayload::World(_) => 2,
+    };
+    let action_ty = |c: &EntityAction| match c {
+        EntityAction::Init(_) => 0,
+        EntityAction::Insert => 0,
+        EntityAction::Fetch(_) => 1,
+        EntityAction::Merge { .. } => 1,
+        EntityAction::Delete(_) => 2,
+    };
+    cmd.sort_unstable_by_key(cmd_ty);
+    if let Some(entity_commands) = cmd.group_by_mut(|a, b| cmd_ty(a) == cmd_ty(b)).next() {
+        entity_commands.sort_unstable_by_key(|a| {
+            let CommandPayload::Entity(a) = a else {
+                unreachable!()
+            };
+            action_ty(&a.action)
+        });
+    }
+}
+
 impl CommandPayload {
     pub(crate) fn apply(self, world: &mut World) -> Result<(), WorldError> {
         match self {
