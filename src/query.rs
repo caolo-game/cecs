@@ -514,6 +514,102 @@ pub trait QueryPrimitive {
     ) -> Self::ItMut<'_>;
 }
 
+/// Query wether an entity has a component
+///
+/// Shortcut for `Option<&T>::is_some()`
+///
+/// In general one should prefer the use of [[With]] and [[WithOut]] filters. But sometimes it can
+/// be convenient to use the Has query.
+/// ```
+/// # use cecs::prelude::*;
+/// # let mut world = World::new(4);
+/// # struct Foo;
+/// #
+/// # for i in 0..4 {
+/// #     let id = world.insert_entity();
+/// #     if i % 2 == 0 {
+/// #         world.set_component(id, Foo);
+/// #     }
+/// # }
+///
+/// fn system(q: Query<(Option<&Foo>, Has<Foo>)>) {
+/// #   assert_eq!(q.count(), 4);
+///     for (opt, has) in q.iter() {
+///         assert_eq!(opt.is_some(), has);
+///     }
+/// }
+///
+/// # world.run_system(system).unwrap();
+/// ```
+pub struct Has<T>(PhantomData<T>);
+
+impl<T: Component> QueryPrimitive for ArchQuery<Has<T>> {
+    type ItemUnsafe<'a> = bool;
+    type ItUnsafe<'a> = Self::It<'a>;
+    type Item<'a> = bool;
+    type It<'a> = std::iter::Take<std::iter::Repeat<bool>>;
+    type ItemMut<'a> = bool;
+    type ItMut<'a> = Self::It<'a>;
+
+    unsafe fn iter_prim_unsafe<'a>(archetype: &'a EntityTable) -> Self::ItUnsafe<'a> {
+        Self::iter_prim(archetype)
+    }
+
+    unsafe fn fetch_prim_unsafe(
+        archetype: &EntityTable,
+        index: RowIndex,
+    ) -> Option<Self::ItemUnsafe<'_>> {
+        Self::fetch_prim(archetype, index)
+    }
+
+    fn iter_prim<'a>(archetype: &'a EntityTable) -> Self::It<'a> {
+        std::iter::repeat(archetype.contains_column::<T>()).take(archetype.len())
+    }
+
+    fn iter_prim_mut<'a>(archetype: &'a EntityTable) -> Self::ItMut<'a> {
+        Self::iter_prim(archetype)
+    }
+
+    fn fetch_prim(archetype: &EntityTable, _index: RowIndex) -> Option<Self::Item<'_>> {
+        Some(archetype.contains_column::<T>())
+    }
+
+    fn fetch_prim_mut(archetype: &EntityTable, index: RowIndex) -> Option<Self::ItemMut<'_>> {
+        Self::fetch_prim(archetype, index)
+    }
+
+    fn contains_prim(_archetype: &EntityTable) -> bool {
+        true
+    }
+
+    fn types_mut(_set: &mut HashSet<TypeId>) {
+        // noop
+    }
+
+    fn types_const(_set: &mut HashSet<TypeId>) {
+        // noop
+        // Do not care about mutations to component T, only wether it is present in the archetype
+    }
+
+    fn read_only() -> bool {
+        true
+    }
+
+    fn iter_range_prim(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::It<'_> {
+        let len = archetype.entities.len();
+        let range = slice::range(range, ..len);
+        let len = range.len();
+        std::iter::repeat(archetype.contains_column::<T>()).take(len)
+    }
+
+    fn iter_range_prim_mut(
+        archetype: &EntityTable,
+        range: impl RangeBounds<usize>,
+    ) -> Self::ItMut<'_> {
+        Self::iter_range_prim(archetype, range)
+    }
+}
+
 impl QueryPrimitive for ArchQuery<EntityId> {
     type ItemUnsafe<'a> = EntityId;
     type ItUnsafe<'a> = std::iter::Copied<std::slice::Iter<'a, EntityId>>;
