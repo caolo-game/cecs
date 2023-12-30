@@ -523,6 +523,7 @@ pub trait QueryPrimitive {
 /// ```
 /// # use cecs::prelude::*;
 /// # let mut world = World::new(4);
+/// # #[derive(Debug, Clone, Copy)]
 /// # struct Foo;
 /// #
 /// # for i in 0..4 {
