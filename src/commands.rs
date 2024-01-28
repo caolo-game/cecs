@@ -170,7 +170,9 @@ pub(crate) fn sort_commands(cmd: &mut [CommandPayload]) {
         EntityAction::Delete(_) => 2,
     };
     cmd.sort_unstable_by_key(cmd_ty);
-    if let Some(entity_commands) = cmd.group_by_mut(|a, b| cmd_ty(a) == cmd_ty(b)).next() {
+    // only entity commands need inner sorting
+    // entity commands will be the first
+    if let Some(entity_commands) = cmd.chunk_by_mut(|a, b| cmd_ty(a) == cmd_ty(b)).next() {
         entity_commands.sort_unstable_by_key(|a| {
             let CommandPayload::Entity(a) = a else {
                 unreachable!()

@@ -1,6 +1,5 @@
 #![feature(const_type_id)]
 #![feature(slice_range)]
-#![feature(slice_group_by)]
 
 use std::{
     any::TypeId, cell::UnsafeCell, collections::BTreeMap, mem::transmute, pin::Pin, ptr::NonNull,
