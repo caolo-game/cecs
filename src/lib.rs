@@ -797,6 +797,11 @@ impl World {
         &self.archetypes
     }
 
+    pub fn entity_table(&self, id: EntityId) -> Option<&EntityTable> {
+        let (arch, _idx) = self.entity_ids().read(id).ok()?;
+        unsafe { Some(arch.as_ref()) }
+    }
+
     /// Remove empty archetypes
     pub fn vacuum(&mut self) {
         // ensure that the unit archetype stays
