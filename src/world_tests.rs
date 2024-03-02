@@ -1,7 +1,6 @@
 use commands::Commands;
 use world_access::WorldAccess;
 
-use crate::entity_id::EntityId;
 use crate::prelude::ResMut;
 use crate::query::resource_query::Res;
 use crate::query::{filters::WithOut, Query};
