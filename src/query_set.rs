@@ -53,6 +53,9 @@ pub struct QuerySet<Inner> {
     _m: PhantomData<Inner>,
 }
 
+unsafe impl<T> Send for QuerySet<T> {}
+unsafe impl<T> Sync for QuerySet<T> {}
+
 macro_rules! impl_tuple {
     ($($idx: tt , $t: ident , $f: ident , $q: ident , $q_mut: ident , $set: ident);+ $(;)?) => {
         impl<'a, $($t, $f),*> QuerySet<($(Query<'a, $t, $f>),*)>
@@ -63,13 +66,13 @@ macro_rules! impl_tuple {
             )*
         {
             $(
-                pub fn $q<'b>(&'b self) -> Query<'b, $t, $f> 
+                pub fn $q<'b>(&'b self) -> Query<'b, $t, $f>
                     where 'a: 'b
                 {
                     unsafe {Query::new(self.world.as_ref())}
                 }
 
-                pub fn $q_mut<'b>(&'b mut self) -> Query<'b, $t, $f> 
+                pub fn $q_mut<'b>(&'b mut self) -> Query<'b, $t, $f>
                     where 'a: 'b
                 {
                     unsafe {Query::new(self.world.as_ref())}
