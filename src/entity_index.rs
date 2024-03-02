@@ -222,12 +222,7 @@ impl EntityIndex {
     /// # Safety
     ///
     /// Caller must ensure that the id is valid
-    pub(crate) unsafe fn update(
-        &mut self,
-        id: EntityId,
-        arch: *mut EntityTable,
-        row: RowIndex,
-    ) {
+    pub(crate) unsafe fn update(&mut self, id: EntityId, arch: *mut EntityTable, row: RowIndex) {
         let index = id.index();
         debug_assert!(index < self.cap);
         let entry = &mut *self.entries.add(index as usize);
@@ -253,10 +248,7 @@ impl EntityIndex {
             .then(|| unsafe { &*self.entries.add(index as usize) })
     }
 
-    pub fn read(
-        &self,
-        id: EntityId,
-    ) -> Result<(NonNull<EntityTable>, RowIndex), HandleTableError> {
+    pub fn read(&self, id: EntityId) -> Result<(NonNull<EntityTable>, RowIndex), HandleTableError> {
         let res = self.get(id).ok_or(HandleTableError::NotFound)?;
         if res.arch.is_null() {
             return Err(HandleTableError::Uninitialized);
