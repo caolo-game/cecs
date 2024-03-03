@@ -291,7 +291,10 @@ where
             .flat_map(|(_, arch)| ArchQuery::<T>::iter_unsafe(arch))
     }
 
-    pub fn fetch(&'a self, id: EntityId) -> Option<<ArchQuery<T> as QueryFragment>::Item<'a>> {
+    pub fn fetch<'b>(&'b self, id: EntityId) -> Option<<ArchQuery<T> as QueryFragment>::Item<'b>>
+    where
+        'a: 'b,
+    {
         unsafe {
             let (arch, index) = self.world.as_ref().entity_ids().read(id).ok()?;
             if !F::filter(arch.as_ref()) {
@@ -302,10 +305,13 @@ where
         }
     }
 
-    pub fn fetch_mut(
-        &'a mut self,
+    pub fn fetch_mut<'b>(
+        &'b mut self,
         id: EntityId,
-    ) -> Option<<ArchQuery<T> as QueryFragment>::ItemMut<'a>> {
+    ) -> Option<<ArchQuery<T> as QueryFragment>::ItemMut<'b>>
+    where
+        'a: 'b,
+    {
         unsafe {
             let (arch, index) = self.world.as_ref().entity_ids().read(id).ok()?;
             if !F::filter(arch.as_ref()) {
