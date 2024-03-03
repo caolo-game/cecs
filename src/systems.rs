@@ -264,26 +264,6 @@ impl<'a, R> IntoSystem<'a, (), R> for SystemDescriptor<'a, R> {
     }
 }
 
-pub trait Pipe<'a, P1, P2, Rhs> {
-    type Output;
-
-    fn pipe(self, rhs: Rhs) -> Self::Output;
-}
-
-impl<'a, P1, P2, Lhs, Rhs> Pipe<'a, P1, P2, Rhs> for Lhs
-where
-    Lhs: IntoSystem<'a, P1, ()>,
-    Rhs: IntoSystem<'a, P2, ()>,
-{
-    type Output = Piped<'a, (), ()>;
-
-    fn pipe(self, rhs: Rhs) -> Self::Output {
-        let lhs = self.descriptor();
-        let rhs = rhs.descriptor();
-        Piped { lhs, rhs }
-    }
-}
-
 pub struct SystemJob<'a, R> {
     pub world: NonNull<World>,
     pub sys: NonNull<ErasedSystem<'a, R>>,
