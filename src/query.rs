@@ -260,11 +260,17 @@ where
         }
     }
 
-    pub fn single(&'a self) -> Option<<ArchQuery<T> as QueryFragment>::Item<'a>> {
+    pub fn single<'b>(&'b self) -> Option<<ArchQuery<T> as QueryFragment>::Item<'a>>
+    where
+        'a: 'b,
+    {
         self.iter().next()
     }
 
-    pub fn single_mut(&'a mut self) -> Option<<ArchQuery<T> as QueryFragment>::ItemMut<'a>> {
+    pub fn single_mut<'b>(&'b mut self) -> Option<<ArchQuery<T> as QueryFragment>::ItemMut<'a>>
+    where
+        'a: 'b,
+    {
         self.iter_mut().next()
     }
 

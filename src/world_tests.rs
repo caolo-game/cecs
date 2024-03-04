@@ -975,3 +975,21 @@ fn test_fn_once() {
 
     assert_eq!(result, "Delicious");
 }
+
+#[test]
+fn single_test() {
+    let mut w = World::new(4);
+
+    let id = w.insert_entity();
+    w.set_bundle(id, ("Delicious".to_string(),)).unwrap();
+    w.run_system(move |mut q: Query<&mut String>| {
+        *q.single_mut().unwrap() = "Cookie".to_string();
+    })
+    .unwrap();
+
+    let result = w
+        .run_system(move |q: Query<&String>| q.single().unwrap().clone())
+        .unwrap();
+
+    assert_eq!(result, "Cookie");
+}
