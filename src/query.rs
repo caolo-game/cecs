@@ -239,7 +239,25 @@ where
     }
 
     pub fn is_empty(&self) -> bool {
-        self.count() == 0
+        unsafe {
+            self.world
+                .as_ref()
+                .archetypes
+                .iter()
+                .filter(|(_, arch)| F::filter(arch) && ArchQuery::<T>::contains(arch))
+                .all(|(_, arch)| arch.is_empty())
+        }
+    }
+
+    pub fn any(&self) -> bool {
+        unsafe {
+            self.world
+                .as_ref()
+                .archetypes
+                .iter()
+                .filter(|(_, arch)| F::filter(arch) && ArchQuery::<T>::contains(arch))
+                .any(|(_, arch)| !arch.is_empty())
+        }
     }
 
     pub fn single(&'a self) -> Option<<ArchQuery<T> as QueryFragment>::Item<'a>> {
