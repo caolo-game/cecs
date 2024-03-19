@@ -207,9 +207,7 @@ where
                         tracing::trace!(id = tracing::field::display(_id), "Serializing entity");
                     })
                     .collect();
-                if !values.is_empty() {
-                    s.serialize_entry(&tname, &values)?;
-                }
+                s.serialize_entry(&tname, &values)?;
             }
             SerTy::Resource => {
                 if let Some(value) = world.get_resource::<T>() {
