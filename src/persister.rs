@@ -11,7 +11,7 @@ use std::marker::PhantomData;
 use crate::{entity_id::EntityId, prelude::Query, Component, World};
 
 pub struct WorldPersister<T = (), P = ()> {
-    next: Option<P>,
+    next: Option<Box<P>>,
     ty: SerTy,
     depth: usize,
     _m: PhantomData<T>,
@@ -47,7 +47,7 @@ impl<T, P> WorldPersister<T, P> {
     ) -> WorldPersister<U, Self> {
         WorldPersister {
             depth: self.depth + 1,
-            next: Some(self),
+            next: Some(Box::new(self)),
             ty: SerTy::Component,
             _m: PhantomData,
         }
@@ -58,7 +58,7 @@ impl<T, P> WorldPersister<T, P> {
     ) -> WorldPersister<U, Self> {
         WorldPersister {
             depth: self.depth + 1,
-            next: Some(self),
+            next: Some(Box::new(self)),
             ty: SerTy::Resource,
             _m: PhantomData,
         }
