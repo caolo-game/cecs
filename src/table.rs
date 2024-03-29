@@ -277,7 +277,6 @@ impl EntityTable {
 
 /// Type erased storage for an Archetype column
 pub struct Column {
-    pub ty_name: &'static str,
     // Vec //
     data: *mut u8,
     end: u32,
@@ -302,6 +301,7 @@ pub struct Column {
     pub(crate) move_row_into: fn(&mut Column, RowIndex, &mut Column, RowIndex),
     /// Swap rows in an entity
     pub(crate) swap_rows: fn(&mut Column, RowIndex, RowIndex),
+    pub ty_name: &'static str,
 }
 
 impl Default for Column {
