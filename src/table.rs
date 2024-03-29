@@ -11,8 +11,7 @@ pub struct ArchetypeHash(pub TypeHash);
 ///
 /// Sometimes called an 'archetype'
 ///
-/// Components are stored in a column-major format, so iterating on the same component for multiple
-/// entities is fast by reducing cache and TLB misses.
+/// Components are stored in a column-major format.
 pub struct EntityTable {
     pub(crate) ty: TypeHash,
     pub(crate) rows: u32,
