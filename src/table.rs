@@ -280,8 +280,8 @@ pub struct Column {
     pub ty_name: &'static str,
     // Vec //
     data: *mut u8,
-    end: usize,
-    capacity: usize,
+    end: u32,
+    capacity: u32,
     layout: Layout,
     // Type Erased Methods //
     pub(crate) finalize: fn(&mut Column),
@@ -336,7 +336,7 @@ impl Column {
         let layout = Self::layout::<T>(capacity);
         Self {
             ty_name: std::any::type_name::<T>(),
-            capacity,
+            capacity: capacity as u32,
             end: 0,
             data: unsafe { std::alloc::alloc(layout) },
             layout,
@@ -345,7 +345,7 @@ impl Column {
                 unsafe {
                     let data: *mut T = erased_table.data.cast();
                     for i in 0..erased_table.end {
-                        std::ptr::drop_in_place(data.add(i));
+                        std::ptr::drop_in_place(data.add(i as usize));
                     }
                     std::alloc::dealloc(erased_table.data, erased_table.layout);
                 }
@@ -355,12 +355,12 @@ impl Column {
             },
             #[cfg(feature = "clone")]
             clone: |table: &Column| {
-                let mut res = Column::new::<T>(table.capacity);
+                let mut res = Column::new::<T>(table.capacity as usize);
                 res.end = table.end;
                 for i in 0..table.end {
                     unsafe {
-                        let val = (&*table.data.cast::<T>().add(i)).clone();
-                        std::ptr::write(res.data.cast::<T>().add(i), val);
+                        let val = (&*table.data.cast::<T>().add(i as usize)).clone();
+                        std::ptr::write(res.data.cast::<T>().add(i as usize), val);
                     }
                 }
                 res
@@ -383,13 +383,13 @@ impl Column {
     /// # SAFETY
     /// Must be called with the same type as `new`
     pub unsafe fn as_slice<T>(&self) -> &[T] {
-        std::slice::from_raw_parts(self.data.cast::<T>(), self.end)
+        std::slice::from_raw_parts(self.data.cast::<T>(), self.end as usize)
     }
 
     /// # SAFETY
     /// Must be called with the same type as `new`
     pub unsafe fn as_slice_mut<T>(&mut self) -> &mut [T] {
-        std::slice::from_raw_parts_mut(self.data.cast::<T>(), self.end)
+        std::slice::from_raw_parts_mut(self.data.cast::<T>(), self.end as usize)
     }
 
     fn layout<T>(capacity: usize) -> Layout {
@@ -408,33 +408,33 @@ impl Column {
         debug_assert!(self.end <= self.capacity);
         if self.end == self.capacity {
             // full, have to reallocate
-            let new_cap = (self.capacity * 2).max(2);
-            let new_layout = Self::layout::<T>(new_cap);
+            let new_cap = (self.capacity * 3 / 2).max(2);
+            let new_layout = Self::layout::<T>(new_cap as usize);
             let new_data = std::alloc::alloc(new_layout);
             for i in 0..self.end {
-                let t: T = std::ptr::read(self.data.cast::<T>().add(i));
-                std::ptr::write(new_data.cast::<T>().add(i), t);
+                let t: T = std::ptr::read(self.data.cast::<T>().add(i as usize));
+                std::ptr::write(new_data.cast::<T>().add(i as usize), t);
             }
             std::alloc::dealloc(self.data, self.layout);
             self.capacity = new_cap;
             self.data = new_data;
             self.layout = new_layout;
         }
-        std::ptr::write(self.data.cast::<T>().add(self.end), val);
+        std::ptr::write(self.data.cast::<T>().add(self.end as usize), val);
         self.end += 1;
     }
 
     /// # SAFETY
     /// Must be called with the same type as `new`
     pub unsafe fn swap_remove<T>(&mut self, i: usize) -> T {
-        debug_assert!(i < self.end);
+        debug_assert!(i < self.end as usize);
         let res;
-        if i + 1 == self.end {
+        if i + 1 == self.end as usize {
             // last item
             res = std::ptr::read(self.data.cast::<T>().add(i));
         } else {
             res = std::ptr::read(self.data.cast::<T>().add(i));
-            let last: T = std::ptr::read(self.data.cast::<T>().add(self.end - 1));
+            let last: T = std::ptr::read(self.data.cast::<T>().add(self.end as usize - 1));
             std::ptr::write(self.data.cast::<T>().add(i), last);
         }
         self.end -= 1;
