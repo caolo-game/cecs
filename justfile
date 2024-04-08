@@ -1,5 +1,5 @@
 build:
-    cargo build
+    cargo build --all-features
 
 alias t := test
 
