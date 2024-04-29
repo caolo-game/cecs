@@ -1,6 +1,3 @@
-#[cfg(test)]
-mod tests;
-
 use std::{any::TypeId, collections::HashSet, ptr::NonNull, rc::Rc};
 
 #[cfg(feature = "parallel")]
@@ -147,92 +144,6 @@ impl<'a, R> Clone for ErasedSystem<'a, R> {
             system_idx: self.system_idx,
             execute: (self.descriptor.factory)(),
             descriptor: self.descriptor.clone(),
-        }
-    }
-}
-
-pub struct Piped<'a, R1, R2> {
-    lhs: SystemDescriptor<'a, R1>,
-    rhs: SystemDescriptor<'a, R2>,
-}
-
-impl<'a> IntoSystem<'a, (), ()> for Piped<'a, (), ()>
-where
-    Self: 'static,
-{
-    fn descriptor(self) -> SystemDescriptor<'a, ()> {
-        let name = format!("{} | {}", self.lhs.name, self.rhs.name);
-        let components_mut = {
-            let lhs = self.lhs.components_mut;
-            let rhs = self.rhs.components_mut;
-            Box::new(move || {
-                let mut result = (lhs)();
-                result.extend((rhs)().into_iter());
-                result
-            })
-        };
-        let components_const = {
-            let lhs = self.lhs.components_const;
-            let rhs = self.rhs.components_const;
-            Box::new(move || {
-                let mut result = (lhs)();
-                result.extend((rhs)().into_iter());
-                result
-            })
-        };
-        let resources_mut = {
-            let lhs = self.lhs.resources_mut;
-            let rhs = self.rhs.resources_mut;
-            Box::new(move || {
-                let mut result = (lhs)();
-                result.extend((rhs)().into_iter());
-                result
-            })
-        };
-        let resources_const = {
-            let lhs = self.lhs.resources_const;
-            let rhs = self.rhs.resources_const;
-            Box::new(move || {
-                let mut result = (lhs)();
-                result.extend((rhs)().into_iter());
-                result
-            })
-        };
-        let exclusive = {
-            let lhs = self.lhs.exclusive;
-            let rhs = self.rhs.exclusive;
-            Box::new(move || ((lhs)() || (rhs)()))
-        };
-        let read_only = {
-            let lhs = self.lhs.read_only;
-            let rhs = self.rhs.read_only;
-            Box::new(move || ((lhs)() || (rhs)()))
-        };
-        let factory: Box<dyn Fn() -> Box<InnerSystem<'a, ()>>> = {
-            let lfactory = self.lhs.factory;
-            let rfactory = self.rhs.factory;
-
-            Box::new(move || {
-                let lhs = (lfactory)();
-                let rhs = (rfactory)();
-                Box::new(move |world: &'a World, i| {
-                    // TODO: pipe lhs output into rhs
-                    (lhs)(world, i);
-                    (rhs)(world, i);
-                })
-            })
-        };
-        SystemDescriptor {
-            name,
-            id: TypeId::of::<Self>(),
-            components_mut,
-            resources_mut,
-            components_const,
-            resources_const,
-            exclusive,
-            factory,
-            read_only,
-            after: HashSet::new(),
         }
     }
 }
