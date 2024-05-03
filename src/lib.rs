@@ -34,6 +34,7 @@ mod table;
 pub mod job_system;
 #[cfg(feature = "parallel")]
 mod scheduler;
+mod allocator;
 
 use world_access::WorldLock;
 
