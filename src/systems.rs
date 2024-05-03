@@ -1,5 +1,7 @@
 use std::{any::TypeId, collections::HashSet, ptr::NonNull, rc::Rc};
 
+use cfg_if::cfg_if;
+
 #[cfg(feature = "parallel")]
 use crate::job_system::AsJob;
 
@@ -75,14 +77,15 @@ impl<'a> SystemStage<'a> {
         S: IntoSystem<'a, P, ()>,
     {
         let system_idx;
-        #[cfg(feature = "parallel")]
-        {
-            system_idx = self.systems.len();
-        }
-        #[cfg(not(feature = "parallel"))]
-        {
-            system_idx = 0;
-        }
+
+        cfg_if!(
+            if #[cfg(feature = "parallel")] {
+                system_idx = self.systems.len();
+            }
+            else {
+                system_idx = 0;
+            }
+        );
 
         let descriptor = Rc::new(system.descriptor());
         let system = ErasedSystem {

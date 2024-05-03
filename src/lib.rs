@@ -5,6 +5,7 @@ use std::{
     any::TypeId, cell::UnsafeCell, collections::BTreeMap, mem::transmute, pin::Pin, ptr::NonNull,
 };
 
+use cfg_if::cfg_if;
 use commands::CommandPayload;
 use entity_id::EntityId;
 use entity_index::EntityIndex;
@@ -458,13 +459,14 @@ impl World {
         // # SAFETY
         // lifetimes are managed by the World instance from now
         let mut stage: SystemStage = unsafe { transmute(stage) };
-        #[cfg(feature = "parallel")]
-        {
-            self.schedule
-                .push(scheduler::Schedule::from_stage(&mut stage));
-        }
-        #[cfg(not(feature = "parallel"))]
-        stage.sort();
+        cfg_if!(
+            if #[cfg(feature = "parallel")] {
+                self.schedule
+                    .push(scheduler::Schedule::from_stage(&mut stage));
+            } else {
+                stage.sort();
+            }
+        );
 
         self.system_stages.push(stage);
     }
@@ -482,11 +484,14 @@ impl World {
         let mut stage: SystemStage = unsafe { transmute(stage) };
 
         // move stage into the world
-        #[cfg(feature = "parallel")]
-        self.schedule
-            .push(scheduler::Schedule::from_stage(&mut stage));
-        #[cfg(not(feature = "parallel"))]
-        stage.sort();
+        cfg_if!(
+            if #[cfg(feature = "parallel")] {
+                self.schedule
+                    .push(scheduler::Schedule::from_stage(&mut stage));
+            } else {
+                stage.sort();
+            }
+        );
 
         self.system_stages.push(stage);
 
@@ -565,24 +570,23 @@ impl World {
 
         let systems = &stage.systems;
 
-        #[cfg(not(feature = "parallel"))]
-        {
-            for system in systems.iter() {
-                unsafe {
-                    run_system(self, system);
+        cfg_if!(
+            if #[cfg(feature = "parallel")] {
+                let schedule = &self.schedule[i];
+                let graph = schedule.jobs(systems, self);
+
+                #[cfg(feature = "tracing")]
+                tracing::debug!(graph = tracing::field::debug(&graph), "Running job graph");
+
+                self.job_system.run_graph(&graph);
+            } else {
+                for system in systems.iter() {
+                    unsafe {
+                        run_system(self, system);
+                    }
                 }
             }
-        }
-        #[cfg(feature = "parallel")]
-        {
-            let schedule = &self.schedule[i];
-            let graph = schedule.jobs(systems, self);
-
-            #[cfg(feature = "tracing")]
-            tracing::debug!(graph = tracing::field::debug(&graph), "Running job graph");
-
-            self.job_system.run_graph(&graph);
-        }
+        );
         #[cfg(feature = "tracing")]
         tracing::trace!(stage_name = stage_name.as_str(), "Run stage done");
     }

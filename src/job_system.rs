@@ -1,3 +1,4 @@
+use cfg_if::cfg_if;
 use parking_lot::{Condvar, Mutex, ReentrantMutex};
 use std::{
     cell::UnsafeCell,
@@ -642,14 +643,13 @@ unsafe fn execute_job<R: Send>(f: impl FnOnce() -> R + Send) -> JobResult<R> {
     match panic::catch_unwind(panic::AssertUnwindSafe(f)) {
         Ok(res) => JobResult::Done(res),
         Err(err) => {
-            #[cfg(feature = "tracing")]
-            {
-                tracing::error!("Job panic: {err:?}");
-            }
-            #[cfg(not(feature = "tracing"))]
-            {
-                eprintln!("Job panic: {err:?}");
-            }
+            cfg_if!(
+                if #[cfg(feature = "tracing")] {
+                    tracing::error!("Job panic: {err:?}");
+                } else {
+                    eprintln!("Job panic: {err:?}");
+                }
+            );
 
             JobResult::Panic
         }
