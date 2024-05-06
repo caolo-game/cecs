@@ -241,7 +241,7 @@ impl Default for JobPool {
             let parallelism =
                 std::thread::available_parallelism().unwrap_or(NonZeroUsize::new_unchecked(1));
 
-            #[cfg(feature = "debug")]
+            #[cfg(feature = "tracing")]
             tracing::debug!(?parallelism, "Initializing default JobPool");
 
             let inner = Arc::new(Inner::new(parallelism));
