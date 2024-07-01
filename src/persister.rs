@@ -287,12 +287,12 @@ mod tests {
     use crate::prelude::*;
     use std::collections::HashSet;
 
-    #[derive(serde::Serialize, serde::Deserialize, Clone)]
+    #[derive(serde_derive::Serialize, serde_derive::Deserialize, Clone)]
     struct Foo {
         value: u32,
     }
 
-    #[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
+    #[derive(serde_derive::Serialize, serde_derive::Deserialize, Clone, PartialEq, Eq)]
     enum Bar {
         Foo,
         Bar,
