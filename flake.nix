@@ -27,6 +27,7 @@
             })
             cargo-nextest
             cargo-edit
+            cargo-all-features
             just
             stdenv.cc.cc
           ];
