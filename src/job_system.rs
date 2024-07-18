@@ -152,7 +152,7 @@ impl JobPool {
         f(scope);
     }
 
-    pub(crate) fn enqueue_job(&self, job: Job) -> JobHandle {
+    fn enqueue_job(&self, job: Job) -> JobHandle {
         unsafe {
             let res = job.as_handle();
             with_thread_index(|id| {
