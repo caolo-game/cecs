@@ -188,7 +188,9 @@ where
     /// let mut world = World::new(4);
     ///
     /// let e = world.insert_entity();
-    /// world.set_bundle(e, (A, B, C)).unwrap();
+    /// world.run_system(move |mut cmd: Commands| {
+    ///     cmd.entity(e).insert_bundle((A, B, C));
+    /// });
     ///
     /// let mut q = Query::<(EntityId, &mut A, &mut B, &C)>::new(&world);
     ///
@@ -555,12 +557,11 @@ pub trait QueryPrimitive {
 /// # #[derive(Debug, Clone, Copy)]
 /// # struct Foo;
 /// #
-/// # for i in 0..4 {
-/// #     let id = world.insert_entity();
-/// #     if i % 2 == 0 {
-/// #         world.set_component(id, Foo);
-/// #     }
-/// # }
+/// # world.run_system(|mut cmd: Commands| {
+/// #   for i in 0..4 {
+/// #     cmd.spawn().insert(Foo);
+/// #   }
+/// # });
 ///
 /// fn system(q: Query<(Option<&Foo>, Has<Foo>)>) {
 /// #   assert_eq!(q.count(), 4);
