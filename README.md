@@ -16,4 +16,5 @@ Heavily inspired by [Bevy](https://bevyengine.org/) and [Hexops](https://devlog.
 - Cloning of the entire database (optional)
 - Serialization/Deserialization of select _components_ (optional)
 - (Very basic) parallel scheduler (optional)
+- "View" systems. Allows running systems that only read data on an immutable reference to the World.
 
