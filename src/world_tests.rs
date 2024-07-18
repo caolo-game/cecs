@@ -993,3 +993,26 @@ fn single_test() {
 
     assert_eq!(result, "Cookie");
 }
+
+#[test]
+fn world_should_not_contain_empty_archetypes() {
+    let mut world = World::new(16);
+
+    world
+        .run_system(|mut cmd: Commands| {
+            cmd.spawn()
+                .insert(1u64)
+                .insert(1u32)
+                .insert(1u16)
+                .insert("name");
+        })
+        .unwrap();
+
+    let mut count = 0;
+    for (_key, arch) in world.archetypes().iter().filter(|(k, _)| *k != &VOID_TY) {
+        assert!(!arch.is_empty());
+        count += 1;
+    }
+
+    assert_eq!(count, 1);
+}

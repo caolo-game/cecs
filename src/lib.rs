@@ -48,6 +48,9 @@ pub struct World {
     pub(crate) this_lock: WorldLock,
     pub(crate) entity_ids: UnsafeCell<EntityIndex>,
     pub(crate) archetypes: BTreeMap<TypeHash, Pin<Box<EntityTable>>>,
+    // empty archetypes reserved for buffers
+    // enables us to reuse temporary archetypes without affecting query performance
+    archetypes_staging: BTreeMap<TypeHash, Pin<Box<EntityTable>>>,
     pub(crate) resources: ResourceStorage,
     pub(crate) commands: Vec<UnsafeBuffer<CommandPayload>>,
     pub(crate) system_stages: Vec<SystemStage<'static>>,
@@ -91,6 +94,7 @@ impl Clone for World {
             this_lock: WorldLock::new(),
             entity_ids: UnsafeCell::new(entity_ids),
             archetypes,
+            archetypes_staging: Default::default(),
             commands,
             resources,
             system_stages: systems,
@@ -168,6 +172,7 @@ impl World {
             this_lock: WorldLock::new(),
             entity_ids: UnsafeCell::new(entity_ids),
             archetypes: BTreeMap::new(),
+            archetypes_staging: Default::default(),
             resources: ResourceStorage::new(),
             commands: Vec::default(),
             system_stages: Default::default(),
@@ -224,6 +229,33 @@ impl World {
             cmd.apply(self)?;
         }
 
+        // move archetypes based on content
+        // empty archetypes go to staging
+        // non-empty staging archetypes go to the archetypes proper
+        // except for the empty archetype which is treated special
+        //
+        let promotion_queue = self
+            .archetypes_staging
+            .iter()
+            .filter_map(|(k, v)| (!v.is_empty()).then_some(*k))
+            .collect::<Vec<_>>();
+
+        for id in promotion_queue {
+            let t = self.archetypes_staging.remove(&id).unwrap();
+            self.archetypes.insert(id, t);
+        }
+
+        let demotion_queue = self
+            .archetypes
+            .iter()
+            .filter_map(|(k, v)| (k != &VOID_TY && v.is_empty()).then_some(*k))
+            .collect::<Vec<_>>();
+
+        for id in demotion_queue {
+            let t = self.archetypes.remove(&id).unwrap();
+            self.archetypes_staging.insert(id, t);
+        }
+
         #[cfg(feature = "tracing")]
         tracing::trace!("Running commands done");
         Ok(())
@@ -276,6 +308,13 @@ impl World {
         Ok(())
     }
 
+    fn get_archetype_by_key_mut(&mut self, key: &TypeHash) -> Option<NonNull<EntityTable>> {
+        self.archetypes
+            .get_mut(key)
+            .or_else(|| self.archetypes_staging.get_mut(key))
+            .map(|t| t.as_mut().get_mut().into())
+    }
+
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, bundle)))]
     fn set_bundle<T: Bundle>(&mut self, entity_id: EntityId, bundle: T) -> WorldResult<()> {
         #[cfg(feature = "tracing")]
@@ -299,33 +338,35 @@ impl World {
             tracing::trace!(?archetype.ty,"Bundle can not be inserted into the current archetype");
 
             let new_hash = T::compute_hash_from_table(archetype);
-            if !self.archetypes.contains_key(&new_hash) {
-                #[cfg(feature = "tracing")]
-                tracing::trace!(new_hash, "Inserting new archetype");
-
-                let new_arch = T::extend(archetype);
-                debug_assert_eq!(new_hash, new_arch.ty());
-                let mut res = self.insert_archetype(archetype, index, new_arch);
-
-                archetype = unsafe { res.as_mut() };
-                index = 0;
-            } else {
-                #[cfg(feature = "tracing")]
-                tracing::trace!(new_hash, "Moving entity into existing archetype");
-
-                let new_arch = self.archetypes.get_mut(&new_hash).unwrap();
-                let (i, updated_entity) = archetype.move_entity(new_arch, index);
-                if let Some(updated_entity) = updated_entity {
+            match self.get_archetype_by_key_mut(&new_hash) {
+                Some(mut new_arch) => {
                     #[cfg(feature = "tracing")]
-                    tracing::trace!(?updated_entity, index, "Update moved entity index");
+                    tracing::trace!(new_hash, "Moving entity into existing archetype");
+
                     unsafe {
-                        self.entity_ids
-                            .get_mut()
-                            .update_row_index(updated_entity, index);
+                        let (i, updated_entity) = archetype.move_entity(new_arch.as_mut(), index);
+                        if let Some(updated_entity) = updated_entity {
+                            #[cfg(feature = "tracing")]
+                            tracing::trace!(?updated_entity, index, "Update moved entity index");
+                            self.entity_ids
+                                .get_mut()
+                                .update_row_index(updated_entity, index);
+                        }
+                        index = i;
+                        archetype = new_arch.as_mut();
                     }
                 }
-                index = i;
-                archetype = new_arch.as_mut().get_mut();
+                None => {
+                    #[cfg(feature = "tracing")]
+                    tracing::trace!(new_hash, "Inserting new archetype");
+
+                    let new_arch = T::extend(archetype);
+                    debug_assert_eq!(new_hash, new_arch.ty());
+                    let mut res = self.insert_archetype(archetype, index, new_arch);
+
+                    archetype = unsafe { res.as_mut() };
+                    index = 0;
+                }
             }
         }
         bundle.insert_into(archetype, index)?;
@@ -808,9 +849,7 @@ impl World {
 
     /// Remove empty archetypes
     pub fn vacuum(&mut self) {
-        // ensure that the unit archetype stays
-        self.archetypes
-            .retain(|ty, a| ty == &VOID_TY || !a.is_empty());
+        self.archetypes_staging.clear();
     }
 }
 
