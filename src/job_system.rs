@@ -174,6 +174,14 @@ impl JobPool {
         }
     }
 
+    pub fn enqueue_future<F: std::future::Future + Send>(&self, f: F) -> JobHandle {
+        let job = FutureJob::new(f);
+        unsafe {
+            let job = job.into_job();
+            self.enqueue_job(job)
+        }
+    }
+
     pub fn enqueue_graph<T: Send + AsJob>(&self, graph: HomogeneousJobGraph<T>) -> JobHandle {
         unsafe {
             let jobs = graph.get_jobs();
@@ -725,6 +733,59 @@ impl<'a> Drop for Scope<'a> {
     }
 }
 
+pub struct FutureJob<F> {
+    inner: Pin<Box<F>>,
+}
+
+impl<F> AsJob for FutureJob<F>
+where
+    F: std::future::Future + Send,
+{
+    unsafe fn execute(instance: *const ()) -> ExecutionState {
+        let instance: &mut Self = &mut *instance.cast_mut().cast();
+        let f =
+            || futures_lite::future::block_on(futures_lite::future::poll_once(&mut instance.inner));
+        let result = match panic::catch_unwind(panic::AssertUnwindSafe(f)) {
+            Ok(res) => match res {
+                Some(_) => JobResult::Done(res),
+                None => JobResult::Reenqueue,
+            },
+            Err(err) => {
+                cfg_if!(
+                    if #[cfg(feature = "tracing")] {
+                        tracing::error!("Job panic: {err:?}");
+                    } else {
+                        eprintln!("Job panic: {err:?}");
+                    }
+                );
+
+                JobResult::Panic
+            }
+        };
+        match result {
+            JobResult::Reenqueue => ExecutionState::Reenqueue,
+            _ => ExecutionState::Done,
+        }
+    }
+}
+
+impl<F> FutureJob<F> {
+    pub fn new(inner: F) -> Box<Self> {
+        Box::new(Self {
+            inner: Box::pin(inner),
+        })
+    }
+
+    /// # Safety caller must ensure that the job is executed exactly once
+    /// The job takes ownership of self
+    pub(crate) unsafe fn into_job(self: Box<Self>) -> Job
+    where
+        F: std::future::Future + Send,
+    {
+        Job::new(Box::into_raw(self))
+    }
+}
+
 impl<'a> Scope<'a> {
     pub fn new(pool: &'a JobPool) -> Self {
         Self {
@@ -809,6 +870,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
     use super::*;
 
     #[test]
@@ -869,5 +932,24 @@ mod tests {
         );
 
         assert_eq!(result, N_JOBS * 2);
+    }
+
+    #[test]
+    fn test_running_future_on_the_jobsystem() {
+        let js = JobPool::default();
+
+        let result = Arc::new(Mutex::new(0i32));
+
+        let handle = {
+            let result = result.clone();
+            js.enqueue_future(async move {
+                futures_lite::future::ready(0).await;
+                *result.lock().unwrap() = 42;
+            })
+        };
+
+        js.wait(handle);
+
+        assert_eq!(*result.lock().unwrap(), 42);
     }
 }
