@@ -943,8 +943,7 @@ mod tests {
         let handle = {
             let result = result.clone();
             js.enqueue_future(async move {
-                futures_lite::future::ready(0).await;
-                *result.lock().unwrap() = 42;
+                *result.lock().unwrap() = futures_lite::future::ready(42).await;
             })
         };
 
