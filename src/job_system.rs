@@ -374,7 +374,12 @@ impl Executor {
                 data = tracing::field::debug(job.data),
                 "Executing job"
             );
-            job.execute();
+            match job.execute() {
+                ExecutionState::Done => {}
+                ExecutionState::Reenqueue => {
+                    queues[executor_id].push(job);
+                }
+            }
             return Ok(());
         }
         // if pop fails try to steal from another thread
@@ -513,7 +518,12 @@ impl JobHandle {
 }
 
 pub trait AsJob: Send {
-    unsafe fn execute(instance: *const ());
+    unsafe fn execute(instance: *const ()) -> ExecutionState;
+}
+
+pub enum ExecutionState {
+    Done,
+    Reenqueue,
 }
 
 // Executor should deal in jobs
@@ -522,7 +532,7 @@ pub trait AsJob: Send {
 pub(crate) struct Job {
     tasks_left: Todos,
     children: Vec<Todos>,
-    func: unsafe fn(*const ()),
+    func: unsafe fn(*const ()) -> ExecutionState,
     data: *const (),
 }
 
@@ -541,16 +551,20 @@ impl Job {
         }
     }
 
-    pub fn execute(&mut self) {
+    #[must_use]
+    pub fn execute(&mut self) -> ExecutionState {
         debug_assert!(self.ready());
         unsafe {
-            (self.func)(self.data);
-            self.data = std::ptr::null();
+            let res = (self.func)(self.data);
+            if let ExecutionState::Done = res {
+                self.data = std::ptr::null();
+                for dep in self.children.iter() {
+                    dep.fetch_sub(1, Ordering::Relaxed);
+                }
+                self.tasks_left.fetch_sub(1, Ordering::Release);
+            }
+            res
         }
-        for dep in self.children.iter() {
-            dep.fetch_sub(1, Ordering::Relaxed);
-        }
-        self.tasks_left.fetch_sub(1, Ordering::Release);
     }
 
     pub fn done(&self) -> bool {
@@ -591,6 +605,7 @@ pub enum JobResult<R> {
     Panic,
     #[default]
     Pending,
+    Reenqueue,
 }
 
 impl<R> JobResult<R> {
@@ -602,7 +617,7 @@ impl<R> JobResult<R> {
         match self {
             JobResult::Done(r) => r,
             JobResult::Panic => panic!("Job paniced"),
-            JobResult::Pending => panic!("Job is pending"),
+            JobResult::Reenqueue | JobResult::Pending => panic!("Job is pending"),
         }
     }
 }
@@ -657,12 +672,13 @@ unsafe fn execute_job<R: Send>(f: impl FnOnce() -> R + Send) -> JobResult<R> {
 }
 
 impl<F: FnOnce() -> R + Send, R: Send> AsJob for InlineJob<F, R> {
-    unsafe fn execute(instance: *const ()) {
+    unsafe fn execute(instance: *const ()) -> ExecutionState {
         let instance: *const Self = instance.cast();
         let instance = &*instance;
         let inner = (&mut *instance.inner.get()).take();
         let result = execute_job(inner.unwrap());
         std::ptr::write(instance.result.get(), result);
+        ExecutionState::Done
     }
 }
 
@@ -674,9 +690,10 @@ impl<F> AsJob for BoxedJob<F>
 where
     F: FnOnce() + Send,
 {
-    unsafe fn execute(instance: *const ()) {
+    unsafe fn execute(instance: *const ()) -> ExecutionState {
         let instance: Box<Self> = Box::from_raw(instance.cast_mut().cast());
         execute_job(instance.inner);
+        ExecutionState::Done
     }
 }
 

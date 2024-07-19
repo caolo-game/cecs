@@ -3,7 +3,7 @@ use std::{any::TypeId, collections::HashSet, ptr::NonNull, rc::Rc};
 use cfg_if::cfg_if;
 
 #[cfg(feature = "parallel")]
-use crate::job_system::AsJob;
+use crate::job_system::{AsJob, ExecutionState};
 
 use crate::{query::WorldQuery, World};
 
@@ -194,7 +194,7 @@ unsafe impl<'a, R> Send for SystemJob<'a, R> {}
 
 #[cfg(feature = "parallel")]
 impl<'a, R> AsJob for SystemJob<'a, R> {
-    unsafe fn execute(this: *const ()) {
+    unsafe fn execute(this: *const ()) -> ExecutionState {
         let job: *const Self = this.cast();
         let job = &*job;
         let sys = job.sys.as_ref();
@@ -204,6 +204,7 @@ impl<'a, R> AsJob for SystemJob<'a, R> {
         let _e = tracing::trace_span!("system", name = sys.descriptor.name.as_str()).entered();
 
         (sys.execute)(world, sys.system_idx);
+        ExecutionState::Done
     }
 }
 
