@@ -517,10 +517,26 @@ pub struct JobHandle {
     tasks_left: Todos,
 }
 
+impl std::future::Future for JobHandle {
+    type Output = ();
+
+    fn poll(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        if self.done() {
+            std::task::Poll::Ready(())
+        } else {
+            cx.waker().wake_by_ref();
+            std::task::Poll::Pending
+        }
+    }
+}
+
 impl JobHandle {
     pub fn done(&self) -> bool {
         let left = self.tasks_left.load(Ordering::Relaxed);
-        debug_assert!(left >= 0, "{left}");
+        debug_assert!(left >= 0, "tasks_left should be non-negative {left}");
         left <= 0
     }
 }
@@ -943,11 +959,12 @@ mod tests {
         let handle = {
             let result = result.clone();
             js.enqueue_future(async move {
+                futures_lite::future::yield_now().await;
                 *result.lock().unwrap() = futures_lite::future::ready(42).await;
             })
         };
 
-        js.wait(handle);
+        futures_lite::future::block_on(handle);
 
         assert_eq!(*result.lock().unwrap(), 42);
     }
