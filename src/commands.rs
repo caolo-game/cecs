@@ -628,4 +628,16 @@ mod tests {
         let mut w = World::new(1);
         w.run_system(sys).unwrap_or_default();
     }
+
+    /// regression test. this used to panic
+    #[test]
+    fn resource_commands_with_no_entiy() {
+        let mut w = World::new(1);
+
+        w.run_system(|mut cmd: Commands| {
+            cmd.insert_resource(4i32);
+            cmd.insert_resource(1i64);
+        })
+        .unwrap();
+    }
 }
