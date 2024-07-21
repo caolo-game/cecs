@@ -174,10 +174,10 @@ pub(crate) fn sort_commands(cmd: &mut [CommandPayload]) {
     // entity commands will be the first
     if let Some(entity_commands) = cmd.chunk_by_mut(|a, b| cmd_ty(a) == cmd_ty(b)).next() {
         entity_commands.sort_unstable_by_key(|a| {
-            let CommandPayload::Entity(a) = a else {
-                unreachable!()
+            match a {
+                CommandPayload::Entity(a) => action_ty(&a.action),
+                _ => 0,
             };
-            action_ty(&a.action)
         });
     }
 }
