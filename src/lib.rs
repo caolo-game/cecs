@@ -491,8 +491,15 @@ impl World {
         self.resources.fetch_mut::<T>()
     }
 
-    pub fn get_resource_or_default<T: 'static + Default + Component>(&mut self) -> &mut T {
+    pub fn get_resource_or_default<T: Default + Component>(&mut self) -> &mut T {
         self.resources.fetch_or_default()
+    }
+
+    pub fn get_or_insert_resource<T: Component>(&mut self, init: impl FnOnce() -> T) -> &mut T {
+        if !self.resources.contains::<T>() {
+            self.resources.insert(init());
+        }
+        self.resources.fetch_mut().unwrap()
     }
 
     /// System stages are executed in the order they were added to the World

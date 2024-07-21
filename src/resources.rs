@@ -70,6 +70,10 @@ impl ResourceStorage {
             .remove(&TypeId::of::<T>())
             .map(|table| unsafe { table.into_inner().into_inner() })
     }
+
+    pub fn contains<T: 'static>(&self) -> bool {
+        self.resources.contains_key(&TypeId::of::<T>())
+    }
 }
 
 pub(crate) struct ErasedResource {
