@@ -758,13 +758,17 @@ where
     F: std::future::Future + Send,
 {
     unsafe fn execute(instance: *const ()) -> ExecutionState {
-        let instance: &mut Self = &mut *instance.cast_mut().cast();
+        let mut instance: Box<Self> = Box::from_raw(instance.cast_mut().cast());
+        // let instance: &mut Self = &mut *instance.cast_mut().cast();
         let f =
             || futures_lite::future::block_on(futures_lite::future::poll_once(&mut instance.inner));
         let result = match panic::catch_unwind(panic::AssertUnwindSafe(f)) {
             Ok(res) => match res {
                 Some(_) => JobResult::Done(res),
-                None => JobResult::Reenqueue,
+                None => {
+                    Box::leak(instance);
+                    JobResult::Reenqueue
+                },
             },
             Err(err) => {
                 cfg_if!(
