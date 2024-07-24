@@ -290,11 +290,9 @@ thread_local! {
 static ZERO_LOCK: ReentrantMutex<()> = ReentrantMutex::new(());
 
 fn with_thread_index<R>(f: impl FnOnce(usize) -> R) -> R {
-    let mut id = unsafe { THREAD_INDEX.with(|id| *id.get()) };
-    // unitinialized threads can use the main thread's queue
-    // TODO: create +1 entry for backthreads and don't block the main with a mutex?
+    let id = unsafe { THREAD_INDEX.with(|id| *id.get()) };
+    // unitinialized threads use the the default queues
     let _lock = if id == 0 {
-        id = 0;
         Some(ZERO_LOCK.lock())
     } else {
         None
@@ -459,8 +457,8 @@ unsafe impl Send for StealerArray {}
 impl Inner {
     pub fn new(workers: NonZeroUsize) -> Self {
         let workers = workers.get();
-        let mut queues = Vec::with_capacity(workers);
-        for _ in 0..workers {
+        let mut queues = Vec::with_capacity(workers + 1);
+        for _ in 0..=workers {
             queues.push(WorkerQueue::new_fifo());
         }
         let queues = Pin::new(queues.into_boxed_slice());
@@ -478,16 +476,15 @@ impl Inner {
             sleep: Arc::clone(&sleep),
             runnable_queues: queues,
             runnable_stealers: stealers,
-            threads: Vec::with_capacity(workers),
+            threads: Vec::with_capacity(workers + 1),
             wait_lists: Pin::new(
-                (0..workers)
+                (0..=workers)
                     .map(|_| Default::default())
                     .collect::<Vec<_>>()
                     .into_boxed_slice(),
             ),
         };
         // the main thread is also used a worker on wait points
-        // the index of the main thread is 0
         for i in 1..workers {
             let arr = QueueArray(q);
             let st = StealerArray(s);
@@ -500,6 +497,11 @@ impl Inner {
                     .expect("Failed to create worker thread"),
             );
         }
+        // the last id is assigned to the main thread (current thread)
+        // id 0 is reserved for foreign threads entering the jobsystem
+        THREAD_INDEX.with(move |tid| unsafe {
+            *tid.get() = workers;
+        });
         result
     }
 }
@@ -768,7 +770,7 @@ where
                 None => {
                     Box::leak(instance);
                     JobResult::Reenqueue
-                },
+                }
             },
             Err(err) => {
                 cfg_if!(
