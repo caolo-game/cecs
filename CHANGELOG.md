@@ -2,9 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.6] - 2024-08-06
+
+### Bug Fixes
+
+- Fix panic if the commands payload doesn't contain entity commands
+- Fix memory leak in JobSystem when executing futures
+
+### Features
+
+- Implement future for JobHandle
+- Add `World::get_or_insert_resource`
+- Differentiate beween the main thread and foreign threads. Using multiple JobPools will no longer block the main thread
+
+### Miscellaneous Tasks
+
+- Fix unused warning for QuerySets
+
 ## [0.1.5] - 2024-07-19
 
-### 🚀 Features
+### Bug Fixes
+
+- Fix stage execution when feature: parallel is disabled
+- Fix a bug where new archetypes would invalidate exiting ids
+- Fix archetypes of bundles where the entity already has some of the bundle components
+
+### Features
 
 - Use deterministic command execution
 - Preserve EntityIds when deserializing a World
@@ -17,14 +40,13 @@ All notable changes to this project will be documented in this file.
 - Remove empty archetypes from the public interface
 - Support running futures on the JobSystem
 
-### 🐛 Bug Fixes
+### JobGraph
 
-- Fix stage execution when feature: parallel is disabled
-- Fix a bug where new archetypes would invalidate exiting ids
-- Fix archetypes of bundles where the entity already has some of the bundle components
+- :clone
 
-### 🚜 Refactor
+### Refactor
 
+- Invert if
 - Return commands result in run_system
 - [**breaking**] Remove system pipes
 - [**breaking**] Remove component setters from the public interface
