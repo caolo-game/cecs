@@ -10,7 +10,7 @@ use crate::{query::WorldQuery, World};
 pub type InnerSystem<'a, R> = dyn Fn(&'a World, usize) -> R + 'a;
 pub type ShouldRunSystem<'a> = InnerSystem<'a, bool>;
 
-type SystemStorage<T> = smallvec::SmallVec<[T; 4]>;
+type SystemStorage<T> = Vec<T>;
 
 pub fn sort_systems<T>(sys: &mut [ErasedSystem<T>]) {
     sys.sort_unstable_by(|a, b| {
