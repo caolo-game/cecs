@@ -831,8 +831,11 @@ impl World {
         Ok(())
     }
 
-    #[allow(unused)]
-    pub(crate) fn insert_id(&mut self, id: EntityId) -> Result<(), entity_index::InsertError> {
+    /// Insert a pre-allocated entity id into the world.
+    ///
+    /// Insert is an O(n) operation that walks a linked-list.
+    /// Prefer [[insert_entity]]
+    pub fn insert_id(&mut self, id: EntityId) -> Result<(), entity_index::InsertError> {
         self.entity_ids.get_mut().insert_id(id)?;
         unsafe {
             self.init_id(id);
