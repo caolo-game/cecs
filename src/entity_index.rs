@@ -163,6 +163,14 @@ impl EntityIndex {
     /// Definitely avoid
     pub(crate) fn insert_id(&mut self, id: EntityId) -> Result<(), InsertError> {
         let needle = id.index();
+        if self
+            .entries()
+            .get(needle as usize)
+            .map(|entry| !entry.arch.is_null())
+            .unwrap_or(false)
+        {
+            return Err(InsertError::Taken(id));
+        }
         if needle as usize >= self.capacity() {
             self.grow(needle + 1);
         }
