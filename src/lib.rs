@@ -529,7 +529,7 @@ impl World {
         let i = self.system_stages.len();
         // # SAFETY
         // lifetimes are managed by the World instance from now
-        let mut stage: SystemStage = unsafe { transmute(stage) };
+        let mut stage = unsafe { transmute::<SystemStage, SystemStage>(stage) };
 
         // move stage into the world
         cfg_if!(
