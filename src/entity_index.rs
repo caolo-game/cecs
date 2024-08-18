@@ -21,8 +21,10 @@ pub enum HandleTableError {
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum InsertError {
-    #[error("Id {0} has already been allocated")]
+    #[error("Id {0} has already been allocated by a different entity")]
     Taken(EntityId),
+    #[error("Id {0} has already been inserted")]
+    AlreadyInserted(EntityId),
 }
 
 pub(crate) struct EntityIndex {
@@ -169,7 +171,11 @@ impl EntityIndex {
             .map(|entry| !entry.arch.is_null())
             .unwrap_or(false)
         {
-            return Err(InsertError::Taken(id));
+            if self.entries()[needle as usize].r#gen == id.r#gen() {
+                return Err(InsertError::AlreadyInserted(id));
+            } else {
+                return Err(InsertError::Taken(id));
+            }
         }
         if needle as usize >= self.capacity() {
             self.grow(needle + 1);
@@ -189,7 +195,11 @@ impl EntityIndex {
             }
         }
         // not found
-        Err(InsertError::Taken(id))
+        if self.entries()[needle as usize].r#gen == id.r#gen() {
+            return Err(InsertError::AlreadyInserted(id));
+        } else {
+            return Err(InsertError::Taken(id));
+        }
     }
 
     /// Allocate will not grow the buffer, caller must ensure that sufficient capacity is reserved
