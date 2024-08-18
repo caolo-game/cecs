@@ -453,22 +453,15 @@ where
     }
 
     #[cfg(not(feature = "parallel"))]
-    pub fn par_for_each<'b>(
-        &'b self,
-        f: impl Fn(<ArchQuery<T> as QueryFragment>::Item<'a>) + Sync + 'b,
-    ) where
-        T: Send + Sync,
-    {
+    pub fn par_for_each<'b>(&'b self, f: impl Fn(<ArchQuery<T> as QueryFragment>::Item<'a>) + 'b) {
         self.iter().for_each(f);
     }
 
     #[cfg(not(feature = "parallel"))]
     pub fn par_for_each_mut<'b>(
         &'b mut self,
-        f: impl Fn(<ArchQuery<T> as QueryFragment>::ItemMut<'a>) + Sync + 'b,
-    ) where
-        T: Send + Sync,
-    {
+        f: impl Fn(<ArchQuery<T> as QueryFragment>::ItemMut<'a>) + 'b,
+    ) {
         self.iter_mut().for_each(f);
     }
 }
