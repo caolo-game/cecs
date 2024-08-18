@@ -1,4 +1,4 @@
-use std::{any::TypeId, collections::HashSet, ptr::NonNull, rc::Rc};
+use std::{any::TypeId, collections::HashSet, ptr::NonNull, sync::Arc};
 
 use cfg_if::cfg_if;
 
@@ -87,7 +87,7 @@ impl<'a> SystemStage<'a> {
             }
         );
 
-        let descriptor = Rc::new(system.descriptor());
+        let descriptor = Arc::new(system.descriptor());
         let system = ErasedSystem {
             execute: (descriptor.factory)(),
             system_idx,
@@ -124,12 +124,12 @@ pub struct SystemDescriptor<'a, R> {
 pub struct ErasedSystem<'a, R> {
     pub(crate) system_idx: usize,
     pub(crate) execute: Box<InnerSystem<'a, R>>,
-    pub(crate) descriptor: Rc<SystemDescriptor<'a, R>>,
+    pub(crate) descriptor: Arc<SystemDescriptor<'a, R>>,
 }
 
 impl<'a, R> From<SystemDescriptor<'a, R>> for ErasedSystem<'a, R> {
     fn from(system: SystemDescriptor<'a, R>) -> Self {
-        let descriptor = Rc::new(system);
+        let descriptor = Arc::new(system);
         ErasedSystem {
             execute: (descriptor.factory)(),
             system_idx: 0,
