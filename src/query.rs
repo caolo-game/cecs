@@ -496,34 +496,6 @@ pub trait QueryFragment {
     ) -> Self::ItMut<'_>;
 }
 
-pub trait QueryPrimitive {
-    type ItemUnsafe<'a>;
-    type ItUnsafe<'a>: Iterator<Item = Self::ItemUnsafe<'a>>;
-    type Item<'a>;
-    type It<'a>: Iterator<Item = Self::Item<'a>>;
-    type ItemMut<'a>;
-    type ItMut<'a>: Iterator<Item = Self::ItemMut<'a>>;
-
-    unsafe fn iter_prim_unsafe(archetype: &EntityTable) -> Self::ItUnsafe<'_>;
-    unsafe fn fetch_prim_unsafe(
-        archetype: &EntityTable,
-        index: RowIndex,
-    ) -> Option<Self::ItemUnsafe<'_>>;
-    fn iter_prim(archetype: &EntityTable) -> Self::It<'_>;
-    fn iter_prim_mut(archetype: &EntityTable) -> Self::ItMut<'_>;
-    fn fetch_prim(archetype: &EntityTable, index: RowIndex) -> Option<Self::Item<'_>>;
-    fn fetch_prim_mut(archetype: &EntityTable, index: RowIndex) -> Option<Self::ItemMut<'_>>;
-    fn contains_prim(archetype: &EntityTable) -> bool;
-    fn types_mut(set: &mut HashSet<TypeId>);
-    fn types_const(set: &mut HashSet<TypeId>);
-    fn read_only() -> bool;
-    fn iter_range_prim(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::It<'_>;
-    fn iter_range_prim_mut(
-        archetype: &EntityTable,
-        range: impl RangeBounds<usize>,
-    ) -> Self::ItMut<'_>;
-}
-
 /// Query wether an entity has a component
 ///
 /// Shortcut for `Option<&T>::is_some()`
@@ -553,7 +525,7 @@ pub trait QueryPrimitive {
 /// ```
 pub struct Has<T>(PhantomData<T>);
 
-impl<T: Component> QueryPrimitive for Has<T> {
+impl<T: Component> QueryFragment for Has<T> {
     type ItemUnsafe<'a> = bool;
     type ItUnsafe<'a> = Self::It<'a>;
     type Item<'a> = bool;
@@ -561,34 +533,34 @@ impl<T: Component> QueryPrimitive for Has<T> {
     type ItemMut<'a> = bool;
     type ItMut<'a> = Self::It<'a>;
 
-    unsafe fn iter_prim_unsafe<'a>(archetype: &'a EntityTable) -> Self::ItUnsafe<'a> {
-        Self::iter_prim(archetype)
+    unsafe fn iter_unsafe<'a>(archetype: &'a EntityTable) -> Self::ItUnsafe<'a> {
+        Self::iter(archetype)
     }
 
-    unsafe fn fetch_prim_unsafe(
+    unsafe fn fetch_unsafe(
         archetype: &EntityTable,
         index: RowIndex,
     ) -> Option<Self::ItemUnsafe<'_>> {
-        Self::fetch_prim(archetype, index)
+        Self::fetch(archetype, index)
     }
 
-    fn iter_prim<'a>(archetype: &'a EntityTable) -> Self::It<'a> {
+    fn iter<'a>(archetype: &'a EntityTable) -> Self::It<'a> {
         std::iter::repeat(archetype.contains_column::<T>()).take(archetype.len())
     }
 
-    fn iter_prim_mut<'a>(archetype: &'a EntityTable) -> Self::ItMut<'a> {
-        Self::iter_prim(archetype)
+    fn iter_mut<'a>(archetype: &'a EntityTable) -> Self::ItMut<'a> {
+        Self::iter(archetype)
     }
 
-    fn fetch_prim(archetype: &EntityTable, _index: RowIndex) -> Option<Self::Item<'_>> {
+    fn fetch(archetype: &EntityTable, _index: RowIndex) -> Option<Self::Item<'_>> {
         Some(archetype.contains_column::<T>())
     }
 
-    fn fetch_prim_mut(archetype: &EntityTable, index: RowIndex) -> Option<Self::ItemMut<'_>> {
-        Self::fetch_prim(archetype, index)
+    fn fetch_mut(archetype: &EntityTable, index: RowIndex) -> Option<Self::ItemMut<'_>> {
+        Self::fetch(archetype, index)
     }
 
-    fn contains_prim(_archetype: &EntityTable) -> bool {
+    fn contains(_archetype: &EntityTable) -> bool {
         true
     }
 
@@ -605,22 +577,22 @@ impl<T: Component> QueryPrimitive for Has<T> {
         true
     }
 
-    fn iter_range_prim(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::It<'_> {
+    fn iter_range(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::It<'_> {
         let len = archetype.entities.len();
         let range = slice::range(range, ..len);
         let len = range.len();
         std::iter::repeat(archetype.contains_column::<T>()).take(len)
     }
 
-    fn iter_range_prim_mut(
+    fn iter_range_mut(
         archetype: &EntityTable,
-        range: impl RangeBounds<usize>,
+        range: impl RangeBounds<usize> + Clone,
     ) -> Self::ItMut<'_> {
-        Self::iter_range_prim(archetype, range)
+        Self::iter_range(archetype, range)
     }
 }
 
-impl QueryPrimitive for EntityId {
+impl QueryFragment for EntityId {
     type ItemUnsafe<'a> = EntityId;
     type ItUnsafe<'a> = std::iter::Copied<std::slice::Iter<'a, EntityId>>;
     type Item<'a> = EntityId;
@@ -628,34 +600,34 @@ impl QueryPrimitive for EntityId {
     type ItemMut<'a> = EntityId;
     type ItMut<'a> = std::iter::Copied<std::slice::Iter<'a, EntityId>>;
 
-    unsafe fn iter_prim_unsafe<'a>(archetype: &'a EntityTable) -> Self::ItUnsafe<'a> {
+    unsafe fn iter_unsafe<'a>(archetype: &'a EntityTable) -> Self::ItUnsafe<'a> {
         archetype.entities.iter().copied()
     }
 
-    unsafe fn fetch_prim_unsafe(
+    unsafe fn fetch_unsafe(
         archetype: &EntityTable,
         index: RowIndex,
     ) -> Option<Self::ItemUnsafe<'_>> {
         archetype.entities.get(index as usize).copied()
     }
 
-    fn iter_prim<'a>(archetype: &'a EntityTable) -> Self::It<'a> {
+    fn iter<'a>(archetype: &'a EntityTable) -> Self::It<'a> {
         archetype.entities.iter().copied()
     }
 
-    fn iter_prim_mut<'a>(archetype: &'a EntityTable) -> Self::ItMut<'a> {
-        Self::iter_prim(archetype)
+    fn iter_mut<'a>(archetype: &'a EntityTable) -> Self::ItMut<'a> {
+        Self::iter(archetype)
     }
 
-    fn fetch_prim(archetype: &EntityTable, index: RowIndex) -> Option<Self::Item<'_>> {
+    fn fetch(archetype: &EntityTable, index: RowIndex) -> Option<Self::Item<'_>> {
         archetype.entities.get(index as usize).copied()
     }
 
-    fn fetch_prim_mut(archetype: &EntityTable, index: RowIndex) -> Option<Self::ItemMut<'_>> {
-        Self::fetch_prim(archetype, index)
+    fn fetch_mut(archetype: &EntityTable, index: RowIndex) -> Option<Self::ItemMut<'_>> {
+        Self::fetch(archetype, index)
     }
 
-    fn contains_prim(_archetype: &EntityTable) -> bool {
+    fn contains(_archetype: &EntityTable) -> bool {
         true
     }
 
@@ -672,21 +644,21 @@ impl QueryPrimitive for EntityId {
         true
     }
 
-    fn iter_range_prim(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::It<'_> {
+    fn iter_range(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::It<'_> {
         let len = archetype.entities.len();
         let range = slice::range(range, ..len);
         archetype.entities[range].iter().copied()
     }
 
-    fn iter_range_prim_mut(
+    fn iter_range_mut(
         archetype: &EntityTable,
-        range: impl RangeBounds<usize>,
+        range: impl RangeBounds<usize> + Clone,
     ) -> Self::ItMut<'_> {
-        Self::iter_range_prim(archetype, range)
+        Self::iter_range(archetype, range)
     }
 }
 
-impl QueryPrimitive for ArchetypeHash {
+impl QueryFragment for ArchetypeHash {
     type ItemUnsafe<'a> = ArchetypeHash;
     type Item<'a> = ArchetypeHash;
     type ItemMut<'a> = ArchetypeHash;
@@ -694,38 +666,38 @@ impl QueryPrimitive for ArchetypeHash {
     type ItUnsafe<'a> = Self::It<'a>;
     type ItMut<'a> = Self::It<'a>;
 
-    unsafe fn iter_prim_unsafe<'a>(archetype: &'a EntityTable) -> Self::ItUnsafe<'a> {
-        Self::iter_prim(archetype)
+    unsafe fn iter_unsafe<'a>(archetype: &'a EntityTable) -> Self::ItUnsafe<'a> {
+        Self::iter(archetype)
     }
 
-    unsafe fn fetch_prim_unsafe(
+    unsafe fn fetch_unsafe(
         archetype: &EntityTable,
         index: RowIndex,
     ) -> Option<Self::ItemUnsafe<'_>> {
-        Self::fetch_prim(archetype, index)
+        Self::fetch(archetype, index)
     }
 
-    fn iter_prim<'a>(archetype: &'a EntityTable) -> Self::It<'a> {
+    fn iter<'a>(archetype: &'a EntityTable) -> Self::It<'a> {
         let hash = archetype.ty;
         Box::new((0..archetype.rows).map(move |_| ArchetypeHash(hash)))
     }
 
-    fn iter_prim_mut<'a>(archetype: &'a EntityTable) -> Self::ItMut<'a> {
-        Self::iter_prim(archetype)
+    fn iter_mut<'a>(archetype: &'a EntityTable) -> Self::ItMut<'a> {
+        Self::iter(archetype)
     }
 
-    fn fetch_prim(archetype: &EntityTable, index: RowIndex) -> Option<Self::Item<'_>> {
+    fn fetch(archetype: &EntityTable, index: RowIndex) -> Option<Self::Item<'_>> {
         archetype
             .entities
             .get(index as usize)
             .map(|_| ArchetypeHash(archetype.ty))
     }
 
-    fn fetch_prim_mut(archetype: &EntityTable, index: RowIndex) -> Option<Self::ItemMut<'_>> {
-        Self::fetch_prim(archetype, index)
+    fn fetch_mut(archetype: &EntityTable, index: RowIndex) -> Option<Self::ItemMut<'_>> {
+        Self::fetch(archetype, index)
     }
 
-    fn contains_prim(_archetype: &EntityTable) -> bool {
+    fn contains(_archetype: &EntityTable) -> bool {
         true
     }
 
@@ -741,7 +713,7 @@ impl QueryPrimitive for ArchetypeHash {
         true
     }
 
-    fn iter_range_prim(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::It<'_> {
+    fn iter_range(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::It<'_> {
         let len = archetype.entities.len();
         let range = slice::range(range, ..len);
         let hash = archetype.ty;
@@ -752,26 +724,26 @@ impl QueryPrimitive for ArchetypeHash {
         )
     }
 
-    fn iter_range_prim_mut(
+    fn iter_range_mut(
         archetype: &EntityTable,
-        range: impl RangeBounds<usize>,
+        range: impl RangeBounds<usize> + Clone,
     ) -> Self::ItMut<'_> {
-        Self::iter_range_prim(archetype, range)
+        Self::iter_range(archetype, range)
     }
 }
 
 // Optional query fetch functions return Option<Option<T>> where the outer optional is always Some.
 // This awkward interface is there because of combined queries
 //
-impl<'a, T: Component> QueryPrimitive for Option<&'a T> {
+impl<'a, T: Component> QueryFragment for Option<&'a T> {
     type ItemUnsafe<'b> = Option<*mut T>;
     type ItUnsafe<'b> = Box<dyn Iterator<Item = Self::ItemUnsafe<'b>> + 'b>;
     type Item<'b> = Option<&'b T>;
     type It<'b> = Box<dyn Iterator<Item = Self::Item<'b>> + 'b>;
     type ItemMut<'b> = Option<&'b T>;
-    type ItMut<'b> = Box<dyn Iterator<Item = Self::Item<'b>> + 'b>;
+    type ItMut<'b> = Box<dyn Iterator<Item = Self::ItemMut<'b>> + 'b>;
 
-    fn iter_prim(archetype: &EntityTable) -> Self::It<'_> {
+    fn iter(archetype: &EntityTable) -> Self::It<'_> {
         match archetype.components.get(&TypeId::of::<T>()) {
             Some(columns) => {
                 Box::new(unsafe { (&*columns.get()).as_slice::<T>().iter() }.map(Some))
@@ -780,11 +752,11 @@ impl<'a, T: Component> QueryPrimitive for Option<&'a T> {
         }
     }
 
-    fn iter_prim_mut(archetype: &EntityTable) -> Self::ItMut<'_> {
-        Self::iter_prim(archetype)
+    fn iter_mut(archetype: &EntityTable) -> Self::ItMut<'_> {
+        <Self as QueryFragment>::iter(archetype)
     }
 
-    unsafe fn iter_prim_unsafe(archetype: &EntityTable) -> Self::ItUnsafe<'_> {
+    unsafe fn iter_unsafe(archetype: &EntityTable) -> Self::ItUnsafe<'_> {
         match archetype.components.get(&TypeId::of::<T>()) {
             Some(columns) => Box::new(
                 unsafe { (&mut *columns.get()).as_slice_mut::<T>().iter_mut() }
@@ -795,15 +767,15 @@ impl<'a, T: Component> QueryPrimitive for Option<&'a T> {
         }
     }
 
-    fn fetch_prim(archetype: &EntityTable, index: RowIndex) -> Option<Self::Item<'_>> {
+    fn fetch(archetype: &EntityTable, index: RowIndex) -> Option<Self::Item<'_>> {
         Some(archetype.get_component::<T>(index))
     }
 
-    fn fetch_prim_mut(archetype: &EntityTable, index: RowIndex) -> Option<Self::ItemMut<'_>> {
-        Self::fetch_prim(archetype, index)
+    fn fetch_mut(archetype: &EntityTable, index: RowIndex) -> Option<Self::ItemMut<'_>> {
+        Self::fetch(archetype, index)
     }
 
-    unsafe fn fetch_prim_unsafe(
+    unsafe fn fetch_unsafe(
         archetype: &EntityTable,
         index: RowIndex,
     ) -> Option<Self::ItemUnsafe<'_>> {
@@ -818,7 +790,7 @@ impl<'a, T: Component> QueryPrimitive for Option<&'a T> {
         set.insert(TypeId::of::<T>());
     }
 
-    fn contains_prim(_archetype: &EntityTable) -> bool {
+    fn contains(_archetype: &EntityTable) -> bool {
         true
     }
 
@@ -826,7 +798,7 @@ impl<'a, T: Component> QueryPrimitive for Option<&'a T> {
         true
     }
 
-    fn iter_range_prim(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::It<'_> {
+    fn iter_range(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::It<'_> {
         match archetype.components.get(&TypeId::of::<T>()) {
             Some(columns) => unsafe {
                 let col = (&*columns.get()).as_slice::<T>();
@@ -838,15 +810,15 @@ impl<'a, T: Component> QueryPrimitive for Option<&'a T> {
         }
     }
 
-    fn iter_range_prim_mut(
+    fn iter_range_mut(
         archetype: &EntityTable,
-        range: impl RangeBounds<usize>,
+        range: impl RangeBounds<usize> + Clone,
     ) -> Self::ItMut<'_> {
-        Self::iter_range_prim(archetype, range)
+        Self::iter_range(archetype, range)
     }
 }
 
-impl<'a, T: Component> QueryPrimitive for Option<&'a mut T> {
+impl<'a, T: Component> QueryFragment for Option<&'a mut T> {
     type ItemUnsafe<'b> = Option<*mut T>;
     type ItUnsafe<'b> = Box<dyn Iterator<Item = Self::ItemUnsafe<'b>> + 'b>;
     type Item<'b> = Option<&'b T>;
@@ -854,7 +826,7 @@ impl<'a, T: Component> QueryPrimitive for Option<&'a mut T> {
     type ItemMut<'b> = Option<&'b mut T>;
     type ItMut<'b> = Box<dyn Iterator<Item = Self::ItemMut<'b>> + 'b>;
 
-    fn iter_prim(archetype: &EntityTable) -> Self::It<'_> {
+    fn iter(archetype: &EntityTable) -> Self::It<'_> {
         match archetype.components.get(&TypeId::of::<T>()) {
             Some(columns) => {
                 Box::new(unsafe { (&*columns.get()).as_slice::<T>().iter() }.map(Some))
@@ -863,7 +835,7 @@ impl<'a, T: Component> QueryPrimitive for Option<&'a mut T> {
         }
     }
 
-    fn iter_prim_mut(archetype: &EntityTable) -> Self::ItMut<'_> {
+    fn iter_mut(archetype: &EntityTable) -> Self::ItMut<'_> {
         match archetype.components.get(&TypeId::of::<T>()) {
             Some(columns) => {
                 Box::new(unsafe { (&mut *columns.get()).as_slice_mut::<T>().iter_mut() }.map(Some))
@@ -872,7 +844,7 @@ impl<'a, T: Component> QueryPrimitive for Option<&'a mut T> {
         }
     }
 
-    unsafe fn iter_prim_unsafe(archetype: &EntityTable) -> Self::ItUnsafe<'_> {
+    unsafe fn iter_unsafe(archetype: &EntityTable) -> Self::ItUnsafe<'_> {
         match archetype.components.get(&TypeId::of::<T>()) {
             Some(columns) => Box::new(
                 unsafe { (&mut *columns.get()).as_slice_mut::<T>().iter_mut() }
@@ -883,15 +855,15 @@ impl<'a, T: Component> QueryPrimitive for Option<&'a mut T> {
         }
     }
 
-    fn fetch_prim(archetype: &EntityTable, index: RowIndex) -> Option<Self::Item<'_>> {
+    fn fetch(archetype: &EntityTable, index: RowIndex) -> Option<Self::Item<'_>> {
         Some(archetype.get_component::<T>(index))
     }
 
-    fn fetch_prim_mut(archetype: &EntityTable, index: RowIndex) -> Option<Self::ItemMut<'_>> {
+    fn fetch_mut(archetype: &EntityTable, index: RowIndex) -> Option<Self::ItemMut<'_>> {
         Some(archetype.get_component_mut::<T>(index))
     }
 
-    unsafe fn fetch_prim_unsafe(
+    unsafe fn fetch_unsafe(
         archetype: &EntityTable,
         index: RowIndex,
     ) -> Option<Self::ItemUnsafe<'_>> {
@@ -906,7 +878,7 @@ impl<'a, T: Component> QueryPrimitive for Option<&'a mut T> {
         // noop
     }
 
-    fn contains_prim(_archetype: &EntityTable) -> bool {
+    fn contains(_archetype: &EntityTable) -> bool {
         true
     }
 
@@ -914,7 +886,7 @@ impl<'a, T: Component> QueryPrimitive for Option<&'a mut T> {
         false
     }
 
-    fn iter_range_prim(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::It<'_> {
+    fn iter_range(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::It<'_> {
         match archetype.components.get(&TypeId::of::<T>()) {
             Some(columns) => unsafe {
                 let col = (&mut *columns.get()).as_slice::<T>();
@@ -926,9 +898,9 @@ impl<'a, T: Component> QueryPrimitive for Option<&'a mut T> {
         }
     }
 
-    fn iter_range_prim_mut(
+    fn iter_range_mut(
         archetype: &EntityTable,
-        range: impl RangeBounds<usize>,
+        range: impl RangeBounds<usize> + Clone,
     ) -> Self::ItMut<'_> {
         match archetype.components.get(&TypeId::of::<T>()) {
             Some(columns) => unsafe {
@@ -942,7 +914,7 @@ impl<'a, T: Component> QueryPrimitive for Option<&'a mut T> {
     }
 }
 
-impl<'a, T: Component> QueryPrimitive for &'a T {
+impl<'a, T: Component> QueryFragment for &'a T {
     type ItemUnsafe<'b> = *mut T;
     type ItUnsafe<'b> = Box<dyn Iterator<Item = Self::ItemUnsafe<'b>>>;
     type Item<'b> = &'b T;
@@ -950,22 +922,22 @@ impl<'a, T: Component> QueryPrimitive for &'a T {
     type ItemMut<'b> = &'b T;
     type ItMut<'b> = std::iter::Flatten<std::option::IntoIter<std::slice::Iter<'b, T>>>;
 
-    fn fetch_prim(archetype: &EntityTable, index: RowIndex) -> Option<Self::Item<'_>> {
+    fn fetch(archetype: &EntityTable, index: RowIndex) -> Option<Self::Item<'_>> {
         archetype.get_component::<T>(index)
     }
 
-    fn fetch_prim_mut(archetype: &EntityTable, index: RowIndex) -> Option<Self::ItemMut<'_>> {
-        Self::fetch_prim(archetype, index)
+    fn fetch_mut(archetype: &EntityTable, index: RowIndex) -> Option<Self::ItemMut<'_>> {
+        Self::fetch(archetype, index)
     }
 
-    unsafe fn fetch_prim_unsafe(
+    unsafe fn fetch_unsafe(
         archetype: &EntityTable,
         index: RowIndex,
     ) -> Option<Self::ItemUnsafe<'_>> {
         archetype.get_component_mut::<T>(index).map(|x| x as *mut _)
     }
 
-    fn contains_prim(archetype: &EntityTable) -> bool {
+    fn contains(archetype: &EntityTable) -> bool {
         archetype.contains_column::<T>()
     }
 
@@ -977,7 +949,7 @@ impl<'a, T: Component> QueryPrimitive for &'a T {
         set.insert(TypeId::of::<T>());
     }
 
-    fn iter_prim(archetype: &EntityTable) -> Self::It<'_> {
+    fn iter(archetype: &EntityTable) -> Self::It<'_> {
         archetype
             .components
             .get(&TypeId::of::<T>())
@@ -986,11 +958,11 @@ impl<'a, T: Component> QueryPrimitive for &'a T {
             .flatten()
     }
 
-    fn iter_prim_mut(archetype: &EntityTable) -> Self::ItMut<'_> {
-        Self::iter_prim(archetype)
+    fn iter_mut(archetype: &EntityTable) -> Self::ItMut<'_> {
+        Self::iter(archetype)
     }
 
-    unsafe fn iter_prim_unsafe(archetype: &EntityTable) -> Self::ItUnsafe<'_> {
+    unsafe fn iter_unsafe(archetype: &EntityTable) -> Self::ItUnsafe<'_> {
         Box::new(
             archetype
                 .components
@@ -1010,7 +982,7 @@ impl<'a, T: Component> QueryPrimitive for &'a T {
         true
     }
 
-    fn iter_range_prim(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::ItMut<'_> {
+    fn iter_range(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::ItMut<'_> {
         archetype
             .components
             .get(&TypeId::of::<T>())
@@ -1024,15 +996,15 @@ impl<'a, T: Component> QueryPrimitive for &'a T {
             .flatten()
     }
 
-    fn iter_range_prim_mut(
+    fn iter_range_mut(
         archetype: &EntityTable,
-        range: impl RangeBounds<usize>,
+        range: impl RangeBounds<usize> + Clone,
     ) -> Self::ItMut<'_> {
-        Self::iter_range_prim(archetype, range)
+        Self::iter_range(archetype, range)
     }
 }
 
-impl<'a, T: Component> QueryPrimitive for &'a mut T {
+impl<'a, T: Component> QueryFragment for &'a mut T {
     type ItemUnsafe<'b> = *mut T;
     type ItUnsafe<'b> = Box<dyn Iterator<Item = *mut T>>;
     type Item<'b> = &'b T;
@@ -1040,7 +1012,7 @@ impl<'a, T: Component> QueryPrimitive for &'a mut T {
     type ItemMut<'b> = &'b mut T;
     type ItMut<'b> = std::iter::Flatten<std::option::IntoIter<std::slice::IterMut<'b, T>>>;
 
-    fn iter_prim(archetype: &EntityTable) -> Self::It<'_> {
+    fn iter(archetype: &EntityTable) -> Self::It<'_> {
         archetype
             .components
             .get(&TypeId::of::<T>())
@@ -1049,7 +1021,7 @@ impl<'a, T: Component> QueryPrimitive for &'a mut T {
             .flatten()
     }
 
-    fn iter_prim_mut(archetype: &EntityTable) -> Self::ItMut<'_> {
+    fn iter_mut(archetype: &EntityTable) -> Self::ItMut<'_> {
         archetype
             .components
             .get(&TypeId::of::<T>())
@@ -1058,7 +1030,7 @@ impl<'a, T: Component> QueryPrimitive for &'a mut T {
             .flatten()
     }
 
-    unsafe fn iter_prim_unsafe(archetype: &EntityTable) -> Self::ItUnsafe<'_> {
+    unsafe fn iter_unsafe(archetype: &EntityTable) -> Self::ItUnsafe<'_> {
         Box::new(
             archetype
                 .components
@@ -1074,22 +1046,22 @@ impl<'a, T: Component> QueryPrimitive for &'a mut T {
         )
     }
 
-    fn fetch_prim(archetype: &EntityTable, index: RowIndex) -> Option<Self::Item<'_>> {
+    fn fetch(archetype: &EntityTable, index: RowIndex) -> Option<Self::Item<'_>> {
         archetype.get_component::<T>(index)
     }
 
-    fn fetch_prim_mut(archetype: &EntityTable, index: RowIndex) -> Option<Self::ItemMut<'_>> {
+    fn fetch_mut(archetype: &EntityTable, index: RowIndex) -> Option<Self::ItemMut<'_>> {
         archetype.get_component_mut::<T>(index)
     }
 
-    unsafe fn fetch_prim_unsafe(
+    unsafe fn fetch_unsafe(
         archetype: &EntityTable,
         index: RowIndex,
     ) -> Option<Self::ItemUnsafe<'_>> {
         archetype.get_component_mut::<T>(index).map(|x| x as *mut _)
     }
 
-    fn contains_prim(archetype: &EntityTable) -> bool {
+    fn contains(archetype: &EntityTable) -> bool {
         archetype.contains_column::<T>()
     }
 
@@ -1107,7 +1079,7 @@ impl<'a, T: Component> QueryPrimitive for &'a mut T {
         false
     }
 
-    fn iter_range_prim(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::It<'_> {
+    fn iter_range(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::It<'_> {
         archetype
             .components
             .get(&TypeId::of::<T>())
@@ -1121,9 +1093,9 @@ impl<'a, T: Component> QueryPrimitive for &'a mut T {
             .flatten()
     }
 
-    fn iter_range_prim_mut(
+    fn iter_range_mut(
         archetype: &EntityTable,
-        range: impl RangeBounds<usize>,
+        range: impl RangeBounds<usize> + Clone,
     ) -> Self::ItMut<'_> {
         archetype
             .components
@@ -1136,72 +1108,6 @@ impl<'a, T: Component> QueryPrimitive for &'a mut T {
             })
             .into_iter()
             .flatten()
-    }
-}
-
-impl<T> QueryFragment for T
-where
-    T: QueryPrimitive,
-{
-    type ItemUnsafe<'a> = <Self as QueryPrimitive>::ItemUnsafe<'a>;
-    type ItUnsafe<'a> = <Self as QueryPrimitive>::ItUnsafe<'a>;
-    type Item<'a> = <Self as QueryPrimitive>::Item<'a>;
-    type It<'a> = <Self as QueryPrimitive>::It<'a>;
-    type ItemMut<'a> = <Self as QueryPrimitive>::ItemMut<'a>;
-    type ItMut<'a> = <Self as QueryPrimitive>::ItMut<'a>;
-
-    fn iter(archetype: &EntityTable) -> Self::It<'_> {
-        Self::iter_prim(archetype)
-    }
-
-    fn iter_mut(archetype: &EntityTable) -> Self::ItMut<'_> {
-        Self::iter_prim_mut(archetype)
-    }
-
-    fn fetch(archetype: &EntityTable, index: RowIndex) -> Option<Self::Item<'_>> {
-        Self::fetch_prim(archetype, index)
-    }
-
-    fn fetch_mut(archetype: &EntityTable, index: RowIndex) -> Option<Self::ItemMut<'_>> {
-        Self::fetch_prim_mut(archetype, index)
-    }
-
-    fn contains(archetype: &EntityTable) -> bool {
-        Self::contains_prim(archetype)
-    }
-
-    fn types_mut(set: &mut HashSet<TypeId>) {
-        <Self as QueryPrimitive>::types_mut(set);
-    }
-
-    fn types_const(set: &mut HashSet<TypeId>) {
-        <Self as QueryPrimitive>::types_const(set);
-    }
-
-    unsafe fn fetch_unsafe(
-        archetype: &EntityTable,
-        index: RowIndex,
-    ) -> Option<Self::ItemUnsafe<'_>> {
-        Self::fetch_prim_unsafe(archetype, index)
-    }
-
-    unsafe fn iter_unsafe(archetype: &EntityTable) -> Self::ItUnsafe<'_> {
-        Self::iter_prim_unsafe(archetype)
-    }
-
-    fn read_only() -> bool {
-        <Self as QueryPrimitive>::read_only()
-    }
-
-    fn iter_range(archetype: &EntityTable, range: impl RangeBounds<usize> + Clone) -> Self::It<'_> {
-        <Self as QueryPrimitive>::iter_range_prim(archetype, range)
-    }
-
-    fn iter_range_mut(
-        archetype: &EntityTable,
-        range: impl RangeBounds<usize> + Clone,
-    ) -> Self::ItMut<'_> {
-        <Self as QueryPrimitive>::iter_range_prim_mut(archetype, range)
     }
 }
 
