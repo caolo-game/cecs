@@ -126,7 +126,7 @@ unsafe impl<T, F> Sync for Query<'_, T, F> {}
 
 impl<'a, T, F> WorldQuery<'a> for Query<'a, T, F>
 where
-    ArchQuery<T>: QueryFragment,
+    T: QueryFragment,
     F: Filter,
 {
     fn new(db: &'a World, _system_idx: usize) -> Self {
@@ -134,21 +134,21 @@ where
     }
 
     fn components_mut(set: &mut HashSet<TypeId>) {
-        <ArchQuery<T> as QueryFragment>::types_mut(set);
+        <T as QueryFragment>::types_mut(set);
     }
 
     fn components_const(set: &mut HashSet<TypeId>) {
-        <ArchQuery<T> as QueryFragment>::types_const(set);
+        <T as QueryFragment>::types_const(set);
     }
 
     fn read_only() -> bool {
-        <ArchQuery<T> as QueryFragment>::read_only()
+        <T as QueryFragment>::read_only()
     }
 }
 
 impl<'a, T, F> Query<'a, T, F>
 where
-    ArchQuery<T>: QueryFragment,
+    T: QueryFragment,
     F: Filter,
 {
     pub fn new(world: &'a crate::World) -> Self {
@@ -205,7 +205,7 @@ where
     /// ```
     pub fn subset<'b, T1>(&'b mut self) -> Query<'b, T1, F>
     where
-        ArchQuery<T1>: QueryFragment,
+        T1: QueryFragment,
         'a: 'b,
     {
         #[cfg(debug_assertions)]
@@ -234,7 +234,7 @@ where
                 .as_ref()
                 .archetypes
                 .iter()
-                .filter(|(_, arch)| F::filter(arch) && ArchQuery::<T>::contains(arch))
+                .filter(|(_, arch)| F::filter(arch) && T::contains(arch))
                 .map(|(_, arch)| arch.len())
                 .sum::<usize>()
         }
@@ -246,7 +246,7 @@ where
                 .as_ref()
                 .archetypes
                 .iter()
-                .filter(|(_, arch)| F::filter(arch) && ArchQuery::<T>::contains(arch))
+                .filter(|(_, arch)| F::filter(arch) && T::contains(arch))
                 .all(|(_, arch)| arch.is_empty())
         }
     }
@@ -257,48 +257,46 @@ where
                 .as_ref()
                 .archetypes
                 .iter()
-                .filter(|(_, arch)| F::filter(arch) && ArchQuery::<T>::contains(arch))
+                .filter(|(_, arch)| F::filter(arch) && T::contains(arch))
                 .any(|(_, arch)| !arch.is_empty())
         }
     }
 
-    pub fn single<'b>(&'b self) -> Option<<ArchQuery<T> as QueryFragment>::Item<'a>>
+    pub fn single<'b>(&'b self) -> Option<<T as QueryFragment>::Item<'a>>
     where
         'a: 'b,
     {
         self.iter().next()
     }
 
-    pub fn single_mut<'b>(&'b mut self) -> Option<<ArchQuery<T> as QueryFragment>::ItemMut<'a>>
+    pub fn single_mut<'b>(&'b mut self) -> Option<<T as QueryFragment>::ItemMut<'a>>
     where
         'a: 'b,
     {
         self.iter_mut().next()
     }
 
-    pub fn iter<'b>(
-        &'b self,
-    ) -> impl Iterator<Item = <ArchQuery<T> as QueryFragment>::Item<'a>> + 'b {
+    pub fn iter<'b>(&'b self) -> impl Iterator<Item = <T as QueryFragment>::Item<'a>> + 'b {
         unsafe {
             self.world
                 .as_ref()
                 .archetypes
                 .iter()
                 .filter(|(_, arch)| F::filter(arch))
-                .flat_map(|(_, arch)| ArchQuery::<T>::iter(arch))
+                .flat_map(|(_, arch)| T::iter(arch))
         }
     }
 
     pub fn iter_mut<'b>(
         &'b mut self,
-    ) -> impl Iterator<Item = <ArchQuery<T> as QueryFragment>::ItemMut<'a>> + 'b {
+    ) -> impl Iterator<Item = <T as QueryFragment>::ItemMut<'a>> + 'b {
         unsafe {
             self.world
                 .as_ref()
                 .archetypes
                 .iter()
                 .filter(|(_, arch)| F::filter(arch))
-                .flat_map(|(_, arch)| ArchQuery::<T>::iter_mut(arch))
+                .flat_map(|(_, arch)| T::iter_mut(arch))
         }
     }
 
@@ -308,16 +306,16 @@ where
     /// The top-level system still needs &mut access to the components.
     pub unsafe fn iter_unsafe(
         &'a self,
-    ) -> impl Iterator<Item = <ArchQuery<T> as QueryFragment>::ItemUnsafe<'a>> {
+    ) -> impl Iterator<Item = <T as QueryFragment>::ItemUnsafe<'a>> {
         self.world
             .as_ref()
             .archetypes
             .iter()
             .filter(|(_, arch)| F::filter(arch))
-            .flat_map(|(_, arch)| ArchQuery::<T>::iter_unsafe(arch))
+            .flat_map(|(_, arch)| T::iter_unsafe(arch))
     }
 
-    pub fn fetch<'b>(&'b self, id: EntityId) -> Option<<ArchQuery<T> as QueryFragment>::Item<'b>>
+    pub fn fetch<'b>(&'b self, id: EntityId) -> Option<<T as QueryFragment>::Item<'b>>
     where
         'a: 'b,
     {
@@ -327,14 +325,11 @@ where
                 return None;
             }
 
-            ArchQuery::<T>::fetch(arch.as_ref(), index)
+            T::fetch(arch.as_ref(), index)
         }
     }
 
-    pub fn fetch_mut<'b>(
-        &'b mut self,
-        id: EntityId,
-    ) -> Option<<ArchQuery<T> as QueryFragment>::ItemMut<'b>>
+    pub fn fetch_mut<'b>(&'b mut self, id: EntityId) -> Option<<T as QueryFragment>::ItemMut<'b>>
     where
         'a: 'b,
     {
@@ -344,21 +339,21 @@ where
                 return None;
             }
 
-            ArchQuery::<T>::fetch_mut(arch.as_ref(), index)
+            T::fetch_mut(arch.as_ref(), index)
         }
     }
 
     pub unsafe fn fetch_unsafe(
         &'a self,
         id: EntityId,
-    ) -> Option<<ArchQuery<T> as QueryFragment>::ItemUnsafe<'a>> {
+    ) -> Option<<T as QueryFragment>::ItemUnsafe<'a>> {
         unsafe {
             let (arch, index) = self.world.as_ref().entity_ids().read(id).ok()?;
             if !F::filter(arch.as_ref()) {
                 return None;
             }
 
-            ArchQuery::<T>::fetch_unsafe(arch.as_ref(), index)
+            T::fetch_unsafe(arch.as_ref(), index)
         }
     }
 
@@ -372,21 +367,19 @@ where
                 return false;
             }
 
-            ArchQuery::<T>::contains(arch.as_ref())
+            T::contains(arch.as_ref())
         }
     }
 
     /// fetch the first row of the query
     /// panic if no row was found
-    pub fn one(&'a self) -> <ArchQuery<T> as QueryFragment>::Item<'a> {
+    pub fn one(&'a self) -> <T as QueryFragment>::Item<'a> {
         self.iter().next().unwrap()
     }
 
     #[cfg(feature = "parallel")]
-    pub fn par_for_each<'b>(
-        &'b self,
-        f: impl Fn(<ArchQuery<T> as QueryFragment>::Item<'a>) + Sync + 'b,
-    ) where
+    pub fn par_for_each<'b>(&'b self, f: impl Fn(<T as QueryFragment>::Item<'a>) + Sync + 'b)
+    where
         T: Send + Sync,
     {
         unsafe {
@@ -406,7 +399,7 @@ where
                         // TODO: the job allocator could probably help greatly with these jobs
                         for range in batches(arch.len(), batch_size) {
                             s.spawn(move |_s| {
-                                for t in ArchQuery::<T>::iter_range(arch, range) {
+                                for t in T::iter_range(arch, range) {
                                     f(t);
                                 }
                             })
@@ -419,7 +412,7 @@ where
     #[cfg(feature = "parallel")]
     pub fn par_for_each_mut<'b>(
         &'b mut self,
-        f: impl Fn(<ArchQuery<T> as QueryFragment>::ItemMut<'a>) + Sync + 'b,
+        f: impl Fn(<T as QueryFragment>::ItemMut<'a>) + Sync + 'b,
     ) where
         T: Send + Sync,
     {
@@ -442,7 +435,7 @@ where
                         // TODO: the job allocator could probably help greatly with these jobs
                         for range in batches(arch.len(), batch_size) {
                             s.spawn(move |_s| {
-                                for t in ArchQuery::<T>::iter_range_mut(arch, range) {
+                                for t in T::iter_range_mut(arch, range) {
                                     f(t);
                                 }
                             })
@@ -453,15 +446,12 @@ where
     }
 
     #[cfg(not(feature = "parallel"))]
-    pub fn par_for_each<'b>(&'b self, f: impl Fn(<ArchQuery<T> as QueryFragment>::Item<'a>) + 'b) {
+    pub fn par_for_each<'b>(&'b self, f: impl Fn(<T as QueryFragment>::Item<'a>) + 'b) {
         self.iter().for_each(f);
     }
 
     #[cfg(not(feature = "parallel"))]
-    pub fn par_for_each_mut<'b>(
-        &'b mut self,
-        f: impl Fn(<ArchQuery<T> as QueryFragment>::ItemMut<'a>) + 'b,
-    ) {
+    pub fn par_for_each_mut<'b>(&'b mut self, f: impl Fn(<T as QueryFragment>::ItemMut<'a>) + 'b) {
         self.iter_mut().for_each(f);
     }
 }
@@ -476,10 +466,6 @@ fn batches(len: usize, batch_size: usize) -> impl Iterator<Item = impl RangeBoun
         // last batch if len is not divisible by batch_size
         // otherwise it's an empty range
         .chain(std::iter::once((len - (len % batch_size))..len))
-}
-
-pub struct ArchQuery<T> {
-    _m: PhantomData<T>,
 }
 
 pub trait QueryFragment {
@@ -567,7 +553,7 @@ pub trait QueryPrimitive {
 /// ```
 pub struct Has<T>(PhantomData<T>);
 
-impl<T: Component> QueryPrimitive for ArchQuery<Has<T>> {
+impl<T: Component> QueryPrimitive for Has<T> {
     type ItemUnsafe<'a> = bool;
     type ItUnsafe<'a> = Self::It<'a>;
     type Item<'a> = bool;
@@ -634,7 +620,7 @@ impl<T: Component> QueryPrimitive for ArchQuery<Has<T>> {
     }
 }
 
-impl QueryPrimitive for ArchQuery<EntityId> {
+impl QueryPrimitive for EntityId {
     type ItemUnsafe<'a> = EntityId;
     type ItUnsafe<'a> = std::iter::Copied<std::slice::Iter<'a, EntityId>>;
     type Item<'a> = EntityId;
@@ -700,7 +686,7 @@ impl QueryPrimitive for ArchQuery<EntityId> {
     }
 }
 
-impl QueryPrimitive for ArchQuery<ArchetypeHash> {
+impl QueryPrimitive for ArchetypeHash {
     type ItemUnsafe<'a> = ArchetypeHash;
     type Item<'a> = ArchetypeHash;
     type ItemMut<'a> = ArchetypeHash;
@@ -777,7 +763,7 @@ impl QueryPrimitive for ArchQuery<ArchetypeHash> {
 // Optional query fetch functions return Option<Option<T>> where the outer optional is always Some.
 // This awkward interface is there because of combined queries
 //
-impl<'a, T: Component> QueryPrimitive for ArchQuery<Option<&'a T>> {
+impl<'a, T: Component> QueryPrimitive for Option<&'a T> {
     type ItemUnsafe<'b> = Option<*mut T>;
     type ItUnsafe<'b> = Box<dyn Iterator<Item = Self::ItemUnsafe<'b>> + 'b>;
     type Item<'b> = Option<&'b T>;
@@ -860,7 +846,7 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<Option<&'a T>> {
     }
 }
 
-impl<'a, T: Component> QueryPrimitive for ArchQuery<Option<&'a mut T>> {
+impl<'a, T: Component> QueryPrimitive for Option<&'a mut T> {
     type ItemUnsafe<'b> = Option<*mut T>;
     type ItUnsafe<'b> = Box<dyn Iterator<Item = Self::ItemUnsafe<'b>> + 'b>;
     type Item<'b> = Option<&'b T>;
@@ -956,7 +942,7 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<Option<&'a mut T>> {
     }
 }
 
-impl<'a, T: Component> QueryPrimitive for ArchQuery<&'a T> {
+impl<'a, T: Component> QueryPrimitive for &'a T {
     type ItemUnsafe<'b> = *mut T;
     type ItUnsafe<'b> = Box<dyn Iterator<Item = Self::ItemUnsafe<'b>>>;
     type Item<'b> = &'b T;
@@ -1046,7 +1032,7 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<&'a T> {
     }
 }
 
-impl<'a, T: Component> QueryPrimitive for ArchQuery<&'a mut T> {
+impl<'a, T: Component> QueryPrimitive for &'a mut T {
     type ItemUnsafe<'b> = *mut T;
     type ItUnsafe<'b> = Box<dyn Iterator<Item = *mut T>>;
     type Item<'b> = &'b T;
@@ -1153,9 +1139,9 @@ impl<'a, T: Component> QueryPrimitive for ArchQuery<&'a mut T> {
     }
 }
 
-impl<T> QueryFragment for ArchQuery<T>
+impl<T> QueryFragment for T
 where
-    ArchQuery<T>: QueryPrimitive,
+    T: QueryPrimitive,
 {
     type ItemUnsafe<'a> = <Self as QueryPrimitive>::ItemUnsafe<'a>;
     type ItUnsafe<'a> = <Self as QueryPrimitive>::ItUnsafe<'a>;
@@ -1248,52 +1234,52 @@ macro_rules! impl_tuple {
             }
         }
 
-        impl<$($t,)+> QueryFragment for ArchQuery<($($t,)+)>
+        impl<$($t,)+> QueryFragment for ($($t,)+)
         where
         $(
-            ArchQuery<$t>: QueryPrimitive,
+            $t: QueryPrimitive,
         )+
         {
-            type ItemUnsafe<'a> = ($(<ArchQuery<$t> as QueryPrimitive>::ItemUnsafe<'a>),+);
-            type ItUnsafe<'a> = TupleIterator<($(<ArchQuery<$t> as QueryPrimitive>::ItUnsafe<'a>,)+)>;
-            type Item<'a> = ($(<ArchQuery<$t> as QueryPrimitive>::Item<'a>),+);
-            type It<'a> = TupleIterator<($(<ArchQuery<$t> as QueryPrimitive>::It<'a>,)+)>;
-            type ItemMut<'a> = ($(<ArchQuery<$t> as QueryPrimitive>::ItemMut<'a>),+);
-            type ItMut<'a> = TupleIterator<($(<ArchQuery<$t> as QueryPrimitive>::ItMut<'a>,)+)>;
+            type ItemUnsafe<'a> = ($(<$t as QueryPrimitive>::ItemUnsafe<'a>),+);
+            type ItUnsafe<'a> = TupleIterator<($(<$t as QueryPrimitive>::ItUnsafe<'a>,)+)>;
+            type Item<'a> = ($(<$t as QueryPrimitive>::Item<'a>),+);
+            type It<'a> = TupleIterator<($(<$t as QueryPrimitive>::It<'a>,)+)>;
+            type ItemMut<'a> = ($(<$t as QueryPrimitive>::ItemMut<'a>),+);
+            type ItMut<'a> = TupleIterator<($(<$t as QueryPrimitive>::ItMut<'a>,)+)>;
 
             fn iter(archetype: &EntityTable) -> Self::It<'_>
             {
-                TupleIterator(($( ArchQuery::<$t>::iter(archetype) ),+))
+                TupleIterator(($( $t::iter(archetype) ),+))
             }
 
             fn iter_mut(archetype: &EntityTable) -> Self::ItMut<'_>
             {
-                TupleIterator(($( ArchQuery::<$t>::iter_mut(archetype) ),+))
+                TupleIterator(($( $t::iter_mut(archetype) ),+))
             }
 
             fn iter_range(
                 archetype: &EntityTable,
                 range: impl RangeBounds<usize> + Clone,
             ) -> Self::It<'_> {
-                TupleIterator(($( ArchQuery::<$t>::iter_range(archetype, range.clone()) ),+))
+                TupleIterator(($( $t::iter_range(archetype, range.clone()) ),+))
             }
 
             fn iter_range_mut(
                 archetype: &EntityTable,
                 range: impl RangeBounds<usize> + Clone,
             ) -> Self::ItMut<'_> {
-                TupleIterator(($( ArchQuery::<$t>::iter_range_mut(archetype, range.clone()) ),+))
+                TupleIterator(($( $t::iter_range_mut(archetype, range.clone()) ),+))
             }
 
             unsafe fn iter_unsafe(archetype: &EntityTable) -> Self::ItUnsafe<'_>
             {
-                TupleIterator(($( ArchQuery::<$t>::iter_unsafe(archetype) ),+))
+                TupleIterator(($( $t::iter_unsafe(archetype) ),+))
             }
 
             fn fetch(archetype: &EntityTable, index: RowIndex) -> Option<Self::Item<'_>> {
                 Some((
                     $(
-                        ArchQuery::<$t>::fetch(archetype, index)?,
+                        $t::fetch(archetype, index)?,
                     )*
                 ))
             }
@@ -1301,7 +1287,7 @@ macro_rules! impl_tuple {
             fn fetch_mut(archetype: &EntityTable, index: RowIndex) -> Option<Self::ItemMut<'_>> {
                 Some((
                     $(
-                        ArchQuery::<$t>::fetch_mut(archetype, index)?,
+                        $t::fetch_mut(archetype, index)?,
                     )*
                 ))
             }
@@ -1309,27 +1295,27 @@ macro_rules! impl_tuple {
             unsafe fn fetch_unsafe(archetype: &EntityTable, index: RowIndex) -> Option<Self::ItemUnsafe<'_>> {
                 Some((
                     $(
-                        ArchQuery::<$t>::fetch_unsafe(archetype, index)?,
+                        $t::fetch_unsafe(archetype, index)?,
                     )*
                 ))
             }
 
             fn contains(archetype: &EntityTable) -> bool {
                     $(
-                        ArchQuery::<$t>::contains(archetype)
+                        $t::contains(archetype)
                     )&&*
             }
 
             fn types_mut(set: &mut HashSet<TypeId>) {
-                $(<ArchQuery<$t> as QueryPrimitive>::types_mut(set));+
+                $(<$t as QueryPrimitive>::types_mut(set));+
             }
 
             fn types_const(set: &mut HashSet<TypeId>) {
-                $(<ArchQuery<$t> as QueryPrimitive>::types_const(set));+
+                $(<$t as QueryPrimitive>::types_const(set));+
             }
 
             fn read_only() -> bool {
-                $(<ArchQuery<$t> as QueryPrimitive>::read_only())||+
+                $(<$t as QueryPrimitive>::read_only())||+
             }
         }
     };

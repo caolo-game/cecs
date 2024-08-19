@@ -5,7 +5,7 @@ use std::{any::TypeId, collections::HashSet, marker::PhantomData};
 
 use crate::{
     prelude::{Filter, Query},
-    query::{ArchQuery, QueryFragment, WorldQuery},
+    query::{QueryFragment, WorldQuery},
 };
 
 /// A QuerySet can be used when a system needs multiple, coupled queries.
@@ -61,7 +61,7 @@ macro_rules! impl_tuple {
         impl<'a, $($t, $f),*> QuerySet<($(Query<'a, $t, $f>),*)>
         where
             $(
-            ArchQuery<$t>: QueryFragment,
+            $t: QueryFragment,
             $f: Filter,
             )*
         {
@@ -83,7 +83,7 @@ macro_rules! impl_tuple {
         impl<'a, $($t, $f),*> WorldQuery<'a> for QuerySet<($(Query<'a, $t, $f>),*)>
         where
             $(
-            ArchQuery<$t>: QueryFragment,
+            $t: QueryFragment,
             $f: Filter,
             )*
         {
@@ -100,7 +100,7 @@ macro_rules! impl_tuple {
                 true
                 $(
                     &&
-                    <ArchQuery<$t> as QueryFragment>::read_only()
+                    <$t as QueryFragment>::read_only()
                 )*
             }
 
@@ -110,7 +110,7 @@ macro_rules! impl_tuple {
                 // add the types to the output
                 $(
                     let mut $set = set.clone();
-                    <ArchQuery<$t> as QueryFragment>::types_mut(&mut $set);
+                    <$t as QueryFragment>::types_mut(&mut $set);
                 )*
 
                 $(
@@ -120,7 +120,7 @@ macro_rules! impl_tuple {
 
             fn components_const(set: &mut HashSet<TypeId>) {
                 $(
-                    <ArchQuery<$t> as QueryFragment>::types_const(set);
+                    <$t as QueryFragment>::types_const(set);
                 )*
             }
         }
