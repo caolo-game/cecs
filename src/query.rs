@@ -1237,15 +1237,15 @@ macro_rules! impl_tuple {
         impl<$($t,)+> QueryFragment for ($($t,)+)
         where
         $(
-            $t: QueryPrimitive,
+            $t: QueryFragment,
         )+
         {
-            type ItemUnsafe<'a> = ($(<$t as QueryPrimitive>::ItemUnsafe<'a>),+);
-            type ItUnsafe<'a> = TupleIterator<($(<$t as QueryPrimitive>::ItUnsafe<'a>,)+)>;
-            type Item<'a> = ($(<$t as QueryPrimitive>::Item<'a>),+);
-            type It<'a> = TupleIterator<($(<$t as QueryPrimitive>::It<'a>,)+)>;
-            type ItemMut<'a> = ($(<$t as QueryPrimitive>::ItemMut<'a>),+);
-            type ItMut<'a> = TupleIterator<($(<$t as QueryPrimitive>::ItMut<'a>,)+)>;
+            type ItemUnsafe<'a> = ($(<$t as QueryFragment>::ItemUnsafe<'a>),+);
+            type ItUnsafe<'a> = TupleIterator<($(<$t as QueryFragment>::ItUnsafe<'a>,)+)>;
+            type Item<'a> = ($(<$t as QueryFragment>::Item<'a>),+);
+            type It<'a> = TupleIterator<($(<$t as QueryFragment>::It<'a>,)+)>;
+            type ItemMut<'a> = ($(<$t as QueryFragment>::ItemMut<'a>),+);
+            type ItMut<'a> = TupleIterator<($(<$t as QueryFragment>::ItMut<'a>,)+)>;
 
             fn iter(archetype: &EntityTable) -> Self::It<'_>
             {
@@ -1307,15 +1307,15 @@ macro_rules! impl_tuple {
             }
 
             fn types_mut(set: &mut HashSet<TypeId>) {
-                $(<$t as QueryPrimitive>::types_mut(set));+
+                $(<$t as QueryFragment>::types_mut(set));+
             }
 
             fn types_const(set: &mut HashSet<TypeId>) {
-                $(<$t as QueryPrimitive>::types_const(set));+
+                $(<$t as QueryFragment>::types_const(set));+
             }
 
             fn read_only() -> bool {
-                $(<$t as QueryPrimitive>::read_only())||+
+                $(<$t as QueryFragment>::read_only())||+
             }
         }
     };

@@ -1016,3 +1016,26 @@ fn world_should_not_contain_empty_archetypes() {
 
     assert_eq!(count, 1);
 }
+
+#[test]
+fn nested_tuple_query() {
+    let mut world = World::new(4);
+
+    let id = world.insert_entity();
+
+    world.set_bundle(id, (1i32, 2i64, 3u32, 4u64)).unwrap();
+
+    let i = world.run_view_system(|q: Query<(&i32, (&i64, &u32), &u64)>| {
+        let mut i = 0;
+        for (a, (b, c), d) in q.iter() {
+            assert_eq!(a, &1);
+            assert_eq!(b, &2);
+            assert_eq!(c, &3);
+            assert_eq!(d, &4);
+            i += 1;
+        }
+        i
+    });
+
+    assert_eq!(i, 1);
+}
