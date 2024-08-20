@@ -104,6 +104,15 @@ impl<'a> SystemStage<'a> {
         self.add_system(system);
         self
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// return the number of systems in total in this stage
+    pub fn len(&self) -> usize {
+        self.systems.len() + self.should_run.len()
+    }
 }
 
 #[allow(unused)] // with no feature=parallel most of this struct is unused
