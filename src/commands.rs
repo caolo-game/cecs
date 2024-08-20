@@ -271,9 +271,14 @@ impl EntityCommands {
                 id
             }
             EntityAction::InsertId(id) => {
-                world
-                    .insert_id(id)
-                    .map_err(|_err| WorldError::InsertInvalidId(id))?;
+                if let Err(err) = world.insert_id(id) {
+                    match err {
+                        crate::entity_index::InsertError::Taken(_) => {
+return Err(                            WorldError::InsertInvalidId(id))
+                        }
+                        crate::entity_index::InsertError::AlreadyInserted(_) => { /*ignore*/ }
+                    }
+                }
                 id
             }
             EntityAction::Insert => world.insert_entity(),
