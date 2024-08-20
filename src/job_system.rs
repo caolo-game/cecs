@@ -27,6 +27,14 @@ pub struct JobPool {
 }
 
 impl JobPool {
+    pub fn new(parallelism: NonZeroUsize) -> Self {
+        #[cfg(feature = "tracing")]
+        tracing::debug!(?parallelism, "Initializing new JobPool");
+
+        let inner = Arc::new(Inner::new(parallelism));
+        Self { parallelism, inner }
+    }
+
     pub fn join<RL: Send, RR: Send>(
         &self,
         a: impl FnOnce() -> RL + Send,
@@ -249,11 +257,7 @@ impl Default for JobPool {
             let parallelism =
                 std::thread::available_parallelism().unwrap_or(NonZeroUsize::new_unchecked(1));
 
-            #[cfg(feature = "tracing")]
-            tracing::debug!(?parallelism, "Initializing default JobPool");
-
-            let inner = Arc::new(Inner::new(parallelism));
-            Self { parallelism, inner }
+            Self::new(parallelism)
         }
     }
 }
