@@ -16,7 +16,7 @@ unsafe impl<'a> Sync for Commands<'a> {}
 // used to ensure no duplicate commands are present on a system
 struct CommandSentinel;
 
-impl<'a> WorldQuery<'a> for Commands<'a> {
+unsafe impl<'a> WorldQuery<'a> for Commands<'a> {
     fn new(w: &'a World, system_idx: usize) -> Self {
         Self::new(w, system_idx)
     }

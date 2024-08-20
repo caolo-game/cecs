@@ -15,7 +15,7 @@ use crate::{
 use filters::Filter;
 use std::{any::TypeId, collections::HashSet, marker::PhantomData, ops::RangeBounds, slice};
 
-pub(crate) trait WorldQuery<'a> {
+pub unsafe trait WorldQuery<'a> {
     fn new(db: &'a World, system_idx: usize) -> Self;
 
     /// List of component types this query needs exclusive access to
@@ -124,7 +124,7 @@ pub struct Query<'a, T, F = ()> {
 unsafe impl<T, F> Send for Query<'_, T, F> {}
 unsafe impl<T, F> Sync for Query<'_, T, F> {}
 
-impl<'a, T, F> WorldQuery<'a> for Query<'a, T, F>
+unsafe impl<'a, T, F> WorldQuery<'a> for Query<'a, T, F>
 where
     T: QueryFragment,
     F: Filter,

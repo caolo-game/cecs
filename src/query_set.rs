@@ -80,7 +80,7 @@ macro_rules! impl_tuple {
             )*
         }
 
-        impl<'a, $($t, $f),*> WorldQuery<'a> for QuerySet<($(Query<'a, $t, $f>),*)>
+        unsafe impl<'a, $($t, $f),*> WorldQuery<'a> for QuerySet<($(Query<'a, $t, $f>),*)>
         where
             $(
             $t: QueryFragment,
