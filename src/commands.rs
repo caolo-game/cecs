@@ -83,6 +83,20 @@ impl<'a> Commands<'a> {
         }
     }
 
+    /// Take a pre-made id and insert into the world
+    /// Will cause an error if the id slot is taken
+    pub fn insert_id(&mut self, id: EntityId) -> &mut EntityCommands {
+        unsafe {
+            let cmd = &mut *self.cmd.get();
+            cmd.push(CommandPayload::Entity(EntityCommands {
+                world: self.world,
+                action: EntityAction::InsertId(id),
+                payload: Vec::default(),
+            }));
+            cmd.last_mut().unwrap().entity_mut()
+        }
+    }
+
     pub fn spawn(&mut self) -> &mut EntityCommands {
         unsafe {
             let cmd = &mut *self.cmd.get();
@@ -164,6 +178,7 @@ pub(crate) fn sort_commands(cmd: &mut [CommandPayload]) {
     };
     let action_ty = |c: &EntityAction| match c {
         EntityAction::Init(_) => 0,
+        EntityAction::InsertId(_) => 0,
         EntityAction::Insert => 0,
         EntityAction::Fetch(_) => 1,
         EntityAction::Merge { .. } => 1,
@@ -211,6 +226,7 @@ enum EntityAction {
     /// Like fetch, but initialize the id first
     /// Insert actions can become Init actions if the id is requested
     Init(EntityId),
+    InsertId(EntityId),
     Insert,
     Delete(EntityId),
     Merge {
@@ -227,7 +243,10 @@ impl EntityCommands {
     /// `id()`
     pub fn id(&mut self) -> Result<EntityId, crate::entity_index::HandleTableError> {
         match self.action {
-            EntityAction::Init(id) | EntityAction::Fetch(id) | EntityAction::Delete(id) => Ok(id),
+            EntityAction::InsertId(id)
+            | EntityAction::Init(id)
+            | EntityAction::Fetch(id)
+            | EntityAction::Delete(id) => Ok(id),
             EntityAction::Insert => unsafe {
                 let world = &*self.world;
                 let _guard = world.this_lock.lock();
@@ -249,6 +268,12 @@ impl EntityCommands {
                 }
                 // ensure entity buffer growth
                 world.reserve_entities(1);
+                id
+            }
+            EntityAction::InsertId(id) => {
+                world
+                    .insert_id(id)
+                    .map_err(|_err| WorldError::InsertInvalidId(id))?;
                 id
             }
             EntityAction::Insert => world.insert_entity(),
@@ -388,7 +413,9 @@ impl<T: Component> ComponentCommand<T> {
                 if let Err(err) = world.remove_component::<T>(entity_id) {
                     match err {
                         WorldError::ComponentNotFound => { /*ignore*/ }
-                        WorldError::OutOfCapacity | WorldError::EntityNotFound => return Err(err),
+                        WorldError::InsertInvalidId(_)
+                        | WorldError::OutOfCapacity
+                        | WorldError::EntityNotFound => return Err(err),
                     }
                 }
             }

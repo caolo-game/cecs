@@ -136,6 +136,8 @@ pub enum WorldError {
     EntityNotFound,
     #[error("Entity doesn't have specified component")]
     ComponentNotFound,
+    #[error("Inserted id ({0}) is invalid and can not be inserted")]
+    InsertInvalidId(EntityId),
 }
 
 pub type WorldResult<T> = Result<T, WorldError>;
