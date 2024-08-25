@@ -36,6 +36,13 @@ pub unsafe trait WorldQuery<'a> {
     }
 }
 
+unsafe impl<'a> WorldQuery<'a> for () {
+    fn new(_db: &'a World, _system_idx: usize) -> Self {}
+    fn read_only() -> bool {
+        true
+    }
+}
+
 #[derive(Default)]
 pub struct QueryProperties {
     pub exclusive: bool,

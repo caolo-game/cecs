@@ -217,12 +217,49 @@ impl<'a, R> AsJob for SystemJob<'a, R> {
     }
 }
 
+// empty function implementations
+// would conflict with the macro below if I tried to include them so duplicating it is
+impl<'a, R, F> IntoSystem<'a, (), R> for F
+where
+    F: Fn() -> R + 'static + Copy,
+{
+    fn descriptor(self) -> SystemDescriptor<'a, R> {
+        let factory: Box<dyn Fn() -> Box<InnerSystem<'a, R>>> =
+            Box::new(move || Box::new(move |_world: &'a World, _system_idx| (self)()));
+        SystemDescriptor {
+            id: TypeId::of::<F>(),
+            name: std::any::type_name::<F>().into(),
+            components_mut: Box::new(HashSet::new),
+            resources_mut: Box::new(HashSet::new),
+            components_const: Box::new(HashSet::new),
+            resources_const: Box::new(HashSet::new),
+            exclusive: Box::new(|| false),
+            read_only: Box::new(|| true),
+            factory,
+            after: HashSet::new(),
+        }
+    }
+}
+
+impl<'a, R: 'static, F> IntoOnceSystem<'a, (), R> for F
+where
+    F: FnOnce() -> R,
+{
+    fn into_once_system(self) -> impl FnOnce(&World, usize) -> R {
+        move |_world: &World, _system_idx| (self)()
+    }
+    fn descriptor() -> SystemDescriptor<'a, R> {
+        let dummy: fn() -> R = || unreachable!();
+        dummy.descriptor()
+    }
+}
+
 macro_rules! impl_intosys_fn {
     ($($t: ident),* $(,)*) => {
         #[allow(unused_parens)]
         #[allow(unused_mut)]
         impl<'a, R, F, $($t: WorldQuery<'a> + 'static,)*>
-            IntoSystem<'a, ($($t),*), R> for F
+            IntoSystem<'a, ($($t),*,), R> for F
         where
             F: Fn($($t),*) -> R + 'static + Copy,
         {
@@ -286,7 +323,7 @@ macro_rules! impl_intosys_fn {
         #[allow(unused_parens)]
         #[allow(unused_mut)]
         impl<'a, R: 'static, F, $($t: WorldQuery<'a> + 'static,)*>
-            IntoOnceSystem<'a, ($($t),*), R> for F
+            IntoOnceSystem<'a, ($($t),*,), R> for F
         where
             F: FnOnce($($t),*) -> R,
         {
@@ -305,7 +342,7 @@ macro_rules! impl_intosys_fn {
     };
 }
 
-impl_intosys_fn!();
+// impl_intosys_fn!();
 impl_intosys_fn!(Q0);
 impl_intosys_fn!(Q0, Q1);
 impl_intosys_fn!(Q0, Q1, Q2);
