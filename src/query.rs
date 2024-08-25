@@ -1231,6 +1231,42 @@ macro_rules! impl_tuple {
                 $(<$t as QueryFragment>::read_only())&&+
             }
         }
+
+        unsafe impl<'a, $($t,)+> WorldQuery<'a> for ($($t,)+)
+        where
+            $(
+                $t: WorldQuery<'a>,
+            )+
+        {
+            fn new(db: &'a World, system_idx: usize) -> Self {
+                (
+                    $(
+                    <$t as WorldQuery>::new(db, system_idx),
+                    )+
+                )
+            }
+
+            fn exclusive() -> bool {
+                $(<$t as WorldQuery>::exclusive())||+
+            }
+
+            fn read_only() -> bool {
+                $(<$t as WorldQuery>::read_only())&&+
+            }
+
+            fn resources_const(_set: &mut HashSet<TypeId>) {
+                $(<$t as WorldQuery>::resources_const(_set));+
+            }
+            fn resources_mut(_set: &mut HashSet<TypeId>) {
+                $(<$t as WorldQuery>::resources_mut(_set));+
+            }
+            fn components_const(_set: &mut HashSet<TypeId>) {
+                $(<$t as WorldQuery>::components_const(_set));+
+            }
+            fn components_mut(_set: &mut HashSet<TypeId>) {
+                $(<$t as WorldQuery>::components_mut(_set));+
+            }
+        }
     };
 }
 

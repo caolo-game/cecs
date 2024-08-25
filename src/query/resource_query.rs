@@ -156,3 +156,23 @@ unsafe impl<'a, T: 'static> WorldQuery<'a> for Option<ResMut<'a, T>> {
         set.insert(TypeId::of::<T>());
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::World;
+
+    use super::*;
+
+    #[test]
+    fn test_tuple_resource_query() {
+        let mut world = World::new(4);
+
+        world.insert_resource(1i32);
+        world.insert_resource(2u32);
+
+        world.run_view_system(|(i, u): (Res<i32>, Res<u32>)| {
+            assert_eq!(*i, 1);
+            assert_eq!(*u, 2);
+        });
+    }
+}

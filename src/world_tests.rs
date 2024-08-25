@@ -1039,3 +1039,29 @@ fn nested_tuple_query() {
 
     assert_eq!(i, 1);
 }
+
+#[test]
+fn tuple_queries() {
+    let mut world = World::new(4);
+
+    let id = world.insert_entity();
+
+    world.set_bundle(id, (1i32, 2i64, 3u32, 4u64)).unwrap();
+
+    world.insert_resource(42i32);
+
+    let i = world.run_view_system(|(q, r): (Query<(&i32, (&i64, &u32), &u64)>, Res<i32>)| {
+        let mut i = 0;
+        for (a, (b, c), d) in q.iter() {
+            assert_eq!(a, &1);
+            assert_eq!(b, &2);
+            assert_eq!(c, &3);
+            assert_eq!(d, &4);
+            i += 1;
+        }
+        assert_eq!(*r, 42);
+        i
+    });
+
+    assert_eq!(i, 1);
+}
