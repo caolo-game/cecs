@@ -1228,7 +1228,7 @@ macro_rules! impl_tuple {
             }
 
             fn read_only() -> bool {
-                $(<$t as QueryFragment>::read_only())||+
+                $(<$t as QueryFragment>::read_only())&&+
             }
         }
     };
