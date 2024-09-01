@@ -179,7 +179,6 @@ where
     ///
     /// Panics if an invariant no longer holds.
     ///
-    /// TODO: Allow extending filter
     /// TODO: Can we avoid the unique borrow of the parent Query?
     ///
     ///
@@ -201,7 +200,7 @@ where
     ///
     /// let mut q = Query::<(EntityId, &mut A, &mut B, &C)>::new(&world);
     ///
-    /// let sub: Query<(&A, &C, EntityId)> = unsafe { q.subset() };
+    /// let sub: Query<(&A, &C, EntityId)> = q.subset();
     ///
     /// let mut count = 0;
     /// for (_a, _c, id) in sub.iter() {
@@ -232,6 +231,39 @@ where
             assert!(lhs.is_subset(&rhs));
         }
         unsafe { Query::<'b, T1, F>::new(self.world.as_ref()) }
+    }
+
+    /// Restrict this Query with an additional filter
+    /// ```
+    /// use cecs::prelude::*;
+    /// # #[derive(Clone, Copy)]
+    /// # struct A;
+    /// # #[derive(Clone, Copy)]
+    /// # struct B;
+    ///
+    /// let mut world = World::new(4);
+    ///
+    /// let e = world.insert_entity();
+    /// world.run_system(move |mut cmd: Commands| {
+    ///     cmd.entity(e).insert_bundle((A, B));
+    /// });
+    ///
+    /// let mut q = Query::<(EntityId, &mut A)>::new(&world);
+    ///
+    /// let sub = q.with_filter::<WithOut<B>>();
+    ///
+    /// let mut count = 0;
+    /// for _ in sub.iter() {
+    ///     count += 1;
+    /// }
+    /// assert_eq!(count, 0);
+    /// ```
+    pub fn with_filter<'b, F1>(&'b mut self) -> Query<'b, T, (F, F1)>
+    where
+        F1: Filter,
+        'a: 'b,
+    {
+        unsafe { Query::<'b, T, (F, F1)>::new(self.world.as_ref()) }
     }
 
     /// Count the number of entities this query spans
