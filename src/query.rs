@@ -15,6 +15,9 @@ use crate::{
 use filters::Filter;
 use std::{any::TypeId, collections::HashSet, marker::PhantomData, ops::RangeBounds, slice};
 
+/// # SAFETY
+///
+/// Implementors must ensure that the appropriate methods are implemented!
 pub unsafe trait WorldQuery<'a> {
     fn new(db: &'a World, system_idx: usize) -> Self;
 
