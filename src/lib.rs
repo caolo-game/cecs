@@ -53,6 +53,7 @@ pub struct World {
     archetypes_staging: BTreeMap<TypeHash, Pin<Box<EntityTable>>>,
     pub(crate) resources: ResourceStorage,
     pub(crate) commands: Vec<UnsafeBuffer<CommandPayload>>,
+    pub(crate) commands_buffer: Vec<CommandPayload>,
     pub(crate) system_stages: Vec<SystemStage<'static>>,
     #[cfg(feature = "parallel")]
     pub(crate) schedule: Vec<scheduler::Schedule>,
@@ -70,6 +71,7 @@ impl Clone for World {
         // pointers
         let mut archetypes = self.archetypes.clone();
         let commands = Vec::default();
+        let commands_buffer = Vec::default();
 
         let mut entity_ids = self.entity_ids().clone();
         for id in prelude::Query::<EntityId>::new(self).iter() {
@@ -96,6 +98,7 @@ impl Clone for World {
             archetypes,
             archetypes_staging: Default::default(),
             commands,
+            commands_buffer,
             resources,
             system_stages: systems,
             #[cfg(feature = "parallel")]
@@ -177,6 +180,7 @@ impl World {
             archetypes_staging: Default::default(),
             resources: ResourceStorage::new(),
             commands: Vec::default(),
+            commands_buffer: Vec::default(),
             system_stages: Default::default(),
             #[cfg(feature = "parallel")]
             schedule: Default::default(),
@@ -220,16 +224,18 @@ impl World {
         #[cfg(feature = "tracing")]
         tracing::trace!("Running commands");
 
-        // TODO: retain this buffer?
-        let mut commands: Vec<_> = self
-            .commands
-            .iter_mut()
-            .flat_map(|cmd| cmd.get_mut().drain(..))
-            .collect();
+        self.commands_buffer.clear();
+        let mut commands = std::mem::take(&mut self.commands_buffer);
+        commands.extend(
+            self.commands
+                .iter_mut()
+                .flat_map(|cmd| cmd.get_mut().drain(..)),
+        );
         sort_commands(&mut commands);
-        for cmd in commands {
+        for cmd in commands.drain(..) {
             cmd.apply(self)?;
         }
+        self.commands_buffer = commands;
 
         // move archetypes based on content
         // empty archetypes go to staging
