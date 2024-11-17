@@ -345,7 +345,7 @@ impl Executor {
             // thread would sleep
             let mut fails = 0;
             loop {
-                while fails < 32 {
+                while fails < 8 {
                     match self.run_once() {
                         Err(_) => {
                             fails += 1;
