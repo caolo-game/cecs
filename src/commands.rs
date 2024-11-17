@@ -274,7 +274,7 @@ impl EntityCommands {
                 if let Err(err) = world.insert_id(id) {
                     match err {
                         crate::entity_index::InsertError::Taken(_) => {
-return Err(                            WorldError::InsertInvalidId(id))
+                            return Err(WorldError::InsertInvalidId(id))
                         }
                         crate::entity_index::InsertError::AlreadyInserted(_) => { /*ignore*/ }
                     }
