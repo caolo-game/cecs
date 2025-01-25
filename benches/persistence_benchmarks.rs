@@ -77,6 +77,21 @@ fn benchmark_loading(c: &mut Criterion) {
                 black_box(&world);
             });
         });
+
+        group.bench_with_input(BenchmarkId::new("json", n), &n, |b, _n| {
+            let mut payload = Vec::<u8>::new();
+            let mut s = serde_json::ser::Serializer::new(&mut payload);
+            persister.save(&mut s, &world).unwrap();
+            b.iter(|| {
+                let world = persister
+                    .load(&mut serde_json::Deserializer::from_slice(
+                        payload.as_slice(),
+                    ))
+                    .unwrap();
+
+                black_box(&world);
+            });
+        });
     }
 }
 
