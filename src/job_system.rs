@@ -898,6 +898,8 @@ where
 mod tests {
     use std::sync::Mutex;
 
+    use crate::{query::Query, World};
+
     use super::*;
 
     #[test]
@@ -977,5 +979,43 @@ mod tests {
         futures_lite::future::block_on(handle);
 
         assert_eq!(*result.lock().unwrap(), 42);
+    }
+
+    #[test]
+    fn test_optional_par_iter() {
+        let mut world = World::new(1024);
+
+        world
+            .run_system(|mut cmd: crate::prelude::Commands| {
+                for i in 0..1024 {
+                    let cmd = cmd.spawn().insert("foo");
+                    if i % 2 == 0 {
+                        cmd.insert(i);
+                    }
+                }
+            })
+            .unwrap();
+
+        world
+            .run_stage(
+                crate::prelude::SystemStage::new("test")
+                    .with_system(|q: Query<(&i32, Option<&&'static str>)>| {
+                        let count = AtomicIsize::new(0);
+                        q.par_for_each(|_| {
+                            count.fetch_add(1, Ordering::Relaxed);
+                        });
+
+                        assert_eq!(count.load(Ordering::Relaxed), 512);
+                    })
+                    .with_system(|mut q: Query<(&mut i32, Option<&mut &'static str>)>| {
+                        let count = AtomicIsize::new(0);
+                        q.par_for_each_mut(|_| {
+                            count.fetch_add(1, Ordering::Relaxed);
+                        });
+
+                        assert_eq!(count.load(Ordering::Relaxed), 512);
+                    }),
+            )
+            .unwrap();
     }
 }
