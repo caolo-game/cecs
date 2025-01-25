@@ -841,14 +841,14 @@ impl<'a, T: Component> QueryFragment for Option<&'a T> {
     }
 
     fn iter_range(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::It<'_> {
+        let len = archetype.len();
+        let range = slice::range(range, ..len);
         match archetype.components.get(&TypeId::of::<T>()) {
             Some(columns) => unsafe {
                 let col = (&*columns.get()).as_slice::<T>();
-                let len = col.len();
-                let range = slice::range(range, ..len);
                 Box::new(col[range].iter().map(Some))
             },
-            None => Box::new((0..archetype.rows).map(|_| None)),
+            None => Box::new(range.into_iter().map(|_| None)),
         }
     }
 
@@ -929,14 +929,14 @@ impl<'a, T: Component> QueryFragment for Option<&'a mut T> {
     }
 
     fn iter_range(archetype: &EntityTable, range: impl RangeBounds<usize>) -> Self::It<'_> {
+        let len = archetype.len();
+        let range = slice::range(range, ..len);
         match archetype.components.get(&TypeId::of::<T>()) {
             Some(columns) => unsafe {
-                let col = (&mut *columns.get()).as_slice::<T>();
-                let len = col.len();
-                let range = slice::range(range, ..len);
+                let col = (&*columns.get()).as_slice::<T>();
                 Box::new(col[range].iter().map(Some))
             },
-            None => Box::new((0..archetype.rows).map(|_| None)),
+            None => Box::new(range.into_iter().map(|_| None)),
         }
     }
 
@@ -944,14 +944,14 @@ impl<'a, T: Component> QueryFragment for Option<&'a mut T> {
         archetype: &EntityTable,
         range: impl RangeBounds<usize> + Clone,
     ) -> Self::ItMut<'_> {
+        let len = archetype.len();
+        let range = slice::range(range, ..len);
         match archetype.components.get(&TypeId::of::<T>()) {
             Some(columns) => unsafe {
                 let col = (&mut *columns.get()).as_slice_mut::<T>();
-                let len = col.len();
-                let range = slice::range(range, ..len);
                 Box::new(col[range].iter_mut().map(Some))
             },
-            None => Box::new((0..archetype.rows).map(|_| None)),
+            None => Box::new(range.into_iter().map(|_| None)),
         }
     }
 }
