@@ -95,5 +95,5 @@ fn benchmark_loading(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, benchmark_loading);
-criterion_main!(benches);
+criterion_group!(persister_benches, benchmark_loading);
+criterion_main!(persister_benches);
