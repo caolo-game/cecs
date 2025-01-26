@@ -1,5 +1,6 @@
 pub use crate::bundle::Bundle;
 pub use crate::commands::Commands;
+pub use crate::commands::EntityCommands;
 pub use crate::entity_id::EntityId;
 pub use crate::query::{filters::*, resource_query::*, Has, Query};
 pub use crate::query_set::QuerySet;
