@@ -12,13 +12,16 @@ macro_rules! components {
         struct $x (pub [u8; 32]);
         )*
 
-        fn add_entity(cmd: &mut Commands) {
-            cmd.spawn()
+        fn add_entity<'a>(cmd: &'a mut Commands) -> &'a mut EntityCommands {
+            let mut cmd = cmd.spawn();
             $(
-                .insert(
-                    $x([42; 32])
-                )
-            )*;
+                if fastrand::bool() {
+                    cmd = cmd.insert(
+                        $x([42; 32])
+                    );
+                }
+            )*
+            cmd
         }
 
     };
@@ -30,17 +33,21 @@ components!(
     C41, C42, C43, C44, C45, C46, C47, C48, C49, C50
 );
 
+#[derive(Clone, Copy)]
+struct TestComponent(pub u64);
+
 fn benchmark_iter(c: &mut Criterion) {
+    fastrand::seed(0xdeadbeef);
     let mut group = c.benchmark_group("query");
 
-    for n in (1..15).step_by(3) {
+    for n in (10..=14).step_by(2) {
         let n = 1 << n;
         let mut world = World::new(n);
 
         world
             .run_system(|mut cmd: Commands| {
                 for _ in 0..n {
-                    add_entity(&mut cmd);
+                    add_entity(&mut cmd).insert(TestComponent(0));
                 }
             })
             .unwrap();
@@ -48,10 +55,9 @@ fn benchmark_iter(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("mutate-single-serial", n), &n, |b, _n| {
             b.iter(|| {
                 world
-                    .run_system(|mut q: Query<&mut C1>| {
+                    .run_system(|mut q: Query<&mut TestComponent>| {
                         for c in q.iter_mut() {
-                            c.0[12] = 0xBE;
-                            c.0[13] = 0xEF;
+                            c.0 = 0xBEEF;
                         }
                     })
                     .unwrap();
@@ -66,10 +72,9 @@ fn benchmark_iter(c: &mut Criterion) {
             |b, _n| {
                 b.iter(|| {
                     world
-                        .run_system(|mut q: Query<&mut C1>| {
+                        .run_system(|mut q: Query<&mut TestComponent>| {
                             q.par_for_each_mut(|c| {
-                                c.0[12] = 0xBE;
-                                c.0[13] = 0xEF;
+                                c.0 = 0xBEEF;
                             });
                         })
                         .unwrap();
