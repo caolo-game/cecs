@@ -46,7 +46,7 @@ components!(
 );
 
 fn benchmark_loading(c: &mut Criterion) {
-    let mut group = c.benchmark_group("persister");
+    let mut group = c.benchmark_group("persister-loading");
 
     for n in [100, 200, 500, 1000] {
         let mut world = World::new(1024);
@@ -95,5 +95,43 @@ fn benchmark_loading(c: &mut Criterion) {
     }
 }
 
-criterion_group!(persister_benches, benchmark_loading);
+fn benchmark_saving(c: &mut Criterion) {
+    let mut group = c.benchmark_group("persister-saving");
+
+    for n in [100, 200, 500, 1000] {
+        let mut world = World::new(1024);
+
+        let persister = persister();
+
+        world
+            .run_system(|mut cmd: Commands| {
+                for _ in 0..n {
+                    add_entity(&mut cmd);
+                }
+            })
+            .unwrap();
+
+        group.bench_with_input(BenchmarkId::new("bincode", n), &n, |b, _n| {
+            let mut payload = Vec::<u8>::new();
+            b.iter(|| {
+                payload.clear();
+                let mut s =
+                    bincode::Serializer::new(&mut payload, bincode::config::DefaultOptions::new());
+                persister.save(&mut s, &world).unwrap();
+                black_box(&payload);
+            });
+        });
+
+        group.bench_with_input(BenchmarkId::new("json", n), &n, |b, _n| {
+            let mut payload = Vec::<u8>::new();
+            b.iter(|| {
+                let mut s = serde_json::ser::Serializer::new(&mut payload);
+                persister.save(&mut s, &world).unwrap();
+                black_box(&payload);
+            });
+        });
+    }
+}
+
+criterion_group!(persister_benches, benchmark_loading, benchmark_saving);
 criterion_main!(persister_benches);
