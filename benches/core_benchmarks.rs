@@ -96,18 +96,27 @@ fn benchmark_queries(c: &mut Criterion) {
 fn benchmark_systems(c: &mut Criterion) {
     let mut group = c.benchmark_group("system_stages");
 
-    let mut world = World::new(16);
-    world.add_stage(make_stage());
-
     group.bench_function("tick", |b| {
+        let mut world = World::new(16);
+        world.add_stage(make_stage());
         b.iter(|| {
             world.tick();
         });
     });
 
-    group.bench_function("new_stage", |b| {
-        b.iter(|| {
-            world.run_stage(make_stage()).unwrap();
+    group.bench_function("reuse-stage", |b| {
+        let mut world = World::new(16);
+        let mut stage = make_stage();
+        b.iter(move || {
+            stage = world.run_stage(std::mem::take(&mut stage)).unwrap();
+        });
+    });
+
+    group.bench_function("clone-stage", |b| {
+        let mut world = World::new(16);
+        let stage = make_stage();
+        b.iter(move || {
+            world.run_stage(stage.clone()).unwrap();
         });
     });
 }

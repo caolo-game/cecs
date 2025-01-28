@@ -32,7 +32,7 @@ pub fn sort_systems<T>(sys: &mut [ErasedSystem<T>]) {
     });
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct SystemStage<'a> {
     pub name: String,
     pub should_run: SystemStorage<ErasedSystem<'a, bool>>,

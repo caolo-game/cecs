@@ -529,8 +529,8 @@ impl World {
 
     /// Run a single stage withouth adding it to the World
     ///
-    /// Return the command result
-    pub fn run_stage(&mut self, stage: SystemStage<'_>) -> WorldResult<()> {
+    /// Return the command result and the stage that was ran, so the stage can be reused
+    pub fn run_stage<'a>(&mut self, stage: SystemStage<'a>) -> RunStageReturn<'a> {
         #[cfg(feature = "tracing")]
         tracing::trace!(stage_name = stage.name.as_str(), "Update stage");
 
@@ -554,10 +554,17 @@ impl World {
         self.execute_stage(i);
 
         // pop the stage after execution, one-shot stages are not stored
-        self.system_stages.pop();
+        let stage = self.system_stages.pop().unwrap();
+
+        // # SAFETY
+        // revert the lifetime change, give back control to the caller
+        let stage = unsafe { transmute::<SystemStage, SystemStage>(stage) };
+
         #[cfg(feature = "parallel")]
         self.schedule.pop();
-        self.apply_commands()
+
+        let res = self.apply_commands();
+        RunStageReturn { stage, result: res }
     }
 
     /// Run a system and apply any commands before returning
@@ -881,4 +888,21 @@ unsafe fn run_system<'a, R>(world: &'a World, sys: &'a systems::ErasedSystem<'_,
     let execute: &systems::InnerSystem<'_, R> = { transmute(sys.execute.as_ref()) };
 
     (execute)(world, index)
+}
+
+pub struct RunStageReturn<'a> {
+    pub stage: SystemStage<'a>,
+    pub result: WorldResult<()>,
+}
+
+impl<'a> RunStageReturn<'a> {
+    pub fn unwrap(self) -> SystemStage<'a> {
+        self.result.unwrap();
+        self.stage
+    }
+
+    pub fn expect(self, msg: &str) -> SystemStage<'a> {
+        self.result.expect(msg);
+        self.stage
+    }
 }
