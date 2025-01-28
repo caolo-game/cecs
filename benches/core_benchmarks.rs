@@ -24,6 +24,13 @@ macro_rules! components {
             cmd
         }
 
+        fn make_stage() -> SystemStage<'static> {
+            SystemStage::new("test")
+            $(
+                .with_system(move |_q: Query<&mut $x>| {})
+            )*
+        }
+
     };
 }
 
@@ -36,7 +43,7 @@ components!(
 #[derive(Clone, Copy)]
 struct TestComponent(pub u64);
 
-fn benchmark_iter(c: &mut Criterion) {
+fn benchmark_queries(c: &mut Criterion) {
     fastrand::seed(0xdeadbeef);
     let mut group = c.benchmark_group("query");
 
@@ -86,5 +93,25 @@ fn benchmark_iter(c: &mut Criterion) {
     }
 }
 
-criterion_group!(query_benches, benchmark_iter);
-criterion_main!(query_benches);
+fn benchmark_systems(c: &mut Criterion) {
+    let mut group = c.benchmark_group("system_stages");
+
+    let mut world = World::new(16);
+    world.add_stage(make_stage());
+
+    group.bench_function("tick", |b| {
+        b.iter(|| {
+            world.tick();
+        });
+    });
+
+    group.bench_function("new_stage", |b| {
+        b.iter(|| {
+            world.run_stage(make_stage()).unwrap();
+        });
+    });
+}
+
+criterion_group!(query_benches, benchmark_queries);
+criterion_group!(systems_benches, benchmark_systems);
+criterion_main!(query_benches, systems_benches);

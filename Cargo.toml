@@ -47,5 +47,5 @@ name = "persistence_benchmarks"
 harness = false
 required-features = ["serde"]
 [[bench]]
-name = "query_benchmarks"
+name = "core_benchmarks"
 harness = false
