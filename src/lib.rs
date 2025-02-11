@@ -55,8 +55,11 @@ pub struct World {
     pub(crate) commands: Vec<UnsafeBuffer<CommandPayload>>,
     pub(crate) commands_buffer: Vec<CommandPayload>,
     pub(crate) system_stages: Vec<SystemStage<'static>>,
+
+    /// 1 schedule for each system_stage
     #[cfg(feature = "parallel")]
     pub(crate) schedule: Vec<scheduler::Schedule>,
+
     #[cfg(feature = "parallel")]
     pub job_system: job_system::JobPool,
 }
