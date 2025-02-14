@@ -1,7 +1,7 @@
 use commands::Commands;
 use world_access::WorldAccess;
 
-use crate::prelude::ResMut;
+use crate::prelude::{IntoSystem as _, ResMut};
 use crate::query::resource_query::Res;
 use crate::query::{filters::WithOut, Query};
 use crate::table::ArchetypeHash;
@@ -305,8 +305,6 @@ fn world_execute_systems_test() {
         }
     }
 
-    // FIXME: i'd like to be able to specify queries like this,
-    // without using the same lifetime for all tuple items
     fn sys0(mut q: Query<(&mut Foo, &())>) {
         for (foo, _) in q.iter_mut() {
             foo.value = 42;
@@ -322,17 +320,7 @@ fn world_execute_systems_test() {
     world.add_stage(
         SystemStage::new("many_systems")
             .with_system(sys0)
-            .with_system(assert_sys)
-            .with_system(assert_sys)
-            .with_system(assert_sys)
-            .with_system(assert_sys)
-            .with_system(assert_sys)
-            .with_system(assert_sys)
-            .with_system(assert_sys)
-            .with_system(assert_sys)
-            .with_system(assert_sys)
-            .with_system(assert_sys)
-            .with_system(assert_sys)
+            .with_system(assert_sys.after(sys0))
             .build(),
     );
 
@@ -341,12 +329,7 @@ fn world_execute_systems_test() {
     world.run_system(assert_sys).unwrap();
 
     world
-        .run_stage(
-            SystemStage::new("")
-                .with_system(assert_sys)
-                .with_system(assert_sys)
-                .build(),
-        )
+        .run_stage(SystemStage::new("").with_system(assert_sys).build())
         .unwrap();
 }
 

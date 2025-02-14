@@ -16,20 +16,22 @@ type SystemStorage<T> = Vec<T>;
 pub fn sorted_systems<'a, T>(
     sys: impl IntoIterator<Item = ErasedSystem<'a, T>>,
 ) -> Vec<ErasedSystem<'a, T>> {
-    let mut it = sys.into_iter();
-
-    let Some(first) = it.next() else {
-        return Vec::default();
-    };
-
     // TODO: allow the same system id to appear multiple times?
-    let mut systems: FxHashMap<_, _> = it.map(|s| (s.descriptor.id, s)).collect();
-    let id = first.descriptor.id;
-    systems.insert(id, first);
+    let mut systems = FxHashMap::default();
+    for s in sys.into_iter() {
+        // ensure unique keys even if there are duplicate systems
+        let _r = systems.insert(s.descriptor.id, s);
+        assert!(
+            _r.is_none(),
+            "Currently duplicate systems are not allowed in a single stage"
+        );
+    }
     let mut res = Vec::with_capacity(systems.len());
     let mut pending = FxHashSet::default();
 
-    _extend_sorted_systems(id, &mut systems, &mut res, &mut pending);
+    while let Some(id) = systems.keys().next().copied() {
+        _extend_sorted_systems(id, &mut systems, &mut res, &mut pending);
+    }
     res
 }
 
