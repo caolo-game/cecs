@@ -38,7 +38,7 @@ fn _extend_sorted_systems<'a, T>(
     out: &mut Vec<ErasedSystem<'a, T>>,
 ) {
     let Some(sys) = systems.remove(&id) else {
-        panic!("System not found. You may have created circular dependencies");
+        return;
     };
 
     for id in sys.descriptor.after.iter().copied() {
