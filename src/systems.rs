@@ -1,6 +1,7 @@
 use std::{any::TypeId, collections::HashSet, ptr::NonNull, sync::Arc};
 
 use cfg_if::cfg_if;
+use rustc_hash::FxHashMap;
 
 #[cfg(feature = "parallel")]
 use crate::job_system::{AsJob, ExecutionState};
@@ -12,24 +13,40 @@ pub type ShouldRunSystem<'a> = InnerSystem<'a, bool>;
 
 type SystemStorage<T> = Vec<T>;
 
-pub fn sort_systems<T>(sys: &mut [ErasedSystem<T>]) {
-    sys.sort_unstable_by(|a, b| {
-        let aid = a.descriptor.id;
-        let bid = b.descriptor.id;
-        assert!(
-            !(a.descriptor.after.contains(&bid) && b.descriptor.after.contains(&aid)),
-            "ambigous ordering between {} {}",
-            a.descriptor.name,
-            b.descriptor.name
-        );
-        if a.descriptor.after.contains(&bid) {
-            std::cmp::Ordering::Greater
-        } else if b.descriptor.after.contains(&aid) {
-            std::cmp::Ordering::Less
-        } else {
-            std::cmp::Ordering::Equal
-        }
-    });
+pub fn sorted_systems<'a, T>(
+    sys: impl IntoIterator<Item = ErasedSystem<'a, T>>,
+) -> Vec<ErasedSystem<'a, T>> {
+    let mut it = sys.into_iter();
+
+    let Some(first) = it.next() else {
+        return Vec::default();
+    };
+    let mut todo = Vec::new();
+    todo.push(first.descriptor.id);
+
+    // TODO: allow the same system id to appear multiple times?
+    let mut systems: FxHashMap<_, _> = it.map(|s| (s.descriptor.id, s)).collect();
+    let id = first.descriptor.id;
+    systems.insert(id, first);
+    let mut res = Vec::with_capacity(systems.len());
+
+    _extend_sorted_systems(id, &mut systems, &mut res);
+    res
+}
+
+fn _extend_sorted_systems<'a, T>(
+    id: TypeId,
+    systems: &mut FxHashMap<TypeId, ErasedSystem<'a, T>>,
+    out: &mut Vec<ErasedSystem<'a, T>>,
+) {
+    let Some(sys) = systems.remove(&id) else {
+        panic!("System not found. You may have created circular dependencies");
+    };
+
+    for id in sys.descriptor.after.iter().copied() {
+        _extend_sorted_systems(id, systems, out);
+    }
+    out.push(sys);
 }
 
 #[derive(Clone, Default)]
@@ -41,8 +58,8 @@ pub struct SystemStage<'a> {
 
 impl<'a> SystemStage<'a> {
     pub fn sort(&mut self) {
-        sort_systems(&mut self.systems);
-        sort_systems(&mut self.should_run);
+        self.systems = sorted_systems(self.systems.drain(..));
+        self.should_run = sorted_systems(self.should_run.drain(..));
     }
 
     pub fn new<N: Into<String>>(name: N) -> Self {
