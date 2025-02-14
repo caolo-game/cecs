@@ -842,6 +842,11 @@ fn par_ordering_test() {
         .run_stage(
             SystemStage::new("")
                 .with_system(sys1.after(sys0))
+                .with_system(move || {})
+                .with_system(move || {})
+                .with_system(move || {})
+                .with_system(move || {})
+                .with_system(move || {})
                 .with_system(sys0)
                 .build(),
         )
