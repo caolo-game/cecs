@@ -16,7 +16,7 @@ pub struct Schedule {
 }
 
 impl Schedule {
-    pub fn from_stage(stage: &mut SystemStage) -> Self {
+    pub fn from_stage(stage: &SystemStage) -> Self {
         let systems = &stage.systems;
 
         let mut res = Self {

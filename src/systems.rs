@@ -51,7 +51,7 @@ fn _extend_sorted_systems<'a, T>(
 
 #[derive(Clone, Default)]
 pub struct SystemStage<'a> {
-    pub(crate) name: String,
+    pub name: String,
     pub(crate) should_run: SystemStorage<ErasedSystem<'a, bool>>,
     pub(crate) systems: SystemStorage<ErasedSystem<'a, ()>>,
 }
@@ -64,11 +64,11 @@ pub struct SystemStageBuilder<'a> {
 }
 
 impl<'a> SystemStageBuilder<'a> {
-    pub fn build(mut self) -> SystemStage<'a> {
+    pub fn build(self) -> SystemStage<'a> {
         SystemStage {
             name: self.name,
-            systems: sorted_systems(self.systems.drain(..)),
-            should_run: sorted_systems(self.should_run.drain(..)),
+            systems: sorted_systems(self.systems.into_iter()),
+            should_run: sorted_systems(self.should_run.into_iter()),
         }
     }
 

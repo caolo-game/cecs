@@ -517,13 +517,11 @@ impl World {
     pub fn add_stage(&mut self, stage: SystemStage<'_>) {
         // # SAFETY
         // lifetimes are managed by the World instance from now
-        let mut stage: SystemStage = unsafe { transmute(stage) };
+        let stage: SystemStage = unsafe { transmute(stage) };
         cfg_if!(
             if #[cfg(feature = "parallel")] {
                 self.schedule
-                    .push(scheduler::Schedule::from_stage(&mut stage));
-            } else {
-                stage.sort();
+                    .push(scheduler::Schedule::from_stage(&stage));
             }
         );
 
@@ -540,15 +538,13 @@ impl World {
         let i = self.system_stages.len();
         // # SAFETY
         // lifetimes are managed by the World instance from now
-        let mut stage = unsafe { transmute::<SystemStage, SystemStage>(stage) };
+        let stage = unsafe { transmute::<SystemStage, SystemStage>(stage) };
 
         // move stage into the world
         cfg_if!(
             if #[cfg(feature = "parallel")] {
                 self.schedule
-                    .push(scheduler::Schedule::from_stage(&mut stage));
-            } else {
-                stage.sort();
+                    .push(scheduler::Schedule::from_stage(&stage));
             }
         );
 
