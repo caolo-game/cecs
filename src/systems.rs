@@ -21,8 +21,6 @@ pub fn sorted_systems<'a, T>(
     let Some(first) = it.next() else {
         return Vec::default();
     };
-    let mut todo = Vec::new();
-    todo.push(first.descriptor.id);
 
     // TODO: allow the same system id to appear multiple times?
     let mut systems: FxHashMap<_, _> = it.map(|s| (s.descriptor.id, s)).collect();
