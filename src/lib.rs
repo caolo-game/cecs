@@ -535,7 +535,6 @@ impl World {
         #[cfg(feature = "tracing")]
         tracing::trace!(stage_name = stage.name.as_str(), "Update stage");
 
-        let i = self.system_stages.len();
         // # SAFETY
         // lifetimes are managed by the World instance from now
         let stage = unsafe { transmute::<SystemStage, SystemStage>(stage) };
@@ -548,19 +547,21 @@ impl World {
             }
         );
 
+        let i = self.system_stages.len();
         self.system_stages.push(stage);
-
         self.execute_stage(i);
 
         // pop the stage after execution, one-shot stages are not stored
-        let stage = self.system_stages.pop().unwrap();
+        // systems with WorldAccess may add further systems to the World, so use remove instead of
+        // pop()
+        let stage = self.system_stages.remove(i);
 
         // # SAFETY
         // revert the lifetime change, give back control to the caller
         let stage = unsafe { transmute::<SystemStage, SystemStage>(stage) };
 
         #[cfg(feature = "parallel")]
-        self.schedule.pop();
+        self.schedule.remove(i);
 
         let res = self.apply_commands();
         RunStageReturn { stage, result: res }
