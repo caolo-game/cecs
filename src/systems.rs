@@ -51,15 +51,25 @@ fn _extend_sorted_systems<'a, T>(
 
 #[derive(Clone, Default)]
 pub struct SystemStage<'a> {
+    pub(crate) name: String,
+    pub(crate) should_run: SystemStorage<ErasedSystem<'a, bool>>,
+    pub(crate) systems: SystemStorage<ErasedSystem<'a, ()>>,
+}
+
+#[derive(Clone, Default)]
+pub struct SystemStageBuilder<'a> {
     pub name: String,
     pub should_run: SystemStorage<ErasedSystem<'a, bool>>,
     pub systems: SystemStorage<ErasedSystem<'a, ()>>,
 }
 
-impl<'a> SystemStage<'a> {
-    pub fn sort(&mut self) {
-        self.systems = sorted_systems(self.systems.drain(..));
-        self.should_run = sorted_systems(self.should_run.drain(..));
+impl<'a> SystemStageBuilder<'a> {
+    pub fn build(mut self) -> SystemStage<'a> {
+        SystemStage {
+            name: self.name,
+            systems: sorted_systems(self.systems.drain(..)),
+            should_run: sorted_systems(self.should_run.drain(..)),
+        }
     }
 
     pub fn new<N: Into<String>>(name: N) -> Self {
@@ -129,6 +139,21 @@ impl<'a> SystemStage<'a> {
     /// return the number of systems in total in this stage
     pub fn len(&self) -> usize {
         self.systems.len() + self.should_run.len()
+    }
+}
+
+impl<'a> SystemStage<'a> {
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// return the number of systems in total in this stage
+    pub fn len(&self) -> usize {
+        self.systems.len() + self.should_run.len()
+    }
+
+    pub fn new<N: Into<String>>(name: N) -> SystemStageBuilder<'a> {
+        SystemStageBuilder::new(name)
     }
 }
 

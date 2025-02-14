@@ -1014,7 +1014,8 @@ mod tests {
                         });
 
                         assert_eq!(count.load(Ordering::Relaxed), 512);
-                    }),
+                    })
+                    .build(),
             )
             .unwrap();
     }

@@ -6,7 +6,7 @@ use smallvec::SmallVec;
 use crate::{
     job_system::HomogeneousJobGraph,
     query::QueryProperties,
-    systems::{sorted_systems, ErasedSystem, SystemJob, SystemStage},
+    systems::{ErasedSystem, SystemJob, SystemStage},
     World,
 };
 
@@ -17,11 +17,8 @@ pub struct Schedule {
 
 impl Schedule {
     pub fn from_stage(stage: &mut SystemStage) -> Self {
-        Self::from_systems(&mut stage.systems)
-    }
+        let systems = &stage.systems;
 
-    pub fn from_systems<'a, T>(systems: &mut Vec<ErasedSystem<'a, T>>) -> Self {
-        *systems = sorted_systems(systems.drain(..));
         let mut res = Self {
             parents: Vec::with_capacity(systems.len()),
         };

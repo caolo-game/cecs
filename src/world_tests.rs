@@ -332,7 +332,8 @@ fn world_execute_systems_test() {
             .with_system(assert_sys)
             .with_system(assert_sys)
             .with_system(assert_sys)
-            .with_system(assert_sys),
+            .with_system(assert_sys)
+            .build(),
     );
 
     world.tick();
@@ -343,7 +344,8 @@ fn world_execute_systems_test() {
         .run_stage(
             SystemStage::new("")
                 .with_system(assert_sys)
-                .with_system(assert_sys),
+                .with_system(assert_sys)
+                .build(),
         )
         .unwrap();
 }
@@ -366,14 +368,16 @@ fn can_skip_stage_test() {
         .run_stage(
             SystemStage::new("instant-run")
                 .with_should_run(should_not_run)
-                .with_system(system),
+                .with_system(system)
+                .build(),
         )
         .unwrap();
 
     world.add_stage(
         SystemStage::new("tick-run")
             .with_should_run(should_not_run)
-            .with_system(system),
+            .with_system(system)
+            .build(),
     );
 
     world.tick();
@@ -511,7 +515,7 @@ fn mutating_world_inside_system_test() {
     fn mutation(mut access: WorldAccess) {
         let w = access.world_mut();
         for _ in 0..100 {
-            w.add_stage(SystemStage::new("kekw").with_system(|| {}));
+            w.add_stage(SystemStage::new("kekw").with_system(|| {}).build());
         }
         for _ in 0..5 {
             let id = w.insert_entity();
@@ -526,7 +530,7 @@ fn mutating_world_inside_system_test() {
     }
 
     let mut world = World::new(100);
-    world.add_stage(SystemStage::new("monka").with_system(mutation));
+    world.add_stage(SystemStage::new("monka").with_system(mutation).build());
 
     world.tick();
     world.tick();
@@ -838,7 +842,8 @@ fn par_ordering_test() {
         .run_stage(
             SystemStage::new("")
                 .with_system(sys1.after(sys0))
-                .with_system(sys0),
+                .with_system(sys0)
+                .build(),
         )
         .unwrap();
 
@@ -874,7 +879,8 @@ fn serial_ordering_test() {
         .run_stage(
             SystemStage::new("")
                 .with_system(sys1.after(sys0))
-                .with_system(sys0),
+                .with_system(sys0)
+                .build(),
         )
         .unwrap();
 
