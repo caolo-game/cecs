@@ -72,8 +72,8 @@ impl<'a> SystemStageBuilder<'a> {
     pub fn build(self) -> SystemStage<'a> {
         SystemStage {
             name: self.name,
-            systems: sorted_systems(self.systems.into_iter()),
-            should_run: sorted_systems(self.should_run.into_iter()),
+            systems: sorted_systems(self.systems),
+            should_run: sorted_systems(self.should_run),
         }
     }
 
