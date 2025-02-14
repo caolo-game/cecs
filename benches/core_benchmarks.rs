@@ -29,6 +29,7 @@ macro_rules! components {
             $(
                 .with_system(move |_q: Query<&mut $x>| {})
             )*
+            .build()
         }
 
     };
