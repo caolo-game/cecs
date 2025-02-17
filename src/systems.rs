@@ -1,7 +1,7 @@
 use std::{any::TypeId, collections::HashSet, ptr::NonNull, sync::Arc};
 
 use cfg_if::cfg_if;
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 
 #[cfg(feature = "parallel")]
 use crate::job_system::{AsJob, ExecutionState};
@@ -27,7 +27,7 @@ pub fn sorted_systems<'a, T>(
         );
     }
     let mut res = Vec::with_capacity(systems.len());
-    let mut pending = FxHashSet::default();
+    let mut pending = Vec::default();
 
     while let Some(id) = systems.keys().next().copied() {
         _extend_sorted_systems(id, &mut systems, &mut res, &mut pending);
@@ -39,18 +39,17 @@ fn _extend_sorted_systems<'a, T>(
     id: TypeId,
     systems: &mut FxHashMap<TypeId, ErasedSystem<'a, T>>,
     out: &mut Vec<ErasedSystem<'a, T>>,
-    pending: &mut FxHashSet<TypeId>,
+    pending: &mut Vec<TypeId>,
 ) {
     assert!(!pending.contains(&id), "Circular dependencies detected");
     let Some(sys) = systems.remove(&id) else {
         return;
     };
-    pending.insert(id);
-
+    pending.push(id);
     for id in sys.descriptor.after.iter().copied() {
         _extend_sorted_systems(id, systems, out, pending);
     }
-    pending.remove(&id);
+    pending.pop();
     out.push(sys);
 }
 
