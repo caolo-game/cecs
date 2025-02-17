@@ -23,19 +23,19 @@ pub fn sorted_systems<'a, T>(
         let _r = systems.insert(s.descriptor.id, s);
         assert!(
             _r.is_none(),
-            "Currently duplicate systems are not allowed in a single stage"
+            "Currently, duplicate systems are not allowed in a single stage"
         );
     }
     let mut res = Vec::with_capacity(systems.len());
     let mut pending = Vec::default();
 
     while let Some(id) = systems.keys().next().copied() {
-        _extend_sorted_systems(id, &mut systems, &mut res, &mut pending);
+        extend_sorted_systems(id, &mut systems, &mut res, &mut pending);
     }
     res
 }
 
-fn _extend_sorted_systems<'a, T>(
+fn extend_sorted_systems<'a, T>(
     id: TypeId,
     systems: &mut FxHashMap<TypeId, ErasedSystem<'a, T>>,
     out: &mut Vec<ErasedSystem<'a, T>>,
@@ -47,7 +47,7 @@ fn _extend_sorted_systems<'a, T>(
     };
     pending.push(id);
     for id in sys.descriptor.after.iter().copied() {
-        _extend_sorted_systems(id, systems, out, pending);
+        extend_sorted_systems(id, systems, out, pending);
     }
     pending.pop();
     out.push(sys);
