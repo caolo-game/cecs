@@ -209,6 +209,8 @@ impl<'a, R> Clone for ErasedSystem<'a, R> {
 pub trait IntoSystem<'a, Param, R> {
     fn descriptor(self) -> SystemDescriptor<'a, R>;
     /// Order this system after another system
+    /// Note that if the systems have no conflicting queries, then they may still execute in
+    /// parallel
     fn after<'b, P, R2>(self, rhs: impl IntoSystem<'b, P, R2>) -> SystemDescriptor<'a, R>
     where
         Self: Sized,
