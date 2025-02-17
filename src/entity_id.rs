@@ -63,7 +63,7 @@ impl Default for EntityId {
 
 impl std::fmt::Debug for EntityId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "EntityId({})={}", self.0, self)
+        write!(f, "{self}")
     }
 }
 
