@@ -18,8 +18,11 @@ pub fn sorted_systems<'a, T>(
 ) -> Vec<ErasedSystem<'a, T>> {
     // TODO: allow the same system id to appear multiple times?
     let mut systems = FxHashMap::default();
+    // preserve the original order if no other ordering requirement is present
+    let mut systemids = Vec::new();
     for s in sys.into_iter() {
         // ensure unique keys even if there are duplicate systems
+        systemids.push(s.descriptor.id);
         let _r = systems.insert(s.descriptor.id, s);
         assert!(
             _r.is_none(),
@@ -29,7 +32,7 @@ pub fn sorted_systems<'a, T>(
     let mut res = Vec::with_capacity(systems.len());
     let mut pending = Vec::default();
 
-    while let Some(id) = systems.keys().next().copied() {
+    for id in systemids {
         extend_sorted_systems(id, &mut systems, &mut res, &mut pending);
     }
     res
