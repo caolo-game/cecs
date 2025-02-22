@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod test;
+
 use std::{any::TypeId, collections::HashSet, ptr::NonNull, sync::Arc};
 
 use cfg_if::cfg_if;
