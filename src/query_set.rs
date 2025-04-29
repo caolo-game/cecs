@@ -122,6 +122,17 @@ macro_rules! impl_tuple {
                 $(
                     <$t as QueryFragment>::types_const(set);
                 )*
+                // remove mutable components from the const compoennts
+                let mut mutable_components = HashSet::new();
+                let mut tmp = HashSet::new();
+                $(
+                    tmp.clear();
+                    // types_mut may check the set for duplicate components, so always pass an
+                    // empty set here
+                    <$t as QueryFragment>::types_mut(&mut tmp);
+                    mutable_components.extend(tmp.drain());
+                )*
+                set.retain(|t| !mutable_components.contains(t));
             }
         }
     };

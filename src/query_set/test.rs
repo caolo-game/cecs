@@ -59,3 +59,18 @@ fn triplet_query_set_test() {
 
     world.run_system(sys).unwrap();
 }
+
+#[test]
+fn allow_borrowing_the_same_component_in_multiple_queries() {
+    // should not panic
+    //
+    fn sys<'a>(_q: QuerySet<(Query<'a, &'a mut Foo>, Query<'a, &'a Foo>)>) {}
+
+    let mut world = World::new(4);
+
+    let e = world.insert_entity();
+    world.set_component(e, Foo::default()).unwrap();
+    world.set_component(e, Bar).unwrap();
+
+    world.run_system(sys).unwrap();
+}
