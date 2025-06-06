@@ -167,6 +167,77 @@ where
     }
 }
 
+fn save_impl<T: Component + Serialize, S: serde::Serializer>(
+    ty: SerTy,
+    s: &mut S::SerializeMap,
+    world: &World,
+) -> Result<(), S::Error> {
+    let tname = entry_name::<T>(ty);
+
+    #[cfg(feature = "tracing")]
+    tracing::trace!(name = &tname, "Serializing");
+    match ty {
+        SerTy::Component => {
+            // TODO: save iterator or adapter pls
+            let values: Vec<(EntityId, &T)> = Query::<(EntityId, &T)>::new(world)
+                .iter()
+                .inspect(|(_id, _)| {
+                    #[cfg(feature = "tracing")]
+                    tracing::trace!(id = tracing::field::display(_id), "Serializing entity");
+                })
+                .collect();
+            s.serialize_entry(&tname, &values)?;
+        }
+        SerTy::Resource => {
+            if let Some(value) = world.get_resource::<T>() {
+                s.serialize_entry(&tname, value)?;
+            }
+        }
+        SerTy::Noop => {}
+    }
+    #[cfg(feature = "tracing")]
+    tracing::trace!(name = &tname, "Serializing done");
+    Ok(())
+}
+
+fn visit_map_value_impl<'de, A, T: Component + DeserializeOwned>(
+    ty: SerTy,
+    map: &mut A,
+    world: &mut World,
+) -> Result<(), A::Error>
+where
+    A: serde::de::MapAccess<'de>,
+{
+    let tname = entry_name::<T>(ty);
+    #[cfg(feature = "tracing")]
+    tracing::trace!(name = &tname, "Deserializing");
+    match ty {
+        SerTy::Component => {
+            let values: Vec<(EntityId, T)> = map.next_value()?;
+            #[cfg(feature = "tracing")]
+            tracing::trace!("Got {} entries", values.len());
+            for (id, value) in values {
+                if !world.is_id_valid(id) {
+                    #[cfg(feature = "tracing")]
+                    tracing::trace!("Inserting id {id}");
+                    world.insert_id(id).unwrap();
+                }
+                world.set_component(id, value).unwrap();
+            }
+        }
+        SerTy::Resource => {
+            let value: T = map.next_value()?;
+            world.insert_resource(value);
+        }
+        SerTy::Noop => {}
+    }
+
+    #[cfg(feature = "tracing")]
+    tracing::trace!(name = &tname, "Deserializing done");
+
+    Ok(())
+}
+
 impl<T: Component + Serialize + DeserializeOwned, P> WorldSerializer for WorldPersister<T, P>
 where
     P: WorldSerializer,
@@ -192,32 +263,8 @@ where
         s: &mut S::SerializeMap,
         world: &World,
     ) -> Result<(), S::Error> {
-        let tname = entry_name::<T>(self.ty);
+        save_impl::<T, S>(self.ty, s, world)?;
 
-        #[cfg(feature = "tracing")]
-        tracing::trace!(name = &tname, "Serializing");
-
-        match self.ty {
-            SerTy::Component => {
-                // TODO: save iterator or adapter pls
-                let values: Vec<(EntityId, &T)> = Query::<(EntityId, &T)>::new(world)
-                    .iter()
-                    .inspect(|(_id, _)| {
-                        #[cfg(feature = "tracing")]
-                        tracing::trace!(id = tracing::field::display(_id), "Serializing entity");
-                    })
-                    .collect();
-                s.serialize_entry(&tname, &values)?;
-            }
-            SerTy::Resource => {
-                if let Some(value) = world.get_resource::<T>() {
-                    s.serialize_entry(&tname, value)?;
-                }
-            }
-            SerTy::Noop => {}
-        }
-        #[cfg(feature = "tracing")]
-        tracing::trace!(name = &tname, "Serializing done");
         if let Some(p) = self.next.as_ref() {
             p.save_entry::<S>(s, world)?;
         }
@@ -249,35 +296,12 @@ where
             if let Some(next) = &self.next {
                 next.visit_map_value(key, map, world)?;
             }
+            // missing deserializaers are not an error,
+            // this lets clients add additional data into persistent payloads
+            // or ignore obsolete types
             return Ok(());
         }
-        #[cfg(feature = "tracing")]
-        tracing::trace!(name = &tname, "Deserializing");
-        match self.ty {
-            SerTy::Component => {
-                let values: Vec<(EntityId, T)> = map.next_value()?;
-                #[cfg(feature = "tracing")]
-                tracing::trace!("Got {} entries", values.len());
-                for (id, value) in values {
-                    if !world.is_id_valid(id) {
-                        #[cfg(feature = "tracing")]
-                        tracing::trace!("Inserting id {id}");
-                        world.insert_id(id).unwrap();
-                    }
-                    world.set_component(id, value).unwrap();
-                }
-            }
-            SerTy::Resource => {
-                let value: T = map.next_value()?;
-                world.insert_resource(value);
-            }
-            SerTy::Noop => {}
-        }
-
-        #[cfg(feature = "tracing")]
-        tracing::trace!(name = &tname, "Deserializing done");
-
-        Ok(())
+        return visit_map_value_impl::<A, T>(self.ty, map, world);
     }
 }
 
