@@ -208,9 +208,9 @@ fn visit_map_value_impl<'de, A, T: Component + DeserializeOwned>(
 where
     A: serde::de::MapAccess<'de>,
 {
-    let tname = entry_name::<T>(ty);
+    let _tname = entry_name::<T>(ty);
     #[cfg(feature = "tracing")]
-    tracing::trace!(name = &tname, "Deserializing");
+    tracing::trace!(name = &_tname, "Deserializing");
     match ty {
         SerTy::Component => {
             let values: Vec<(EntityId, T)> = map.next_value()?;
@@ -233,7 +233,7 @@ where
     }
 
     #[cfg(feature = "tracing")]
-    tracing::trace!(name = &tname, "Deserializing done");
+    tracing::trace!(name = &_tname, "Deserializing done");
 
     Ok(())
 }
