@@ -207,7 +207,7 @@ impl World {
         for id in prelude::Query::<EntityId>::new(self).iter() {
             let (arch, _row_index) = self.entity_ids().read(id).unwrap();
             let ty = unsafe { arch.as_ref().ty() };
-            write!(w, "{}: {}, ", id, ty)?;
+            write!(w, "{id}: {ty}, ")?;
         }
         Ok(())
     }
@@ -798,7 +798,7 @@ impl World {
         let dst_arch = self
             .archetypes
             .entry(dst_hash)
-            .or_insert_with(|| Box::pin(rhs_archetype.merged(&lhs_archetype)));
+            .or_insert_with(|| Box::pin(rhs_archetype.merged(lhs_archetype)));
         // move rhs components to the dst
         //
         let (dst_index, moved) = rhs_archetype.move_entity(dst_arch, rhs_index);
