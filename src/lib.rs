@@ -120,19 +120,16 @@ const fn hash_ty<T: 'static>() -> TypeHash {
 }
 
 const fn hash_type_id(ty: TypeId) -> TypeHash {
-    // FIXME extreme curse
-    //
-    debug_assert!(std::mem::size_of::<TypeId>() == std::mem::size_of::<TypeHash>());
-    let ty: TypeHash = unsafe { transmute(ty) };
-    if ty == unsafe { transmute::<_, TypeHash>(TypeId::of::<()>()) } {
+    let hash: TypeHash = unsafe { transmute(ty) };
+    if hash == unsafe { transmute::<_, TypeHash>(TypeId::of::<()>()) } {
         // ensure that unit type has hash=0
         0
     } else {
-        ty
+        hash
     }
 }
 
-pub const VOID_TY: TypeHash = hash_ty::<()>();
+pub const VOID_TY: TypeHash = 0;
 
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum WorldError {
@@ -683,7 +680,7 @@ impl World {
             arch.as_ref()
                 .components
                 .keys()
-                .filter(|k| (k != &&TypeId::of::<()>()))
+                .filter(|k| k != &&TypeId::of::<()>())
                 .copied()
                 .collect()
         })
