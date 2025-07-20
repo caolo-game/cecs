@@ -73,6 +73,12 @@ pub struct SystemStageBuilder<'a> {
     pub systems: SystemStorage<ErasedSystem<'a, ()>>,
 }
 
+impl<'a> Into<SystemStage<'a>> for SystemStageBuilder<'a> {
+    fn into(self) -> SystemStage<'a> {
+        self.build()
+    }
+}
+
 impl<'a> SystemStageBuilder<'a> {
     pub fn build(self) -> SystemStage<'a> {
         SystemStage {

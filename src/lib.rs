@@ -511,57 +511,63 @@ impl World {
     }
 
     /// System stages are executed in the order they were added to the World
-    pub fn add_stage(&mut self, stage: SystemStage<'_>) {
-        // # SAFETY
-        // lifetimes are managed by the World instance from now
-        let stage: SystemStage = unsafe { transmute(stage) };
-        cfg_if!(
-            if #[cfg(feature = "parallel")] {
-                self.schedule
-                    .push(scheduler::Schedule::from_stage(&stage));
-            }
-        );
+    pub fn add_stage<'a>(&mut self, stage: impl Into<SystemStage<'a>>) {
+        fn _add_stage(this: &mut World, stage: SystemStage<'_>) {
+            // # SAFETY
+            // lifetimes are managed by the World instance from now
+            let stage: SystemStage = unsafe { transmute(stage) };
+            cfg_if!(
+                if #[cfg(feature = "parallel")] {
+                    this.schedule
+                        .push(scheduler::Schedule::from_stage(&stage));
+                }
+            );
 
-        self.system_stages.push(stage);
+            this.system_stages.push(stage);
+        }
+        _add_stage(self, stage.into())
     }
 
     /// Run a single stage withouth adding it to the World
     ///
     /// Return the command result and the stage that was ran, so the stage can be reused
-    pub fn run_stage<'a>(&mut self, stage: SystemStage<'a>) -> RunStageReturn<'a> {
-        #[cfg(feature = "tracing")]
-        tracing::trace!(stage_name = stage.name.as_str(), "Update stage");
+    pub fn run_stage<'a>(&mut self, stage: impl Into<SystemStage<'a>>) -> RunStageReturn<'a> {
+        fn _run_stage<'a>(this: &mut World, stage: SystemStage<'a>) -> RunStageReturn<'a> {
+            #[cfg(feature = "tracing")]
+            tracing::trace!(stage_name = stage.name.as_str(), "Update stage");
 
-        // # SAFETY
-        // lifetimes are managed by the World instance from now
-        let stage = unsafe { transmute::<SystemStage, SystemStage>(stage) };
+            // # SAFETY
+            // lifetimes are managed by the World instance from now
+            let stage = unsafe { transmute::<SystemStage, SystemStage>(stage) };
 
-        // move stage into the world
-        cfg_if!(
-            if #[cfg(feature = "parallel")] {
-                self.schedule
-                    .push(scheduler::Schedule::from_stage(&stage));
-            }
-        );
+            // move stage into the world
+            cfg_if!(
+                if #[cfg(feature = "parallel")] {
+                    this.schedule
+                        .push(scheduler::Schedule::from_stage(&stage));
+                }
+            );
 
-        let i = self.system_stages.len();
-        self.system_stages.push(stage);
-        self.execute_stage(i);
+            let i = this.system_stages.len();
+            this.system_stages.push(stage);
+            this.execute_stage(i);
 
-        // pop the stage after execution, one-shot stages are not stored
-        // systems with WorldAccess may add further systems to the World, so use remove instead of
-        // pop()
-        let stage = self.system_stages.remove(i);
+            // pop the stage after execution, one-shot stages are not stored
+            // systems with WorldAccess may add further systems to the World, so use remove instead of
+            // pop()
+            let stage = this.system_stages.remove(i);
 
-        // # SAFETY
-        // revert the lifetime change, give back control to the caller
-        let stage = unsafe { transmute::<SystemStage, SystemStage>(stage) };
+            // # SAFETY
+            // revert the lifetime change, give back control to the caller
+            let stage = unsafe { transmute::<SystemStage, SystemStage>(stage) };
 
-        #[cfg(feature = "parallel")]
-        self.schedule.remove(i);
+            #[cfg(feature = "parallel")]
+            this.schedule.remove(i);
 
-        let res = self.apply_commands();
-        RunStageReturn { stage, result: res }
+            let res = this.apply_commands();
+            RunStageReturn { stage, result: res }
+        }
+        _run_stage(self, stage.into())
     }
 
     /// Run a system and apply any commands before returning
