@@ -51,7 +51,8 @@ impl ResourceStorage {
             .map(|table| unsafe { (*table.get()).as_inner::<T>() })
     }
 
-    pub fn fetch_mut<T: 'static>(&self) -> Option<&mut T> {
+    /// # SAFETY caller must ensure that no mutable aliasing happens to the value
+    pub unsafe fn fetch_mut<T: 'static>(&self) -> Option<&mut T> {
         self.resources
             .get(&TypeId::of::<T>())
             .map(|table| unsafe { (*table.get()).as_inner_mut::<T>() })

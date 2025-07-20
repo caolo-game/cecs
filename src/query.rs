@@ -902,7 +902,7 @@ impl<'a, T: Component> QueryFragment for Option<&'a mut T> {
     }
 
     fn fetch_mut(archetype: &EntityTable, index: RowIndex) -> Option<Self::ItemMut<'_>> {
-        Some(archetype.get_component_mut::<T>(index))
+        Some(unsafe { archetype.get_component_mut::<T>(index) })
     }
 
     unsafe fn fetch_unsafe(
@@ -1093,7 +1093,7 @@ impl<'a, T: Component> QueryFragment for &'a mut T {
     }
 
     fn fetch_mut(archetype: &EntityTable, index: RowIndex) -> Option<Self::ItemMut<'_>> {
-        archetype.get_component_mut::<T>(index)
+        unsafe { archetype.get_component_mut::<T>(index) }
     }
 
     unsafe fn fetch_unsafe(

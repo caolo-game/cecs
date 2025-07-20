@@ -65,7 +65,7 @@ pub struct ResMut<'a, T> {
 
 impl<'a, T: 'static> ResMut<'a, T> {
     pub fn new(world: &'a crate::World) -> Self {
-        let inner = match world.resources.fetch_mut() {
+        let inner = match unsafe { world.resources.fetch_mut() } {
             Some(inner) => inner,
             None => {
                 panic!(
@@ -141,7 +141,7 @@ unsafe impl<'a, T: 'static> WorldQuery<'a> for Option<Res<'a, T>> {
 
 unsafe impl<'a, T: 'static> WorldQuery<'a> for Option<ResMut<'a, T>> {
     fn new(world: &'a crate::World, _system_idx: usize) -> Self {
-        let inner = world.resources.fetch_mut();
+        let inner = unsafe { world.resources.fetch_mut() };
         inner.map(|inner| ResMut {
             inner,
             _m: PhantomData,

@@ -35,13 +35,12 @@ impl Schedule {
         history.reserve(systems.len() - 1);
         res.parents.push(Default::default());
         debug_assert!(systems[0].descriptor.after.is_empty(), "bad ordering");
-        for i in 1..systems.len() {
-            let sys = &systems[i];
+        for (i, sys) in systems.iter().enumerate().skip(1) {
             let props = QueryProperties::from_system(&sys.descriptor);
             res.parents.push(Default::default());
 
-            for j in 0..i {
-                if !props.is_disjoint(&history[j]) {
+            for (j, history) in history.iter().enumerate().take(i) {
+                if !props.is_disjoint(history) {
                     res.parents[i].push(j);
                 }
             }

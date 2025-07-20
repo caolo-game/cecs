@@ -103,8 +103,7 @@ impl JobPool {
                 0 => init(),
                 1 => {
                     let res = list[0].result.get();
-                    let res = (&mut *res).take().unwrap();
-                    res
+                    (&mut *res).take().unwrap()
                 }
                 _ => {
                     if max_depth > 0 {
@@ -287,7 +286,7 @@ impl Drop for Inner {
 }
 
 thread_local! {
-    static THREAD_INDEX: UnsafeCell<usize> = UnsafeCell::new(0);
+    static THREAD_INDEX: UnsafeCell<usize> = const { UnsafeCell::new(0) };
 }
 
 // FIXME: should have a ZERO_LOCK per JobPool instead of globally

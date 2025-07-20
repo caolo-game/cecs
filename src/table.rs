@@ -54,8 +54,8 @@ impl std::fmt::Debug for EntityTable {
                 "components",
                 &self
                     .components
-                    .iter()
-                    .map(|(_, c)| unsafe { &*c.get() }.ty_name)
+                    .values()
+                    .map(|c| unsafe { &*c.get() }.ty_name)
                     .collect::<Vec<_>>(),
             )
             .finish()
@@ -177,7 +177,7 @@ impl EntityTable {
             if row_index == v.len() {
                 table.push(val);
             } else {
-                v[row_index as usize] = val;
+                v[row_index] = val;
             }
         }
     }
@@ -261,7 +261,8 @@ impl EntityTable {
             .and_then(|rows| unsafe { (*rows.get()).as_slice().get(row as usize) })
     }
 
-    pub fn get_component_mut<T: 'static>(&self, row: RowIndex) -> Option<&mut T> {
+    /// # SAFETY caller must ensure that no mutable aliasing happens to the row
+    pub unsafe fn get_component_mut<T: 'static>(&self, row: RowIndex) -> Option<&mut T> {
         self.components
             .get(&TypeId::of::<T>())
             .and_then(|rows| unsafe { (*rows.get()).as_slice_mut().get_mut(row as usize) })

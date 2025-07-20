@@ -401,6 +401,7 @@ impl World {
         unsafe { arch.as_ref().get_component(idx) }
     }
 
+    #[allow(clippy::mut_from_ref)]
     pub fn get_component_mut<T: Component>(&self, entity_id: EntityId) -> Option<&mut T> {
         let (mut arch, idx) = self.entity_ids().read(entity_id).ok()?;
         unsafe { arch.as_mut().get_component_mut(idx) }
@@ -496,7 +497,7 @@ impl World {
     }
 
     pub fn get_resource_mut<T: 'static>(&mut self) -> Option<&mut T> {
-        self.resources.fetch_mut::<T>()
+        unsafe { self.resources.fetch_mut::<T>() }
     }
 
     pub fn get_resource_or_default<T: Default + Component>(&mut self) -> &mut T {
@@ -507,7 +508,7 @@ impl World {
         if !self.resources.contains::<T>() {
             self.resources.insert(init());
         }
-        self.resources.fetch_mut().unwrap()
+        unsafe { self.resources.fetch_mut().unwrap() }
     }
 
     /// System stages are executed in the order they were added to the World

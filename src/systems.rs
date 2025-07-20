@@ -73,9 +73,9 @@ pub struct SystemStageBuilder<'a> {
     pub systems: SystemStorage<ErasedSystem<'a, ()>>,
 }
 
-impl<'a> Into<SystemStage<'a>> for SystemStageBuilder<'a> {
-    fn into(self) -> SystemStage<'a> {
-        self.build()
+impl<'a> From<SystemStageBuilder<'a>> for SystemStage<'a> {
+    fn from(value: SystemStageBuilder<'a>) -> Self {
+        value.build()
     }
 }
 
@@ -187,6 +187,9 @@ pub struct SystemDescriptor<'a, R> {
     pub read_only: Box<dyn 'a + Fn() -> bool>,
     pub after: HashSet<TypeId>,
 }
+
+unsafe impl<'a, R> Send for SystemDescriptor<'a, R> {}
+unsafe impl<'a, R> Sync for SystemDescriptor<'a, R> {}
 
 pub struct ErasedSystem<'a, R> {
     pub(crate) system_idx: usize,
@@ -390,7 +393,7 @@ macro_rules! impl_intosys_fn {
             fn into_once_system(self) -> impl FnOnce(&World, usize) -> R {
                 move |_world: &World, _system_idx| {
                     (self)(
-                        $( unsafe { <$t>::new(std::mem::transmute(_world), _system_idx)},)*
+                        $( unsafe { <$t>::new(std::mem::transmute::<&World, &World>(_world), _system_idx)},)*
                     )
                 }
             }
