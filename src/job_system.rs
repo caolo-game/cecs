@@ -6,6 +6,7 @@ use std::{
     num::NonZeroUsize,
     panic,
     pin::Pin,
+    process::abort,
     ptr::NonNull,
     sync::{
         atomic::{AtomicIsize, Ordering},
@@ -496,7 +497,14 @@ impl Inner {
             result.threads.push(
                 std::thread::Builder::new()
                     .name(format!("cecs worker {i}"))
-                    .spawn(move || unsafe { worker.worker_thread() })
+                    .spawn(move || unsafe {
+                        if let Err(err) = panic::catch_unwind(panic::AssertUnwindSafe(move || {
+                            worker.worker_thread();
+                        })) {
+                            eprintln!("cecs worker {i} paniced: {err:?}\naborting");
+                            abort();
+                        }
+                    })
                     .expect("Failed to create worker thread"),
             );
         }
