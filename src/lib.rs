@@ -1,4 +1,3 @@
-#![feature(const_type_id)]
 #![feature(slice_range)]
 
 use std::{
