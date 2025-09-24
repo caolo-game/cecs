@@ -1,5 +1,4 @@
 //! Provides utilities to save and load Worlds.
-//! EntityIds are not stable between loads and saves!
 //!
 use serde::{
     de::{DeserializeOwned, Visitor},
@@ -541,11 +540,8 @@ mod tests {
             ))
             .unwrap();
 
-        type Q<'a> = Query<
-            'a,
-            (EntityId, ArchetypeHash, Option<&'a u32>, Option<&'a f32>),
-            (With<i32>, With<Foo>),
-        >;
+        type Q<'a> =
+            Query<'a, (EntityId, ArchetypeHash, Has<u32>, Has<f32>), (With<i32>, With<Foo>)>;
 
         let u32_hash = crate::hash_ty::<u32>();
         let f32_hash = crate::hash_ty::<f32>();
@@ -555,15 +551,14 @@ mod tests {
 
         assert_eq!(q0.count(), q1.count());
 
-        for ((id0, mut h0, c, d), (id1, h1, _, _)) in
-            Q::new(&world0).iter().zip(Q::new(&world1).iter())
-        {
+        // check if the archetypes match for each entity
+        for ((id0, mut h0, c, d), (id1, h1, _, _)) in q0.iter().zip(q1.iter()) {
             assert_eq!(id0, id1);
-            if c.is_some() {
+            if c {
                 // unserialized components will be lost
                 h0.0 ^= u32_hash;
             }
-            if d.is_some() {
+            if d {
                 // unserialized components will be lost
                 h0.0 ^= f32_hash;
             }
