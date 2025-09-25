@@ -177,7 +177,6 @@ fn save_impl<T: Component + Serialize, S: serde::Serializer>(
     tracing::trace!(name = &tname, "Serializing");
     match ty {
         SerTy::Component => {
-            // TODO: save iterator or adapter pls
             let values: Vec<(EntityId, &T)> = Query::<(EntityId, &T)>::new(world)
                 .iter()
                 .inspect(|(_id, _)| {
