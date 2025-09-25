@@ -9,11 +9,14 @@ use std::marker::PhantomData;
 
 use crate::{entity_id::EntityId, prelude::Query, Component, World};
 
+const VERSION_KEY: &str = "__version__";
+
 pub struct WorldPersister<T = (), P = ()> {
     next: Option<Box<P>>,
     ty: SerTy,
     depth: usize,
     _m: PhantomData<T>,
+    version: Option<String>,
 }
 
 impl WorldPersister<(), ()> {
@@ -23,6 +26,7 @@ impl WorldPersister<(), ()> {
             depth: 0,
             ty: SerTy::Noop,
             _m: PhantomData,
+            version: None,
         }
     }
 }
@@ -35,6 +39,11 @@ enum SerTy {
 }
 
 impl<T, P> WorldPersister<T, P> {
+    pub fn with_version(mut self, version: impl Into<String>) -> Self {
+        self.version = Some(version.into());
+        self
+    }
+
     /// Component will be serialized
     ///
     /// Entities with no component in WorldPersister will not be serialized
@@ -42,10 +51,11 @@ impl<T, P> WorldPersister<T, P> {
     /// You can GC unserialized entities after deserialization by deleting entities with
     /// [[World::gc_empty_entities]]
     pub fn with_component<U: Component + Serialize + DeserializeOwned>(
-        self,
+        mut self,
     ) -> WorldPersister<U, Self> {
         WorldPersister {
             depth: self.depth + 1,
+            version: self.version.take(),
             next: Some(Box::new(self)),
             ty: SerTy::Component,
             _m: PhantomData,
@@ -53,10 +63,11 @@ impl<T, P> WorldPersister<T, P> {
     }
 
     pub fn with_resource<U: Component + Serialize + DeserializeOwned>(
-        self,
+        mut self,
     ) -> WorldPersister<U, Self> {
         WorldPersister {
             depth: self.depth + 1,
+            version: self.version.take(),
             next: Some(Box::new(self)),
             ty: SerTy::Resource,
             _m: PhantomData,
@@ -255,7 +266,16 @@ where
     fn save<S: serde::Serializer>(&self, s: S, world: &World) -> Result<S::Ok, S::Error> {
         // outermost map, type -> list[id, values]
         // bincode requires a length be specified
-        let mut s = s.serialize_map(Some(self.depth))?;
+        let mut len = self.depth;
+        if self.version.is_some() {
+            len += 1;
+        }
+
+        let mut s = s.serialize_map(Some(len))?;
+        if let Some(v) = self.version.as_ref() {
+            s.serialize_entry(VERSION_KEY, v)?;
+        }
+
         self.save_entry::<S>(&mut s, world)?;
         s.end()
     }
@@ -582,5 +602,25 @@ mod tests {
             0,
             "Assumes that non registered types are not (de)serialized"
         );
+    }
+
+    #[test]
+    #[cfg_attr(feature = "tracing", tracing_test::traced_test)]
+    fn version_saved_test() {
+        let world0 = World::new(8);
+        let p = WorldPersister::new()
+            .with_component::<i32>()
+            .with_version("alpha");
+
+        let mut result = Vec::<u8>::new();
+        let mut s = serde_json::Serializer::pretty(&mut result);
+
+        p.save(&mut s, &world0).unwrap();
+
+        let t: serde_json::Value = serde_json::from_slice(&result).unwrap();
+        let v = t
+            .get(VERSION_KEY)
+            .expect("missing version entry in the serialized world");
+        assert_eq!(v.as_str().unwrap(), "alpha");
     }
 }
