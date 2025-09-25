@@ -10,13 +10,14 @@ use std::marker::PhantomData;
 use crate::{entity_id::EntityId, prelude::Query, Component, World};
 
 const VERSION_KEY: &str = "__version__";
+pub type Version = String;
 
 pub struct WorldPersister<T = (), P = ()> {
     next: Option<Box<P>>,
     ty: SerTy,
     depth: usize,
     _m: PhantomData<T>,
-    version: Option<String>,
+    version: Option<Version>,
 }
 
 impl WorldPersister<(), ()> {
@@ -39,7 +40,7 @@ enum SerTy {
 }
 
 impl<T, P> WorldPersister<T, P> {
-    pub fn with_version(mut self, version: impl Into<String>) -> Self {
+    pub fn with_version(mut self, version: impl Into<Version>) -> Self {
         self.version = Some(version.into());
         self
     }
@@ -88,6 +89,10 @@ pub trait WorldSerializer: Sized {
     ) -> Result<(), S::Error>;
 
     fn load<'a, D: serde::Deserializer<'a>>(&self, d: D) -> Result<World, D::Error>;
+    fn load_version<'a, D: serde::Deserializer<'a>>(
+        &self,
+        d: D,
+    ) -> Result<Option<Version>, D::Error>;
 
     fn visit_map_value<'de, A>(
         &self,
@@ -128,6 +133,13 @@ impl WorldSerializer for () {
     }
 
     fn load<'a, D: serde::Deserializer<'a>>(&self, _d: D) -> Result<World, D::Error> {
+        unreachable!()
+    }
+
+    fn load_version<'a, D: serde::Deserializer<'a>>(
+        &self,
+        _d: D,
+    ) -> Result<Option<Version>, D::Error> {
         unreachable!()
     }
 
@@ -174,6 +186,29 @@ where
         }
 
         Ok(self.world)
+    }
+}
+
+struct VersionVisitor;
+
+impl<'de> Visitor<'de> for VersionVisitor {
+    type Value = Option<Version>;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("Serialized World")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::MapAccess<'de>,
+    {
+        while let Some(key) = map.next_key::<std::borrow::Cow<'de, str>>()? {
+            if key == VERSION_KEY {
+                return map.next_value().map(Some);
+            }
+        }
+
+        Ok(None)
     }
 }
 
@@ -324,6 +359,15 @@ where
             return Ok(());
         }
         return visit_map_value_impl::<A, T>(self.ty, map, world);
+    }
+
+    fn load_version<'a, D: serde::Deserializer<'a>>(
+        &self,
+        d: D,
+    ) -> Result<Option<Version>, D::Error> {
+        let visitor = VersionVisitor;
+        let version = d.deserialize_map(visitor)?;
+        Ok(version)
     }
 }
 
@@ -616,6 +660,12 @@ mod tests {
         let mut s = serde_json::Serializer::pretty(&mut result);
 
         p.save(&mut s, &world0).unwrap();
+
+        let version = p
+            .load_version(&mut serde_json::Deserializer::from_slice(result.as_slice()))
+            .unwrap();
+
+        assert_eq!(version.as_ref().map(|v| v.as_str()), Some("alpha"));
 
         let t: serde_json::Value = serde_json::from_slice(&result).unwrap();
         let v = t
