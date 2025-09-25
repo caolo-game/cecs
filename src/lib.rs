@@ -25,7 +25,7 @@ pub mod systems;
 pub mod world_access;
 
 #[cfg(feature = "serde")]
-pub mod persister;
+pub mod serde;
 
 mod table;
 
