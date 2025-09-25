@@ -253,6 +253,8 @@ where
     }
 
     fn save<S: serde::Serializer>(&self, s: S, world: &World) -> Result<S::Ok, S::Error> {
+        // outermost map, type -> list[id, values]
+        // bincode requires a length be specified
         let mut s = s.serialize_map(Some(self.depth))?;
         self.save_entry::<S>(&mut s, world)?;
         s.end()
