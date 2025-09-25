@@ -25,7 +25,7 @@ jobs:
           crate: cargo-all-features
           version: latest
       - name: Build
-        run: cargo build-all-features --tests --verbose
+        run: cargo build-all-features
       - name: Run tests
         run: cargo test-all-features
         env:
