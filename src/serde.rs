@@ -10,7 +10,7 @@ use std::marker::PhantomData;
 use crate::{entity_id::EntityId, prelude::Query, Component, World};
 
 const VERSION_KEY: &str = "__version__";
-pub type Version = String;
+pub type Version = semver::Version;
 
 pub struct WorldPersister<T = (), P = ()> {
     next: Option<Box<P>>,
@@ -174,8 +174,8 @@ where
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         formatter.write_str(&format!(
-            "Serialized World version {}",
-            self.persist.version.as_deref().unwrap_or("")
+            "Serialized World compatible with version {:?}",
+            self.persist.version
         ))
     }
 
@@ -385,6 +385,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use semver::Version;
+
     use super::*;
     use crate::prelude::*;
     use std::collections::HashSet;
@@ -666,7 +668,7 @@ mod tests {
         let world0 = World::new(8);
         let p = WorldPersister::new()
             .with_component::<i32>()
-            .with_version("alpha");
+            .with_version(Version::parse("1.0.0").unwrap());
 
         let mut result = Vec::<u8>::new();
         let mut s = serde_json::Serializer::pretty(&mut result);
@@ -677,13 +679,13 @@ mod tests {
             .load_version(&mut serde_json::Deserializer::from_slice(result.as_slice()))
             .unwrap();
 
-        assert_eq!(version.as_ref().map(|v| v.as_str()), Some("alpha"));
+        assert_eq!(version.as_ref(), Some(&Version::parse("1.0.0").unwrap()));
 
         let t: serde_json::Value = serde_json::from_slice(&result).unwrap();
         let v = t
             .get(VERSION_KEY)
             .expect("missing version entry in the serialized world");
-        assert_eq!(v.as_str().unwrap(), "alpha");
+        assert_eq!(v.as_str().unwrap(), "1.0.0");
     }
 
     #[test]
@@ -692,7 +694,7 @@ mod tests {
         let world0 = World::new(8);
         let p = WorldPersister::new()
             .with_component::<i32>()
-            .with_version("alpha");
+            .with_version(Version::parse("1.0.0").unwrap());
 
         let mut result = Vec::<u8>::new();
         let mut s = serde_json::Serializer::pretty(&mut result);
@@ -701,13 +703,13 @@ mod tests {
 
         let p = WorldPersister::new()
             .with_component::<i32>()
-            .with_version("beta");
+            .with_version(Version::parse("2.0.0").unwrap());
 
         let err = p
             .load(&mut serde_json::Deserializer::from_slice(&result))
             .map(drop)
             .expect_err("Deserialization of incompatible versions should fail");
 
-        assert_eq!(err.to_string(), "Version mismatch. WorldPersister expected version `beta` but the payload has version `alpha` at line 3 column 1");
+        assert_eq!(err.to_string(), "Version mismatch. WorldPersister expected version `2.0.0` but the payload has version `1.0.0` at line 3 column 1");
     }
 }
