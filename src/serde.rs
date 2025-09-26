@@ -10,6 +10,8 @@ use std::marker::PhantomData;
 use crate::{Component, World, entity_id::EntityId, prelude::Query};
 
 const VERSION_KEY: &str = "__version__";
+
+pub use semver;
 pub type Version = semver::Version;
 
 pub struct WorldPersister<T = (), P = ()> {
