@@ -15,16 +15,16 @@ pub const ENTITY_GEN_MASK: u32 = (1 << GEN_BITS) - 1;
 pub struct EntityId(u32);
 
 impl EntityId {
-    pub fn new(index: Index, gen: u32) -> Self {
+    pub fn new(index: Index, generation: u32) -> Self {
         #[cfg(not(target_endian = "little"))]
         compile_error!(
             "EntityId might need updating for big endian targets, please validate before using"
         );
 
         assert!(index <= ENTITY_INDEX_MASK);
-        assert!(gen <= ENTITY_GEN_MASK);
+        assert!(generation <= ENTITY_GEN_MASK);
         let index = index << GEN_BITS;
-        Self(gen | index)
+        Self(generation | index)
     }
 
     #[inline]
@@ -33,13 +33,13 @@ impl EntityId {
     }
 
     #[inline]
-    pub fn gen(self) -> u32 {
+    pub fn generation(self) -> u32 {
         self.0 & ENTITY_GEN_MASK
     }
 
     #[inline]
     pub fn to_pair(self) -> (Index, u32) {
-        (self.index(), self.gen())
+        (self.index(), self.generation())
     }
 }
 
@@ -69,7 +69,7 @@ impl std::fmt::Debug for EntityId {
 
 impl std::fmt::Display for EntityId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "v{}:{}", self.gen(), self.index())
+        write!(f, "v{}:{}", self.generation(), self.index())
     }
 }
 
@@ -93,16 +93,16 @@ mod tests {
         let id = EntityId::new(idx, 100);
 
         assert_eq!(id.index(), idx);
-        assert_eq!(id.gen(), 100);
+        assert_eq!(id.generation(), 100);
 
         let id = EntityId::new(0, 100);
 
         assert_eq!(id.index(), 0);
-        assert_eq!(id.gen(), 100);
+        assert_eq!(id.generation(), 100);
 
         let id = EntityId::new(16, 100);
 
         assert_eq!(id.index(), 16);
-        assert_eq!(id.gen(), 100);
+        assert_eq!(id.generation(), 100);
     }
 }

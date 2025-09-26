@@ -9,8 +9,8 @@ use std::{
     process::abort,
     ptr::NonNull,
     sync::{
-        atomic::{AtomicIsize, Ordering},
         Arc,
+        atomic::{AtomicIsize, Ordering},
     },
     thread::JoinHandle,
     time::Duration,
@@ -100,39 +100,41 @@ impl JobPool {
             T: Send + Sync + FnOnce() -> Res,
             Res: Send,
         {
-            match list.len() {
-                0 => init(),
-                1 => {
-                    let res = list[0].result.get();
-                    (&mut *res).take().unwrap()
-                }
-                _ => {
-                    if max_depth > 0 {
-                        // Split the range in two and reduce them in parallel
-                        //
-                        // For some reason using js.join() results in stack-overflow for relatively
-                        // small number of jobs. I failed to find the reason
-                        //
-                        // this "inline-join" has been tested with up to 10 million jobs
-                        //
-                        let (lhs, rhs) = list.split_at(list.len() / 2);
-                        let lhs_job = InlineJob::new(move || {
-                            reduce_recursive(js, lhs, init, reduce, max_depth - 1)
-                        });
-                        let lhs = js.enqueue_job(lhs_job.as_job());
-                        let rhs = reduce_recursive(js, rhs, init, reduce, max_depth - 1);
-                        js.wait(lhs);
-                        let lhs = (&mut *lhs_job.result.get()).take().unwrap();
-                        reduce(lhs, rhs)
-                    } else {
-                        let a = list[0].result.get();
-                        let mut result = (&mut *a).take().unwrap();
-                        for job in &list[1..] {
-                            let res = job.result.get();
-                            let res = (&mut *res).take().unwrap();
-                            result = reduce(result, res);
+            unsafe {
+                match list.len() {
+                    0 => init(),
+                    1 => {
+                        let res = list[0].result.get();
+                        (&mut *res).take().unwrap()
+                    }
+                    _ => {
+                        if max_depth > 0 {
+                            // Split the range in two and reduce them in parallel
+                            //
+                            // For some reason using js.join() results in stack-overflow for relatively
+                            // small number of jobs. I failed to find the reason
+                            //
+                            // this "inline-join" has been tested with up to 10 million jobs
+                            //
+                            let (lhs, rhs) = list.split_at(list.len() / 2);
+                            let lhs_job = InlineJob::new(move || {
+                                reduce_recursive(js, lhs, init, reduce, max_depth - 1)
+                            });
+                            let lhs = js.enqueue_job(lhs_job.as_job());
+                            let rhs = reduce_recursive(js, rhs, init, reduce, max_depth - 1);
+                            js.wait(lhs);
+                            let lhs = (&mut *lhs_job.result.get()).take().unwrap();
+                            reduce(lhs, rhs)
+                        } else {
+                            let a = list[0].result.get();
+                            let mut result = (&mut *a).take().unwrap();
+                            for job in &list[1..] {
+                                let res = job.result.get();
+                                let res = (&mut *res).take().unwrap();
+                                result = reduce(result, res);
+                            }
+                            result
                         }
-                        result
                     }
                 }
             }
@@ -192,7 +194,7 @@ impl JobPool {
 
     pub fn enqueue_graph<T: Send + AsJob>(&self, graph: HomogeneousJobGraph<T>) -> JobHandle {
         unsafe {
-            let jobs = graph.get_jobs();
+            let jobs: Vec<_> = graph.get_jobs().into_iter().collect();
             let data = graph.jobs;
             let root = BoxedJob::new(move || {
                 // take ownership of the data
@@ -339,31 +341,33 @@ impl Executor {
     ///
     /// Caller must ensure that the thread is joined before the queues are destroyed
     unsafe fn worker_thread(&mut self) {
-        THREAD_INDEX.with(move |tid| {
-            *tid.get() = self.id;
-            // busy wait for a few iterations in case a new job is enqueued right before this
-            // thread would sleep
-            let mut fails = 0;
-            loop {
-                while fails < 8 {
-                    match self.run_once() {
-                        Err(_) => {
-                            fails += 1;
-                            spin_loop();
+        unsafe {
+            THREAD_INDEX.with(move |tid| {
+                *tid.get() = self.id;
+                // busy wait for a few iterations in case a new job is enqueued right before this
+                // thread would sleep
+                let mut fails = 0;
+                loop {
+                    while fails < 8 {
+                        match self.run_once() {
+                            Err(_) => {
+                                fails += 1;
+                                spin_loop();
+                            }
+                            Ok(_) => fails = 0,
                         }
-                        Ok(_) => fails = 0,
+                    }
+                    fails = 0;
+                    let (lock, cv) = &*self.sleep;
+                    let mut l = lock.lock();
+                    // TODO: config wait time
+                    cv.wait_for(&mut l, Duration::from_millis(10));
+                    if *l {
+                        break;
                     }
                 }
-                fails = 0;
-                let (lock, cv) = &*self.sleep;
-                let mut l = lock.lock();
-                // TODO: config wait time
-                cv.wait_for(&mut l, Duration::from_millis(10));
-                if *l {
-                    break;
-                }
-            }
-        });
+            });
+        }
     }
 
     /// # Safety
@@ -374,77 +378,79 @@ impl Executor {
         tracing::instrument(skip_all, level = "trace", fields(executor_id))
     )]
     unsafe fn run_once(&mut self) -> Result<(), RunError> {
-        let queues = &*self.queues.0;
-        let stealers = &*self.stealer.0;
-        let executor_id = self.id;
-        if let Some(mut job) = queues[executor_id].pop() {
-            #[cfg(feature = "tracing")]
-            tracing::trace!(
-                executor_id = executor_id,
-                data = tracing::field::debug(job.data),
-                "Executing job"
-            );
-            match job.execute() {
-                ExecutionState::Done => {}
-                ExecutionState::Reenqueue => {
-                    queues[executor_id].push(job);
-                }
-            }
-            return Ok(());
-        }
-        // if pop fails try to steal from another thread
-        let qlen = queues.len();
-        let next_id = move |i: &mut Self| {
-            i.steal_id = (i.steal_id + 1) % qlen;
-        };
-        loop {
-            let mut retry = false;
-            for _ in 0..queues.len() {
-                if self.steal_id == executor_id {
-                    next_id(self);
-                    continue;
-                }
-                let stealer = &stealers[self.steal_id];
-                match stealer.steal_batch(&queues[self.id]) {
-                    crossbeam_deque::Steal::Success(_) => {
-                        // do not increment the id if steal succeeds
-                        // next time this executor is out of jobs try stealing from the same queue
-                        // first
-                        return Ok(());
-                    }
-                    crossbeam_deque::Steal::Empty => {}
-                    crossbeam_deque::Steal::Retry => {
-                        retry = true;
-                    }
-                }
-                next_id(self);
-            }
-            if !retry {
-                break;
-            }
-        }
-        // if stealing fails too try to promote waiting items
-        let wait_list = self.wait_list.as_mut();
-        let mut promoted = false;
-        for i in (0..wait_list.len()).rev() {
-            debug_assert!(!wait_list[i].done());
-            if wait_list[i].ready() {
-                let job = wait_list.swap_remove(i);
-                #[cfg(feature = "tracing")]
-                let data = job.data;
-                queues[executor_id].push(job);
-                self.sleep.1.notify_one();
-                promoted = true;
-
+        unsafe {
+            let queues = &*self.queues.0;
+            let stealers = &*self.stealer.0;
+            let executor_id = self.id;
+            if let Some(mut job) = queues[executor_id].pop() {
                 #[cfg(feature = "tracing")]
                 tracing::trace!(
                     executor_id = executor_id,
-                    data = tracing::field::debug(data),
-                    "Promoted job to runnable"
+                    data = tracing::field::debug(job.data),
+                    "Executing job"
                 );
+                match job.execute() {
+                    ExecutionState::Done => {}
+                    ExecutionState::Reenqueue => {
+                        queues[executor_id].push(job);
+                    }
+                }
+                return Ok(());
             }
+            // if pop fails try to steal from another thread
+            let qlen = queues.len();
+            let next_id = move |i: &mut Self| {
+                i.steal_id = (i.steal_id + 1) % qlen;
+            };
+            loop {
+                let mut retry = false;
+                for _ in 0..queues.len() {
+                    if self.steal_id == executor_id {
+                        next_id(self);
+                        continue;
+                    }
+                    let stealer = &stealers[self.steal_id];
+                    match stealer.steal_batch(&queues[self.id]) {
+                        crossbeam_deque::Steal::Success(_) => {
+                            // do not increment the id if steal succeeds
+                            // next time this executor is out of jobs try stealing from the same queue
+                            // first
+                            return Ok(());
+                        }
+                        crossbeam_deque::Steal::Empty => {}
+                        crossbeam_deque::Steal::Retry => {
+                            retry = true;
+                        }
+                    }
+                    next_id(self);
+                }
+                if !retry {
+                    break;
+                }
+            }
+            // if stealing fails too try to promote waiting items
+            let wait_list = self.wait_list.as_mut();
+            let mut promoted = false;
+            for i in (0..wait_list.len()).rev() {
+                debug_assert!(!wait_list[i].done());
+                if wait_list[i].ready() {
+                    let job = wait_list.swap_remove(i);
+                    #[cfg(feature = "tracing")]
+                    let data = job.data;
+                    queues[executor_id].push(job);
+                    self.sleep.1.notify_one();
+                    promoted = true;
+
+                    #[cfg(feature = "tracing")]
+                    tracing::trace!(
+                        executor_id = executor_id,
+                        data = tracing::field::debug(data),
+                        "Promoted job to runnable"
+                    );
+                }
+            }
+            promoted.then_some(()).ok_or(RunError::StealFailed)
         }
-        promoted.then_some(()).ok_or(RunError::StealFailed)
     }
 }
 
@@ -687,7 +693,7 @@ where
         F: Send,
         R: Send,
     {
-        Job::new(self)
+        unsafe { Job::new(self) }
     }
 }
 
@@ -710,12 +716,14 @@ unsafe fn execute_job<R: Send>(f: impl FnOnce() -> R + Send) -> JobResult<R> {
 
 impl<F: FnOnce() -> R + Send, R: Send> AsJob for InlineJob<F, R> {
     unsafe fn execute(instance: *const ()) -> ExecutionState {
-        let instance: *const Self = instance.cast();
-        let instance = &*instance;
-        let inner = (&mut *instance.inner.get()).take();
-        let result = execute_job(inner.unwrap());
-        std::ptr::write(instance.result.get(), result);
-        ExecutionState::Done
+        unsafe {
+            let instance: *const Self = instance.cast();
+            let instance = &*instance;
+            let inner = (&mut *instance.inner.get()).take();
+            let result = execute_job(inner.unwrap());
+            std::ptr::write(instance.result.get(), result);
+            ExecutionState::Done
+        }
     }
 }
 
@@ -728,9 +736,11 @@ where
     F: FnOnce() + Send,
 {
     unsafe fn execute(instance: *const ()) -> ExecutionState {
-        let instance: Box<Self> = Box::from_raw(instance.cast_mut().cast());
-        execute_job(instance.inner);
-        ExecutionState::Done
+        unsafe {
+            let instance: Box<Self> = Box::from_raw(instance.cast_mut().cast());
+            execute_job(instance.inner);
+            ExecutionState::Done
+        }
     }
 }
 
@@ -745,7 +755,7 @@ impl<F> BoxedJob<F> {
     where
         F: FnOnce() + Send,
     {
-        Job::new(Box::into_raw(self))
+        unsafe { Job::new(Box::into_raw(self)) }
     }
 }
 
@@ -771,33 +781,36 @@ where
     F: std::future::Future + Send,
 {
     unsafe fn execute(instance: *const ()) -> ExecutionState {
-        let mut instance: Box<Self> = Box::from_raw(instance.cast_mut().cast());
-        // let instance: &mut Self = &mut *instance.cast_mut().cast();
-        let f =
-            || futures_lite::future::block_on(futures_lite::future::poll_once(&mut instance.inner));
-        let result = match panic::catch_unwind(panic::AssertUnwindSafe(f)) {
-            Ok(res) => match res {
-                Some(_) => JobResult::Done(res),
-                None => {
-                    Box::leak(instance);
-                    JobResult::Reenqueue
-                }
-            },
-            Err(err) => {
-                cfg_if!(
-                    if #[cfg(feature = "tracing")] {
-                        tracing::error!("Job panic: {err:?}");
-                    } else {
-                        eprintln!("Job panic: {err:?}");
+        unsafe {
+            let mut instance: Box<Self> = Box::from_raw(instance.cast_mut().cast());
+            // let instance: &mut Self = &mut *instance.cast_mut().cast();
+            let f = || {
+                futures_lite::future::block_on(futures_lite::future::poll_once(&mut instance.inner))
+            };
+            let result = match panic::catch_unwind(panic::AssertUnwindSafe(f)) {
+                Ok(res) => match res {
+                    Some(_) => JobResult::Done(res),
+                    None => {
+                        Box::leak(instance);
+                        JobResult::Reenqueue
                     }
-                );
+                },
+                Err(err) => {
+                    cfg_if!(
+                        if #[cfg(feature = "tracing")] {
+                            tracing::error!("Job panic: {err:?}");
+                        } else {
+                            eprintln!("Job panic: {err:?}");
+                        }
+                    );
 
-                JobResult::Panic
+                    JobResult::Panic
+                }
+            };
+            match result {
+                JobResult::Reenqueue => ExecutionState::Reenqueue,
+                _ => ExecutionState::Done,
             }
-        };
-        match result {
-            JobResult::Reenqueue => ExecutionState::Reenqueue,
-            _ => ExecutionState::Done,
         }
     }
 }
@@ -815,7 +828,7 @@ impl<F> FutureJob<F> {
     where
         F: std::future::Future + Send,
     {
-        Job::new(Box::into_raw(self))
+        unsafe { Job::new(Box::into_raw(self)) }
     }
 }
 
@@ -888,16 +901,16 @@ where
     /// The jobs are only valid while this graph is not modified or dropped
     ///
     unsafe fn get_jobs(&self) -> impl IntoIterator<Item = Job> {
-        let mut jobs = self.jobs.iter().map(|d| Job::new(d)).collect::<Vec<_>>();
-        for [parent, child] in self.edges.iter().copied() {
-            debug_assert_ne!(parent, child);
-            unsafe {
+        unsafe {
+            let mut jobs = self.jobs.iter().map(|d| Job::new(d)).collect::<Vec<_>>();
+            for [parent, child] in self.edges.iter().copied() {
+                debug_assert_ne!(parent, child);
                 let parent = &mut *jobs.as_mut_ptr().add(parent);
                 let child = &*jobs.as_ptr().add(child);
                 parent.add_child(child);
             }
+            jobs
         }
-        jobs
     }
 }
 
@@ -905,7 +918,7 @@ where
 mod tests {
     use std::sync::Mutex;
 
-    use crate::{query::Query, World};
+    use crate::{World, query::Query};
 
     use super::*;
 

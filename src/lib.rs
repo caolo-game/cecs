@@ -285,9 +285,11 @@ impl World {
 
         let index = void_store.as_mut().insert_entity(id);
         void_store.as_mut().set_component(index, ());
-        self.entity_ids
-            .get_mut()
-            .update(id, void_store.as_mut().get_mut() as *mut _, index);
+        unsafe {
+            self.entity_ids
+                .get_mut()
+                .update(id, void_store.as_mut().get_mut() as *mut _, index)
+        };
     }
 
     pub fn delete_entity(&mut self, id: EntityId) -> WorldResult<()> {
@@ -888,7 +890,7 @@ impl World {
 // The system's queries must be disjoint to any other concurrently running system's
 unsafe fn run_system<'a, R>(world: &'a World, sys: &'a systems::ErasedSystem<'_, R>) -> R {
     let index = sys.system_idx;
-    let execute: &systems::InnerSystem<'_, R> = { transmute(sys.execute.as_ref()) };
+    let execute: &systems::InnerSystem<'_, R> = { unsafe { transmute(sys.execute.as_ref()) } };
 
     (execute)(world, index)
 }

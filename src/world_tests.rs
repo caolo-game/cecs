@@ -3,7 +3,7 @@ use world_access::WorldAccess;
 
 use crate::prelude::{IntoSystem as _, ResMut};
 use crate::query::resource_query::Res;
-use crate::query::{filters::WithOut, Query};
+use crate::query::{Query, filters::WithOut};
 use crate::table::ArchetypeHash;
 
 use super::*;
@@ -730,7 +730,9 @@ fn unsafe_partition_test() {
     }
 
     unsafe fn add(i: &u32, id: EntityId, q: &Query<&u32>) {
-        *q.fetch_unsafe(id).unwrap() += *i;
+        unsafe {
+            *q.fetch_unsafe(id).unwrap() += *i;
+        }
     }
 
     /// This system updates children values based on parent value, in parallel for all parents
@@ -800,8 +802,8 @@ fn test_par_foreach() {
 fn par_ordering_test() {
     use crate::systems::IntoSystem;
     use std::sync::{
-        atomic::{AtomicU8, Ordering},
         Arc,
+        atomic::{AtomicU8, Ordering},
     };
 
     let mut world = World::new(128);
@@ -841,8 +843,8 @@ fn par_ordering_test() {
 fn serial_ordering_test() {
     use crate::systems::IntoSystem;
     use std::sync::{
-        atomic::{AtomicU8, Ordering},
         Arc,
+        atomic::{AtomicU8, Ordering},
     };
 
     let mut world = World::new(128);

@@ -9,7 +9,7 @@ use rustc_hash::FxHashMap;
 #[cfg(feature = "parallel")]
 use crate::job_system::{AsJob, ExecutionState};
 
-use crate::{query::WorldQuery, World};
+use crate::{World, query::WorldQuery};
 
 pub type InnerSystem<'a, R> = dyn Fn(&'a World, usize) -> R + 'a;
 pub type ShouldRunSystem<'a> = InnerSystem<'a, bool>;
@@ -267,16 +267,18 @@ unsafe impl<'a, R> Send for SystemJob<'a, R> {}
 #[cfg(feature = "parallel")]
 impl<'a, R> AsJob for SystemJob<'a, R> {
     unsafe fn execute(this: *const ()) -> ExecutionState {
-        let job: *const Self = this.cast();
-        let job = &*job;
-        let sys = job.sys.as_ref();
-        let world = job.world.as_ref();
+        unsafe {
+            let job: *const Self = this.cast();
+            let job = &*job;
+            let sys = job.sys.as_ref();
+            let world = job.world.as_ref();
 
-        #[cfg(feature = "tracing")]
-        let _e = tracing::trace_span!("system", name = sys.descriptor.name.as_str()).entered();
+            #[cfg(feature = "tracing")]
+            let _e = tracing::trace_span!("system", name = sys.descriptor.name.as_str()).entered();
 
-        (sys.execute)(world, sys.system_idx);
-        ExecutionState::Done
+            (sys.execute)(world, sys.system_idx);
+            ExecutionState::Done
+        }
     }
 }
 
@@ -420,10 +422,18 @@ impl_intosys_fn!(Q0, Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10);
 impl_intosys_fn!(Q0, Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, Q11);
 impl_intosys_fn!(Q0, Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12);
 impl_intosys_fn!(Q0, Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12, Q13);
-impl_intosys_fn!(Q0, Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12, Q13, Q14);
-impl_intosys_fn!(Q0, Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12, Q13, Q14, Q15);
-impl_intosys_fn!(Q0, Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12, Q13, Q14, Q15, Q16);
-impl_intosys_fn!(Q0, Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12, Q13, Q14, Q15, Q16, Q17);
+impl_intosys_fn!(
+    Q0, Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12, Q13, Q14
+);
+impl_intosys_fn!(
+    Q0, Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12, Q13, Q14, Q15
+);
+impl_intosys_fn!(
+    Q0, Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12, Q13, Q14, Q15, Q16
+);
+impl_intosys_fn!(
+    Q0, Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12, Q13, Q14, Q15, Q16, Q17
+);
 impl_intosys_fn!(
     Q0, Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12, Q13, Q14, Q15, Q16, Q17, Q18
 );

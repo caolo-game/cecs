@@ -7,10 +7,10 @@ pub mod resource_query;
 mod query_tests;
 
 use crate::{
+    Component, RowIndex, World,
     entity_id::EntityId,
     systems::SystemDescriptor,
     table::{ArchetypeHash, EntityTable},
-    Component, RowIndex, World,
 };
 use filters::Filter;
 use std::{any::TypeId, collections::HashSet, marker::PhantomData, ops::RangeBounds, slice};
@@ -349,12 +349,14 @@ where
     pub unsafe fn iter_unsafe(
         &'a self,
     ) -> impl Iterator<Item = <T as QueryFragment>::ItemUnsafe<'a>> {
-        self.world
-            .as_ref()
-            .archetypes
-            .iter()
-            .filter(|(_, arch)| F::filter(arch))
-            .flat_map(|(_, arch)| T::iter_unsafe(arch))
+        unsafe {
+            self.world
+                .as_ref()
+                .archetypes
+                .iter()
+                .filter(|(_, arch)| F::filter(arch))
+                .flat_map(|(_, arch)| T::iter_unsafe(arch))
+        }
     }
 
     pub fn fetch<'b>(&'b self, id: EntityId) -> Option<<T as QueryFragment>::Item<'b>>
@@ -821,7 +823,7 @@ impl<'a, T: Component> QueryFragment for Option<&'a T> {
         archetype: &EntityTable,
         index: RowIndex,
     ) -> Option<Self::ItemUnsafe<'_>> {
-        Some(archetype.get_component_mut::<T>(index).map(|x| x as *mut _))
+        unsafe { Some(archetype.get_component_mut::<T>(index).map(|x| x as *mut _)) }
     }
 
     fn types_mut(_set: &mut HashSet<TypeId>) {
@@ -909,7 +911,7 @@ impl<'a, T: Component> QueryFragment for Option<&'a mut T> {
         archetype: &EntityTable,
         index: RowIndex,
     ) -> Option<Self::ItemUnsafe<'_>> {
-        Some(archetype.get_component_mut::<T>(index).map(|x| x as *mut _))
+        unsafe { Some(archetype.get_component_mut::<T>(index).map(|x| x as *mut _)) }
     }
 
     fn types_mut(set: &mut HashSet<TypeId>) {
@@ -976,7 +978,7 @@ impl<'a, T: Component> QueryFragment for &'a T {
         archetype: &EntityTable,
         index: RowIndex,
     ) -> Option<Self::ItemUnsafe<'_>> {
-        archetype.get_component_mut::<T>(index).map(|x| x as *mut _)
+        unsafe { archetype.get_component_mut::<T>(index).map(|x| x as *mut _) }
     }
 
     fn contains(archetype: &EntityTable) -> bool {
@@ -1100,7 +1102,7 @@ impl<'a, T: Component> QueryFragment for &'a mut T {
         archetype: &EntityTable,
         index: RowIndex,
     ) -> Option<Self::ItemUnsafe<'_>> {
-        archetype.get_component_mut::<T>(index).map(|x| x as *mut _)
+        unsafe { archetype.get_component_mut::<T>(index).map(|x| x as *mut _) }
     }
 
     fn contains(archetype: &EntityTable) -> bool {
@@ -1221,7 +1223,9 @@ macro_rules! impl_tuple {
 
             unsafe fn iter_unsafe(archetype: &EntityTable) -> Self::ItUnsafe<'_>
             {
-                TupleIterator(($( $t::iter_unsafe(archetype) ),+))
+                unsafe {
+                    TupleIterator(($( $t::iter_unsafe(archetype) ),+))
+                }
             }
 
             fn fetch(archetype: &EntityTable, index: RowIndex) -> Option<Self::Item<'_>> {
@@ -1241,11 +1245,13 @@ macro_rules! impl_tuple {
             }
 
             unsafe fn fetch_unsafe(archetype: &EntityTable, index: RowIndex) -> Option<Self::ItemUnsafe<'_>> {
-                Some((
-                    $(
-                        $t::fetch_unsafe(archetype, index)?,
-                    )*
-                ))
+                unsafe {
+                    Some((
+                        $(
+                            $t::fetch_unsafe(archetype, index)?,
+                        )*
+                    ))
+                }
             }
 
             fn contains(archetype: &EntityTable) -> bool {

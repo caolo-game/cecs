@@ -1,12 +1,12 @@
 use std::{
-    alloc::{alloc, dealloc, Layout},
+    alloc::{Layout, alloc, dealloc},
     mem::{align_of, size_of},
     ptr::{self, NonNull},
 };
 
 use crate::{
-    entity_id::{EntityId, ENTITY_GEN_MASK, ENTITY_INDEX_MASK},
     EntityTable, RowIndex,
+    entity_id::{ENTITY_GEN_MASK, ENTITY_INDEX_MASK, EntityId},
 };
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -68,7 +68,7 @@ impl EntityIndex {
                 ptr::write(
                     entries.add(i as usize),
                     Entry {
-                        gen: 0,
+                        generation: 0,
                         arch: std::ptr::null_mut(),
                         row_index: i + 1,
                     },
@@ -119,7 +119,7 @@ impl EntityIndex {
                 ptr::write(
                     new_entries.add(i as usize),
                     Entry {
-                        gen: 0,
+                        generation: 0,
                         arch: std::ptr::null_mut(),
                         row_index: i + 1,
                     },
@@ -171,7 +171,7 @@ impl EntityIndex {
             .map(|entry| !entry.arch.is_null())
             .unwrap_or(false)
         {
-            if self.entries()[needle as usize].r#gen == id.r#gen() {
+            if self.entries()[needle as usize].generation == id.generation() {
                 return Err(InsertError::AlreadyInserted(id));
             } else {
                 return Err(InsertError::Taken(id));
@@ -188,14 +188,14 @@ impl EntityIndex {
                     let row = self.entries()[needle as usize].row_index;
                     *free_list = row;
                     self.init_allocated_id(needle);
-                    self.entries_mut()[needle as usize].gen = id.gen();
+                    self.entries_mut()[needle as usize].generation = id.generation();
                     return Ok(());
                 }
                 free_list = &mut self.entries_mut()[*free_list as usize].row_index;
             }
         }
         // not found
-        if self.entries()[needle as usize].r#gen == id.r#gen() {
+        if self.entries()[needle as usize].generation == id.generation() {
             return Err(InsertError::AlreadyInserted(id));
         } else {
             return Err(InsertError::Taken(id));
@@ -227,7 +227,7 @@ impl EntityIndex {
             entry.arch = std::ptr::null_mut();
             entry.row_index = SENTINEL;
         }
-        EntityId::new(index as u32, entry.gen)
+        EntityId::new(index as u32, entry.generation)
     }
 
     pub fn reserve(&mut self, additional: u32) {
@@ -241,23 +241,27 @@ impl EntityIndex {
     ///
     /// Caller must ensure that the id is valid
     pub(crate) unsafe fn update(&mut self, id: EntityId, arch: *mut EntityTable, row: RowIndex) {
-        let index = id.index();
-        debug_assert!(index < self.cap);
-        let entry = &mut *self.entries.add(index as usize);
-        debug_assert_eq!(id.gen(), entry.gen);
-        entry.arch = arch;
-        entry.row_index = row;
+        unsafe {
+            let index = id.index();
+            debug_assert!(index < self.cap);
+            let entry = &mut *self.entries.add(index as usize);
+            debug_assert_eq!(id.generation(), entry.generation);
+            entry.arch = arch;
+            entry.row_index = row;
+        }
     }
 
     /// # Safety
     ///
     /// Caller must ensure that the id is valid
     pub(crate) unsafe fn update_row_index(&mut self, id: EntityId, row: RowIndex) {
-        let index = id.index();
-        debug_assert!(index < self.cap);
-        let entry = &mut *self.entries.add(index as usize);
-        debug_assert_eq!(id.gen(), entry.gen);
-        entry.row_index = row;
+        unsafe {
+            let index = id.index();
+            debug_assert!(index < self.cap);
+            let entry = &mut *self.entries.add(index as usize);
+            debug_assert_eq!(id.generation(), entry.generation);
+            entry.row_index = row;
+        }
     }
 
     fn get(&self, id: EntityId) -> Option<&Entry> {
@@ -283,18 +287,18 @@ impl EntityIndex {
             let entries = self.entries;
             entry = &mut *entries.add(index as usize);
         }
-        debug_assert_eq!(id.gen(), entry.gen);
+        debug_assert_eq!(id.generation(), entry.generation);
         entry.arch = std::ptr::null_mut();
         entry.row_index = SENTINEL;
-        entry.gen = (entry.gen + 1) & ENTITY_GEN_MASK;
+        entry.generation = (entry.generation + 1) & ENTITY_GEN_MASK;
         self.free_list_push(index);
     }
 
     pub fn is_valid(&self, id: EntityId) -> bool {
         let index = id.index() as usize;
-        let gen = id.gen();
+        let generation = id.generation();
         match self.entries().get(index) {
-            Some(entry) => entry.gen == gen && entry.arch != std::ptr::null_mut(),
+            Some(entry) => entry.generation == generation && entry.arch != std::ptr::null_mut(),
             None => return false,
         }
     }
@@ -324,7 +328,7 @@ impl Drop for EntityIndex {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Entry {
-    pub gen: u32,
+    pub generation: u32,
     pub arch: *mut EntityTable,
     /// Store the index of the entity in the EntityTable
     /// When entity is invalid the row_index stores the position of the next Entry in the free-list
@@ -341,7 +345,7 @@ mod tests {
 
         for _ in 0..4 {
             let e = table.allocate().unwrap();
-            assert_eq!(e.gen(), 0); // assert for the next step in the test
+            assert_eq!(e.generation(), 0); // assert for the next step in the test
         }
         for i in 0..4 {
             let e = EntityId::new(i, 0);
@@ -385,7 +389,7 @@ mod tests {
             table.free(a);
             let b = table.allocate_with_resize();
             assert_eq!(a.index(), b.index());
-            assert_ne!(a.gen(), b.gen());
+            assert_ne!(a.generation(), b.generation());
             a = b;
         }
     }

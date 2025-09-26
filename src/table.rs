@@ -1,4 +1,4 @@
-use crate::{entity_id::EntityId, hash_ty, hash_type_id, Component, RowIndex, TypeHash};
+use crate::{Component, RowIndex, TypeHash, entity_id::EntityId, hash_ty, hash_type_id};
 use std::{alloc::Layout, any::TypeId, cell::UnsafeCell, collections::BTreeMap};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -116,7 +116,7 @@ impl EntityTable {
         debug_assert!(self.rows > 0, "rows={}", self.rows);
         debug_assert!(index < self.rows, "index={} rows={}", index, self.rows);
         debug_assert_ne!(self as *mut _, dst as *mut _); // sanity check, the World must not allow
-                                                         // this to happen
+        // this to happen
 
         let entity_id = self.entities.swap_remove(index as usize);
         let res = dst.insert_entity(entity_id);
@@ -383,13 +383,13 @@ impl Column {
     /// # SAFETY
     /// Must be called with the same type as `new`
     pub unsafe fn as_slice<T>(&self) -> &[T] {
-        std::slice::from_raw_parts(self.data.cast::<T>(), self.end as usize)
+        unsafe { std::slice::from_raw_parts(self.data.cast::<T>(), self.end as usize) }
     }
 
     /// # SAFETY
     /// Must be called with the same type as `new`
     pub unsafe fn as_slice_mut<T>(&mut self) -> &mut [T] {
-        std::slice::from_raw_parts_mut(self.data.cast::<T>(), self.end as usize)
+        unsafe { std::slice::from_raw_parts_mut(self.data.cast::<T>(), self.end as usize) }
     }
 
     fn layout<T>(capacity: usize) -> Layout {
@@ -405,40 +405,44 @@ impl Column {
     /// # SAFETY
     /// Must be called with the same type as `new`
     pub unsafe fn push<T>(&mut self, val: T) {
-        debug_assert!(self.end <= self.capacity);
-        if self.end == self.capacity {
-            // full, have to reallocate
-            let new_cap = (self.capacity * 3 / 2).max(2);
-            let new_layout = Self::layout::<T>(new_cap as usize);
-            let new_data = std::alloc::alloc(new_layout);
-            for i in 0..self.end {
-                let t: T = std::ptr::read(self.data.cast::<T>().add(i as usize));
-                std::ptr::write(new_data.cast::<T>().add(i as usize), t);
+        unsafe {
+            debug_assert!(self.end <= self.capacity);
+            if self.end == self.capacity {
+                // full, have to reallocate
+                let new_cap = (self.capacity * 3 / 2).max(2);
+                let new_layout = Self::layout::<T>(new_cap as usize);
+                let new_data = std::alloc::alloc(new_layout);
+                for i in 0..self.end {
+                    let t: T = std::ptr::read(self.data.cast::<T>().add(i as usize));
+                    std::ptr::write(new_data.cast::<T>().add(i as usize), t);
+                }
+                std::alloc::dealloc(self.data, self.layout);
+                self.capacity = new_cap;
+                self.data = new_data;
+                self.layout = new_layout;
             }
-            std::alloc::dealloc(self.data, self.layout);
-            self.capacity = new_cap;
-            self.data = new_data;
-            self.layout = new_layout;
+            std::ptr::write(self.data.cast::<T>().add(self.end as usize), val);
+            self.end += 1;
         }
-        std::ptr::write(self.data.cast::<T>().add(self.end as usize), val);
-        self.end += 1;
     }
 
     /// # SAFETY
     /// Must be called with the same type as `new`
     pub unsafe fn swap_remove<T>(&mut self, i: usize) -> T {
-        debug_assert!(i < self.end as usize);
-        let res;
-        if i + 1 == self.end as usize {
-            // last item
-            res = std::ptr::read(self.data.cast::<T>().add(i));
-        } else {
-            res = std::ptr::read(self.data.cast::<T>().add(i));
-            let last: T = std::ptr::read(self.data.cast::<T>().add(self.end as usize - 1));
-            std::ptr::write(self.data.cast::<T>().add(i), last);
+        unsafe {
+            debug_assert!(i < self.end as usize);
+            let res;
+            if i + 1 == self.end as usize {
+                // last item
+                res = std::ptr::read(self.data.cast::<T>().add(i));
+            } else {
+                res = std::ptr::read(self.data.cast::<T>().add(i));
+                let last: T = std::ptr::read(self.data.cast::<T>().add(self.end as usize - 1));
+                std::ptr::write(self.data.cast::<T>().add(i), last);
+            }
+            self.end -= 1;
+            res
         }
-        self.end -= 1;
-        res
     }
 
     pub fn remove(&mut self, id: RowIndex) {
