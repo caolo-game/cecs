@@ -1,4 +1,4 @@
-use crate::{prelude::ResMut, World};
+use crate::{World, prelude::ResMut};
 
 use super::SystemStage;
 
@@ -26,4 +26,48 @@ fn test_unordered_systems_keep_the_original_ordering() {
     for (i, j) in nums.iter().enumerate() {
         assert_eq!(i, *j);
     }
+}
+
+#[derive(Debug, Clone)]
+struct Lock(pub bool);
+
+fn test_lock(l: &mut Lock) {
+    assert!(!l.0);
+    l.0 = true;
+    std::thread::yield_now();
+    assert!(l.0);
+    l.0 = false;
+    assert!(!l.0);
+}
+
+/// Test that systems do not contend on ResMut resources by using a shared 'lock' resource that's
+/// checked for locking, then locked, then the thread yields, to give a better chance for competing
+/// threads, then checks again, then unlocks
+#[cfg(feature = "parallel")]
+#[test]
+fn test_resmut_are_not_shared() {
+    let mut stage = SystemStage::new("test");
+
+    stage.add_system(move |mut c: ResMut<Lock>| {
+        test_lock(&mut c);
+    });
+    stage.add_system(move |mut c: ResMut<Lock>| {
+        test_lock(&mut c);
+    });
+    stage.add_system(move |mut c: ResMut<Lock>| {
+        test_lock(&mut c);
+    });
+    stage.add_system(move |mut c: ResMut<Lock>| {
+        test_lock(&mut c);
+    });
+    stage.add_system(move |mut c: ResMut<Lock>| {
+        test_lock(&mut c);
+    });
+
+    let stage = stage.build();
+
+    let mut w = World::new(0);
+    w.insert_resource(Lock(false));
+
+    w.run_stage(stage);
 }
