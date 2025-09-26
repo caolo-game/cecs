@@ -11,7 +11,7 @@ rust-version = "1.82"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["parallel", "tracing"]
+default = ["parallel", "tracing", "serde", "clone"]
 parallel = [
     "dep:lazy_static",
     "dep:parking_lot",

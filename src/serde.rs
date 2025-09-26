@@ -1,7 +1,7 @@
 //! Provides utilities to save and load Worlds.
 //!
 use serde::{
-    de::{DeserializeOwned, Visitor},
+    de::{DeserializeOwned, Error, Visitor},
     ser::SerializeMap,
     Serialize,
 };
@@ -173,7 +173,10 @@ where
     type Value = World;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("Serialized World")
+        formatter.write_str(&format!(
+            "Serialized World version {}",
+            self.persist.version.as_deref().unwrap_or("")
+        ))
     }
 
     fn visit_map<A>(mut self, mut map: A) -> Result<Self::Value, A::Error>
@@ -181,8 +184,17 @@ where
         A: serde::de::MapAccess<'de>,
     {
         while let Some(key) = map.next_key::<std::borrow::Cow<'de, str>>()? {
-            self.persist
-                .visit_map_value(key.as_ref(), &mut map, &mut self.world)?;
+            if key == VERSION_KEY {
+                if let Some(expected) = self.persist.version.as_ref() {
+                    let version: Version = map.next_value()?;
+                    if &version != expected {
+                        return Err(A::Error::custom(format!("Version mismatch. WorldPersister expected version `{expected}` but the payload has version `{version}`" )));
+                    }
+                }
+            } else {
+                self.persist
+                    .visit_map_value(key.as_ref(), &mut map, &mut self.world)?;
+            }
         }
 
         Ok(self.world)
@@ -672,5 +684,30 @@ mod tests {
             .get(VERSION_KEY)
             .expect("missing version entry in the serialized world");
         assert_eq!(v.as_str().unwrap(), "alpha");
+    }
+
+    #[test]
+    #[cfg_attr(feature = "tracing", tracing_test::traced_test)]
+    fn version_mismatch_is_error_test() {
+        let world0 = World::new(8);
+        let p = WorldPersister::new()
+            .with_component::<i32>()
+            .with_version("alpha");
+
+        let mut result = Vec::<u8>::new();
+        let mut s = serde_json::Serializer::pretty(&mut result);
+
+        p.save(&mut s, &world0).unwrap();
+
+        let p = WorldPersister::new()
+            .with_component::<i32>()
+            .with_version("beta");
+
+        let err = p
+            .load(&mut serde_json::Deserializer::from_slice(&result))
+            .map(drop)
+            .expect_err("Deserialization of incompatible versions should fail");
+
+        assert_eq!(err.to_string(), "Version mismatch. WorldPersister expected version `beta` but the payload has version `alpha` at line 3 column 1");
     }
 }
