@@ -1,13 +1,13 @@
 //! Provides utilities to save and load Worlds.
 //!
 use serde::{
+    Serialize,
     de::{DeserializeOwned, Error, Visitor},
     ser::SerializeMap,
-    Serialize,
 };
 use std::marker::PhantomData;
 
-use crate::{entity_id::EntityId, prelude::Query, Component, World};
+use crate::{Component, World, entity_id::EntityId, prelude::Query};
 
 const VERSION_KEY: &str = "__version__";
 pub type Version = semver::Version;
@@ -83,7 +83,7 @@ impl<T, P> WorldPersister<T, P> {
 
 pub trait WorldSerializer: Sized {
     fn with_component<U: Component + Serialize + DeserializeOwned>(self)
-        -> WorldPersister<U, Self>;
+    -> WorldPersister<U, Self>;
     fn with_resource<U: Component + Serialize + DeserializeOwned>(self) -> WorldPersister<U, Self>;
 
     fn save<S: serde::Serializer>(&self, s: S, world: &World) -> Result<S::Ok, S::Error>;
@@ -191,10 +191,14 @@ where
         while let Some(key) = map.next_key::<std::borrow::Cow<'de, str>>()? {
             if key == VERSION_KEY {
                 if let Some(expected) = self.persist.version.as_ref() {
-                    let req = semver::VersionReq::parse(&format!("^{}", expected.major)).unwrap();
+                    let req =
+                        semver::VersionReq::parse(&format!("<= {}, ^{}", expected, expected.major))
+                            .unwrap();
                     let version: Version = map.next_value()?;
                     if !req.matches(&version) {
-                        return Err(A::Error::custom(format!("Version mismatch. WorldPersister expected version `{expected}` but the payload has version `{version}`" )));
+                        return Err(A::Error::custom(format!(
+                            "Version mismatch. WorldPersister expected version `{expected}` but the payload has version `{version}`"
+                        )));
                     }
                 }
             } else {
@@ -716,7 +720,10 @@ mod tests {
             .map(drop)
             .expect_err("Deserialization of incompatible versions should fail");
 
-        assert_eq!(err.to_string(), "Version mismatch. WorldPersister expected version `2.0.0` but the payload has version `1.0.0` at line 3 column 1");
+        assert_eq!(
+            err.to_string(),
+            "Version mismatch. WorldPersister expected version `2.0.0` but the payload has version `1.0.0` at line 3 column 1"
+        );
     }
 
     #[test]
@@ -742,13 +749,11 @@ mod tests {
             .unwrap();
     }
 
-    #[test]
-    #[cfg_attr(feature = "tracing", tracing_test::traced_test)]
-    fn incompatible_versions_are_not_deserialized_test() {
+    fn test_version_fail(src: &str, dst: &str) {
         let world0 = World::new(8);
         let p = WorldPersister::new()
             .with_component::<i32>()
-            .with_version(Version::parse("1.0.0").unwrap());
+            .with_version(Version::parse(src).unwrap());
 
         let mut result = Vec::<u8>::new();
         let mut s = serde_json::Serializer::pretty(&mut result);
@@ -757,10 +762,18 @@ mod tests {
 
         let p = WorldPersister::new()
             .with_component::<u32>()
-            .with_version(Version::parse("2.1.0").unwrap());
+            .with_version(Version::parse(dst).unwrap());
 
         p.load(&mut serde_json::Deserializer::from_slice(&result))
             .map(drop)
             .unwrap_err();
+    }
+
+    #[test]
+    #[cfg_attr(feature = "tracing", tracing_test::traced_test)]
+    fn incompatible_versions_are_not_deserialized_test() {
+        test_version_fail("1.0.0", "2.0.0");
+        test_version_fail("1.1.0", "1.0.0");
+        test_version_fail("1.0.1", "1.0.0");
     }
 }
