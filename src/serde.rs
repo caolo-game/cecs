@@ -40,6 +40,11 @@ enum SerTy {
 }
 
 impl<T, P> WorldPersister<T, P> {
+    /// Add a version field to the serialized data.
+    ///
+    /// If the WorldPersister's major version is different than the serialized data version, then
+    /// deserialization is rejected.
+    /// Minor and patch version differences are accepted
     pub fn with_version(mut self, version: impl Into<Version>) -> Self {
         self.version = Some(version.into());
         self
@@ -186,8 +191,9 @@ where
         while let Some(key) = map.next_key::<std::borrow::Cow<'de, str>>()? {
             if key == VERSION_KEY {
                 if let Some(expected) = self.persist.version.as_ref() {
+                    let req = semver::VersionReq::parse(&format!("^{}", expected.major)).unwrap();
                     let version: Version = map.next_value()?;
-                    if &version != expected {
+                    if !req.matches(&version) {
                         return Err(A::Error::custom(format!("Version mismatch. WorldPersister expected version `{expected}` but the payload has version `{version}`" )));
                     }
                 }
@@ -711,5 +717,50 @@ mod tests {
             .expect_err("Deserialization of incompatible versions should fail");
 
         assert_eq!(err.to_string(), "Version mismatch. WorldPersister expected version `2.0.0` but the payload has version `1.0.0` at line 3 column 1");
+    }
+
+    #[test]
+    #[cfg_attr(feature = "tracing", tracing_test::traced_test)]
+    fn compatible_versions_are_deserialized_test() {
+        let world0 = World::new(8);
+        let p = WorldPersister::new()
+            .with_component::<i32>()
+            .with_version(Version::parse("1.0.0").unwrap());
+
+        let mut result = Vec::<u8>::new();
+        let mut s = serde_json::Serializer::pretty(&mut result);
+
+        p.save(&mut s, &world0).unwrap();
+
+        let p = WorldPersister::new()
+            .with_component::<i32>()
+            .with_component::<u32>()
+            .with_version(Version::parse("1.1.0").unwrap());
+
+        p.load(&mut serde_json::Deserializer::from_slice(&result))
+            .map(drop)
+            .unwrap();
+    }
+
+    #[test]
+    #[cfg_attr(feature = "tracing", tracing_test::traced_test)]
+    fn incompatible_versions_are_not_deserialized_test() {
+        let world0 = World::new(8);
+        let p = WorldPersister::new()
+            .with_component::<i32>()
+            .with_version(Version::parse("1.0.0").unwrap());
+
+        let mut result = Vec::<u8>::new();
+        let mut s = serde_json::Serializer::pretty(&mut result);
+
+        p.save(&mut s, &world0).unwrap();
+
+        let p = WorldPersister::new()
+            .with_component::<u32>()
+            .with_version(Version::parse("2.1.0").unwrap());
+
+        p.load(&mut serde_json::Deserializer::from_slice(&result))
+            .map(drop)
+            .unwrap_err();
     }
 }
