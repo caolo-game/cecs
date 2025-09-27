@@ -17,7 +17,6 @@ pub type Version = semver::Version;
 pub struct WorldPersister<T = (), P = ()> {
     next: Option<Box<P>>,
     ty: SerTy,
-    depth: usize,
     _m: PhantomData<T>,
     version: Option<Version>,
 }
@@ -26,7 +25,6 @@ impl WorldPersister<(), ()> {
     pub fn new() -> Self {
         WorldPersister {
             next: None,
-            depth: 0,
             ty: SerTy::Noop,
             _m: PhantomData,
             version: None,
@@ -62,7 +60,6 @@ impl<T, P> WorldPersister<T, P> {
         mut self,
     ) -> WorldPersister<U, Self> {
         WorldPersister {
-            depth: self.depth + 1,
             version: self.version.take(),
             next: Some(Box::new(self)),
             ty: SerTy::Component,
@@ -74,7 +71,6 @@ impl<T, P> WorldPersister<T, P> {
         mut self,
     ) -> WorldPersister<U, Self> {
         WorldPersister {
-            depth: self.depth + 1,
             version: self.version.take(),
             next: Some(Box::new(self)),
             ty: SerTy::Resource,
@@ -109,6 +105,8 @@ pub trait WorldSerializer: Sized {
     ) -> Result<(), A::Error>
     where
         A: serde::de::MapAccess<'de>;
+
+    fn count_entries(&self, world: &World) -> usize;
 }
 
 fn entry_name<T: 'static>(ty: SerTy) -> String {
@@ -160,6 +158,11 @@ impl WorldSerializer for () {
         A: serde::de::MapAccess<'de>,
     {
         unreachable!()
+    }
+
+    /// return the number of types to be saved
+    fn count_entries(&self, _world: &World) -> usize {
+        0
     }
 }
 
@@ -325,7 +328,7 @@ where
     fn save<S: serde::Serializer>(&self, s: S, world: &World) -> Result<S::Ok, S::Error> {
         // outermost map, type -> list[id, values]
         // bincode requires a length be specified
-        let mut len = self.depth;
+        let mut len = self.count_entries(world);
         if self.version.is_some() {
             len += 1;
         }
@@ -393,6 +396,27 @@ where
         let version = d.deserialize_map(visitor)?;
         Ok(version)
     }
+
+    fn count_entries(&self, world: &World) -> usize {
+        let mut c = 0;
+        match self.ty {
+            SerTy::Component => {
+                if !Query::<&T>::new(world).is_empty() {
+                    c += 1;
+                }
+            }
+            SerTy::Resource => {
+                if world.get_resource::<T>().is_some() {
+                    c += 1
+                }
+            }
+            SerTy::Noop => {}
+        }
+        if let Some(next) = self.next.as_ref() {
+            c += next.count_entries(world);
+        }
+        c
+    }
 }
 
 #[cfg(test)]
@@ -407,6 +431,9 @@ mod tests {
     struct Foo {
         value: u32,
     }
+
+    #[derive(serde_derive::Serialize, serde_derive::Deserialize, Clone)]
+    struct Never;
 
     #[derive(serde_derive::Serialize, serde_derive::Deserialize, Clone, PartialEq, Eq)]
     enum Bar {
@@ -473,6 +500,7 @@ mod tests {
 
         let p = WorldPersister::new()
             .with_component::<i32>()
+            .with_component::<Never>()
             .with_component::<Foo>();
 
         let mut result = Vec::<u8>::new();
